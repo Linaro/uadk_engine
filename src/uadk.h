@@ -15,3 +15,5 @@
 
 extern int uadk_bind_cipher(ENGINE *e);
 extern void uadk_destroy_cipher(void);
+extern int uadk_bind_digest(ENGINE *e);
+extern void uadk_destroy_digest(void);

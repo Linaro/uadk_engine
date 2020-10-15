@@ -37,6 +37,7 @@ static void uadk_destructor(void)
 static int uadk_destroy(ENGINE *e)
 {
 	uadk_destroy_cipher();
+	uadk_destroy_digest();
 
 	return 1;
 }
@@ -78,6 +79,14 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_cipher(e))
 			fprintf(stderr, "uadk bind cipher failed\n");
+
+		wd_free_list_accels(list);
+	}
+
+	list = wd_get_accel_list("digest");
+	if (list) {
+		if (!uadk_bind_digest(e))
+			fprintf(stderr, "uadk bind digest failed\n");
 
 		wd_free_list_accels(list);
 	}
