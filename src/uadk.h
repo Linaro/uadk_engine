@@ -25,4 +25,3 @@ extern void uadk_destroy_rsa(void);
 
 #define uadk_eng_err(format, args...)			\
 	fprintf(stderr, "ue: %s: "format, __func__, ##args)
-

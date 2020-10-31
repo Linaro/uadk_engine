@@ -41,7 +41,7 @@ static int uadk_destroy(ENGINE *e)
 	uadk_destroy_cipher();
 	uadk_destroy_digest();
 	uadk_destroy_rsa();
-
+  
 	return 1;
 }
 
@@ -78,12 +78,11 @@ static int bind_fn(ENGINE *e, const char *id)
 		return 0;
 	}
 	loaded = 1;
-
 	if (!ENGINE_set_id(e, engine_uadk_id) ||
 	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
-		!ENGINE_set_init_function(e, uadk_init) ||
+      !ENGINE_set_init_function(e, uadk_init) ||
 	    !ENGINE_set_finish_function(e, uadk_finish) ||
-		!ENGINE_set_name(e, engine_uadk_name) ||
+      !ENGINE_set_name(e, engine_uadk_name) ||
 	    !ENGINE_set_RSA(e, uadk_get_rsa_methods())) {
 		fprintf(stderr, "bind failed\n");
 		return 0;
@@ -93,7 +92,6 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_cipher(e))
 				fprintf(stderr, "uadk bind cipher failed\n");
-
 		wd_free_list_accels(list);
 	}
 
@@ -101,7 +99,6 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_digest(e))
 				fprintf(stderr, "uadk bind digest failed\n");
-
 		wd_free_list_accels(list);
 	}
 
