@@ -17,3 +17,12 @@ extern int uadk_bind_cipher(ENGINE *e);
 extern void uadk_destroy_cipher(void);
 extern int uadk_bind_digest(ENGINE *e);
 extern void uadk_destroy_digest(void);
+extern void uadk_destroy_digest(void);
+
+extern RSA_METHOD *uadk_get_rsa_methods(void);
+extern int uadk_init_rsa(void);
+extern void uadk_destroy_rsa(void);
+
+#define uadk_eng_err(format, args...)			\
+	fprintf(stderr, "ue: %s: "format, __func__, ##args)
+
