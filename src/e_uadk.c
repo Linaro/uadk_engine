@@ -19,9 +19,10 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 #include "uadk.h"
+#include "uadk_async.h"
 
 /* Constants used when creating the ENGINE */
-static const char *engine_uadk_id = "uadk";
+const char *engine_uadk_id = "uadk";
 static const char *engine_uadk_name = "uadk hardware engine support";
 
 __attribute__((constructor))
@@ -75,9 +76,11 @@ static int bind_fn(ENGINE *e, const char *id)
 		return 0;
 	}
 
+	async_module_init();
+
 	list = wd_get_accel_list("cipher");
 	if (list) {
-		if (!uadk_bind_cipher(e))
+		if (!uadk_bind_cipher(e, list))
 			fprintf(stderr, "uadk bind cipher failed\n");
 
 		wd_free_list_accels(list);
@@ -85,7 +88,7 @@ static int bind_fn(ENGINE *e, const char *id)
 
 	list = wd_get_accel_list("digest");
 	if (list) {
-		if (!uadk_bind_digest(e))
+		if (!uadk_bind_digest(e, list))
 			fprintf(stderr, "uadk bind digest failed\n");
 
 		wd_free_list_accels(list);
