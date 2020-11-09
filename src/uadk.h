@@ -12,8 +12,14 @@
  * limitations under the License.
  *
  */
+#ifndef UADK_H
+#define UADK_H
+#include <openssl/engine.h>
+#include <uadk/wd.h>
 
-extern int uadk_bind_cipher(ENGINE *e);
+extern const char *engine_uadk_id;
+extern int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list);
 extern void uadk_destroy_cipher(void);
-extern int uadk_bind_digest(ENGINE *e);
+extern int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list);
 extern void uadk_destroy_digest(void);
+#endif
