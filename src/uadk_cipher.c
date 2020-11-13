@@ -47,6 +47,9 @@ static int cipher_nids[] = {
 	NID_aes_128_ctr,
 	NID_aes_192_ctr,
 	NID_aes_256_ctr,
+	NID_aes_128_ecb,
+	NID_aes_192_ecb,
+	NID_aes_256_ecb,
 	NID_aes_128_xts,
 	NID_aes_256_xts,
 	0,
@@ -58,6 +61,9 @@ static EVP_CIPHER *uadk_aes_256_cbc;
 static EVP_CIPHER *uadk_aes_128_ctr;
 static EVP_CIPHER *uadk_aes_192_ctr;
 static EVP_CIPHER *uadk_aes_256_ctr;
+static EVP_CIPHER *uadk_aes_128_ecb;
+static EVP_CIPHER *uadk_aes_192_ecb;
+static EVP_CIPHER *uadk_aes_256_ecb;
 static EVP_CIPHER *uadk_aes_128_xts;
 static EVP_CIPHER *uadk_aes_256_xts;
 
@@ -89,6 +95,15 @@ static int uadk_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 		break;
 	case NID_aes_256_ctr:
 		*cipher = uadk_aes_256_ctr;
+		break;
+	case NID_aes_128_ecb:
+		*cipher = uadk_aes_128_ecb;
+		break;
+	case NID_aes_192_ecb:
+		*cipher = uadk_aes_192_ecb;
+		break;
+	case NID_aes_256_ecb:
+		*cipher = uadk_aes_256_ecb;
 		break;
 	case NID_aes_128_xts:
 		*cipher = uadk_aes_128_xts;
@@ -170,22 +185,43 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		break;
 	case NID_aes_128_ctr:
 		priv->setup.alg = WD_CIPHER_AES;
-		priv->setup.mode = WD_CIPHER_CBC;
+		priv->setup.mode = WD_CIPHER_CTR;
 		priv->req.out_bytes = 64;
 		break;
 	case NID_aes_192_ctr:
 		priv->setup.alg = WD_CIPHER_AES;
-		priv->setup.mode = WD_CIPHER_CBC;
+		priv->setup.mode = WD_CIPHER_CTR;
 		priv->req.out_bytes = 64;
 		break;
 	case NID_aes_256_ctr:
 		priv->setup.alg = WD_CIPHER_AES;
-		priv->setup.mode = WD_CIPHER_CBC;
+		priv->setup.mode = WD_CIPHER_CTR;
 		priv->req.out_bytes = 64;
 		break;
+	case NID_aes_128_ecb:
+		priv->setup.alg = WD_CIPHER_AES;
+		priv->setup.mode = WD_CIPHER_ECB;
+		priv->req.out_bytes = 16;
+		break;
+	case NID_aes_192_ecb:
+		priv->setup.alg = WD_CIPHER_AES;
+		priv->setup.mode = WD_CIPHER_ECB;
+		priv->req.out_bytes = 16;
+		break;
+	case NID_aes_256_ecb:
+		priv->setup.alg = WD_CIPHER_AES;
+		priv->setup.mode = WD_CIPHER_ECB;
+		priv->req.out_bytes = 16;
+		break;
 	case NID_aes_128_xts:
+		priv->setup.alg = WD_CIPHER_AES;
+		priv->setup.mode = WD_CIPHER_XTS;
+		priv->req.out_bytes = 32;
 		break;
 	case NID_aes_256_xts:
+		priv->setup.alg = WD_CIPHER_AES;
+		priv->setup.mode = WD_CIPHER_XTS;
+		priv->req.out_bytes = 512;
 		break;
 	default:
 		goto out;
@@ -355,23 +391,35 @@ int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list)
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_128_ctr, 16, 16, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_192_ctr, 16, 24, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_256_ctr, 16, 32, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 16, EVP_CIPH_ECB_MODE,
+			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
+			  uadk_do_cipher, uadk_cipher_cleanup,
+			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 16, EVP_CIPH_ECB_MODE,
+			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
+			  uadk_do_cipher, uadk_cipher_cleanup,
+			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+	UADK_CIPHER_DESCR(aes_128_xts, 16, 32, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
+			  uadk_do_cipher, uadk_cipher_cleanup,
+			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+	UADK_CIPHER_DESCR(aes_256_xts, 16, 64, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
@@ -406,6 +454,12 @@ void uadk_destroy_cipher(void)
 	uadk_aes_192_ctr = 0;
 	EVP_CIPHER_meth_free(uadk_aes_256_ctr);
 	uadk_aes_256_ctr = 0;
+	EVP_CIPHER_meth_free(uadk_aes_128_ecb);
+	uadk_aes_128_ecb = 0;
+	EVP_CIPHER_meth_free(uadk_aes_192_ecb);
+	uadk_aes_192_ecb = 0;
+	EVP_CIPHER_meth_free(uadk_aes_256_ecb);
+	uadk_aes_256_ecb = 0;
 	EVP_CIPHER_meth_free(uadk_aes_128_xts);
 	uadk_aes_128_xts = 0;
 	EVP_CIPHER_meth_free(uadk_aes_256_xts);
