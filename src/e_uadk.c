@@ -46,7 +46,6 @@ static int uadk_destroy(ENGINE *e)
 
 static int uadk_init(ENGINE *e)
 {
-	uadk_init_rsa();
 	return 1;
 }
 
@@ -72,8 +71,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
 	    !ENGINE_set_init_function(e, uadk_init) ||
 	    !ENGINE_set_finish_function(e, uadk_finish) ||
-	    !ENGINE_set_name(e, engine_uadk_name) ||
-	    !ENGINE_set_RSA(e, uadk_get_rsa_methods())) {
+	    !ENGINE_set_name(e, engine_uadk_name)) {
 		fprintf(stderr, "bind failed\n");
 		return 0;
 	}
@@ -93,6 +91,12 @@ static int bind_fn(ENGINE *e, const char *id)
 		if (!uadk_bind_digest(e, list))
 			fprintf(stderr, "uadk bind digest failed\n");
 
+		wd_free_list_accels(list);
+	}
+	list = wd_get_accel_list("rsa");
+	if (list) {
+		if (!uadk_bind_rsa(e, list))
+			fprintf(stderr, "uadk bind rsa failed\n");
 		wd_free_list_accels(list);
 	}
 
