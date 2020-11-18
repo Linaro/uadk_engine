@@ -1,10 +1,11 @@
 #include <openssl/bn.h>
 #include <openssl/engine.h>
-#include <openssl/err.h>
 #include <openssl/ossl_typ.h>
+#include <openssl/err.h>
 #include <openssl/rsa.h>
 #include <uadk/wd_rsa.h>
 #include "uadk.h"
+#include "uadk_async.h"
 
 #define UN_SET				0
 #define IS_SET				1
@@ -26,6 +27,19 @@
 
 #define PKEY_METHOD_TYPE_NUM		1
 #define RSA_MAX_DEV_NUM			16
+
+#define CTX_ASYNC	1
+#define CTX_SYNC	0
+#define CTX_NUM		2
+
+struct bignum_st {
+	BN_ULONG *d;
+	int top;
+	int dmax;
+	int neg;
+	int flags;
+};
+
 
 struct uadk_rsa_sess {
 	handle_t sess;
@@ -87,6 +101,64 @@ int check_bit_useful(const int bit)
 	return 0;
 }
 
+static int prime_mul_res(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
+			BN_CTX *ctx, BN_GENCB *cb)
+{
+	if (i == 1) {
+		if (!BN_mul(r1, rsa_p, rsa_q, ctx))
+			goto err;
+	} else {
+		if (!BN_GENCB_call(cb, 3, i))
+			goto err;
+		goto cont;
+	}
+	return 0;
+err:
+	return -1;
+cont:
+	return 1;
+}
+
+static int check_prime_sufficient(int *i, int *bitsr, int *bitse, int *n,
+				BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
+				BIGNUM *r2, BN_CTX *ctx, BN_GENCB *cb)
+{
+	BN_ULONG bitst;
+	static int retries;
+	int ret;
+
+	ret = prime_mul_res(*i, rsa_p, rsa_q, r1, ctx, cb);
+	if (ret)
+		return ret;
+	if (!BN_rshift(r2, r1, *bitse - 4))
+		goto err;
+	bitst = BN_get_word(r2);
+	if (bitst < 0x9 || bitst > 0xF) {
+		*bitse -= bitsr[*i];
+		if (!BN_GENCB_call(cb, 2, *n++))
+			goto err;
+		if (retries == 4) {
+			*i = -1;
+			*bitse = 0;
+			retries = 0;
+			goto cont;
+		}
+		retries++;
+		goto redo;
+	}
+	if (!BN_GENCB_call(cb, 3, *i))
+		goto err;
+	retries = 0;
+	return 0;
+err:
+	return -1;
+redo:
+	return -2;
+cont:
+	return 1;
+
+}
+
 static void set_primes(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM **prime)
 {
 	if (i == 0)
@@ -96,7 +168,7 @@ static void set_primes(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM **prime)
 	BN_set_flags(*prime, BN_FLG_CONSTTIME);
 }
 
-static int check_primeequal(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *prime)
+static int check_prime_equal(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *prime)
 {
 	int j;
 	BIGNUM *prev_prime = NULL;
@@ -114,7 +186,7 @@ static int check_primeequal(int i, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *prime)
 }
 
 static int check_prime_useful(int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r2,
-		BIGNUM *e_value, BN_CTX *ctx, BN_GENCB *cb)
+			BIGNUM *e_value, BN_CTX *ctx, BN_GENCB *cb)
 {
 	if (!BN_sub(r2, prime, BN_value_one()))
 		goto err;
@@ -138,23 +210,19 @@ br:
 }
 
 static int hpre_get_prime_once(int i, const int *bitsr, int *n, BIGNUM *prime,
-		BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
-		BIGNUM *r2, BIGNUM *e_value, BN_CTX *ctx,
-		BN_GENCB *cb)
+			BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
+			BIGNUM *r2, BIGNUM *e_value, BN_CTX *ctx,
+			BN_GENCB *cb)
 {
 	int adj = 0;
 	int ret = KAE_FAIL;
 
 	for (;;) {
 redo:
-		if (!BN_generate_prime_ex(prime, bitsr[i] + adj, 0, (const BIGNUM
-						*)NULL, (const BIGNUM *)NULL, cb))
+		if (!BN_generate_prime_ex(prime, bitsr[i] + adj, 0, (const
+		BIGNUM *)NULL, (const BIGNUM *)NULL, cb))
 			goto err;
-		/*
-		 * prime should not be equal to p, q, r_3...
-		 * (those primes prior to this one)
-		 */
-		if (check_primeequal(i, rsa_p, rsa_q, prime) == KAE_FAIL)
+		if (check_prime_equal(i, rsa_p, rsa_q, prime) == KAE_FAIL)
 			goto redo;
 		ret = check_prime_useful(n, prime, r1, r2, e_value, ctx, cb);
 		if (ret == KAE_FAIL)
@@ -181,7 +249,7 @@ static void switch_p_q(BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *p, BIGNUM *q)
 }
 
 static int hpre_rsa_primegen(int bits, BIGNUM *e_value, BIGNUM *p, BIGNUM *q,
-		BN_GENCB *cb)
+			BN_GENCB *cb)
 {
 	int ok = -1;
 	int primes = 2;
@@ -216,40 +284,44 @@ static int hpre_rsa_primegen(int bits, BIGNUM *e_value, BIGNUM *p, BIGNUM *q,
 	for (i = 0; i < primes; i++) {
 		set_primes(i, rsa_p, rsa_q, &prime);
 redo:
-		if (hpre_get_prime_once(i, bitsr, &n, prime, rsa_p, rsa_q, r1,
-					r2, e_value, ctx, cb) == KAE_FAIL)
-			goto err;
-		bitse += bitsr[i];
-		ret = 1;
-		if (ret == -1)
-			goto err;
-		else if (ret == -2)
-			goto redo;
-		else if (ret == 1)
-			continue;
+	if (hpre_get_prime_once(i, bitsr, &n, prime, rsa_p, rsa_q, r1,
+	r2, e_value, ctx, cb) == KAE_FAIL)
+		goto err;
+	bitse += bitsr[i];
+	ret = check_prime_sufficient(&i, bitsr, &bitse, &n, rsa_p, rsa_q, r1,
+	r2, ctx, cb);
+	if (ret == -1)
+		goto err;
+	else if (ret == -2)
+		goto redo;
+	else if (ret == 1)
+		continue;
 	}
 	switch_p_q(rsa_p, rsa_q, p, q);
 	ok = 1;
 err:
 	if (ok == -1)
 		ok = 0;
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
 	return ok;
 }
 
 static int hpre_rsa_iscrt(RSA *rsa)
 {
-	if (RSA_test_flags(rsa, RSA_FLAG_EXT_PKEY))
-		return 1;
-	int version = RSA_get_version(rsa);
-
-	if (version == RSA_ASN1_VERSION_MULTI)
-		return 1;
-
+	int version = 0;
 	const BIGNUM *p = NULL;
 	const BIGNUM *q = NULL;
 	const BIGNUM *dmp1 = NULL;
 	const BIGNUM *dmq1 = NULL;
 	const BIGNUM *iqmp = NULL;
+
+	if (RSA_test_flags(rsa, RSA_FLAG_EXT_PKEY))
+		return 1;
+	version = RSA_get_version(rsa);
+
+	if (version == RSA_ASN1_VERSION_MULTI)
+		return 1;
 
 	RSA_get0_factors(rsa, &p, &q);
 	RSA_get0_crt_params(rsa, &dmp1, &dmq1, &iqmp);
@@ -262,7 +334,7 @@ static int hpre_rsa_iscrt(RSA *rsa)
 
 
 static int hpre_pubenc_padding(int flen, const unsigned char *from,
-		unsigned char *buf, int num, int padding)
+			unsigned char *buf, int num, int padding)
 {
 	int ret = HPRE_CRYPTO_FAIL;
 
@@ -290,7 +362,7 @@ static int hpre_pubenc_padding(int flen, const unsigned char *from,
 }
 
 static int hpre_prienc_padding(int flen, const unsigned char *from,
-		unsigned char *buf, int num, int padding)
+			unsigned char *buf, int num, int padding)
 {
 	int ret = HPRE_CRYPTO_FAIL;
 
@@ -315,7 +387,7 @@ static int hpre_prienc_padding(int flen, const unsigned char *from,
 }
 
 static int hpre_rsa_padding(int flen, const unsigned char *from,
-		unsigned char *buf, int num, int padding, int type)
+			unsigned char *buf, int num, int padding, int type)
 {
 	int ret = HPRE_CRYPTO_FAIL;
 
@@ -327,8 +399,8 @@ static int hpre_rsa_padding(int flen, const unsigned char *from,
 }
 
 static int hpre_check_pubdec_padding(unsigned char *to, int num,
-		const unsigned char *buf, int len,
-		int padding)
+				const unsigned char *buf, int len,
+				int padding)
 {
 	int ret;
 
@@ -353,8 +425,8 @@ static int hpre_check_pubdec_padding(unsigned char *to, int num,
 }
 
 static int hpre_check_pridec_padding(unsigned char *to, int num,
-		const unsigned char *buf, int len,
-		int padding)
+				const unsigned char *buf, int len,
+				int padding)
 {
 	int ret;
 
@@ -383,8 +455,8 @@ static int hpre_check_pridec_padding(unsigned char *to, int num,
 }
 
 static int check_rsa_padding(unsigned char *to, int num,
-		const unsigned char *buf, int len, int padding,
-		int type)
+			const unsigned char *buf, int len, int padding,
+			int type)
 {
 	int ret = HPRE_CRYPTO_FAIL;
 
@@ -405,16 +477,15 @@ int check_pubkey_param(const BIGNUM *n, const BIGNUM *e)
 }
 
 
-/* check parameter */
 static int hpre_rsa_check_para(int flen, const unsigned char *from,
-		unsigned char *to, RSA *rsa)
+			unsigned char *to, RSA *rsa)
 {
 	if ((rsa == NULL || from == NULL || to == NULL || flen <= 0))
 		return 1;
 }
 
 static int hpre_rsa_check(const int flen, const BIGNUM *n, const BIGNUM *e,
-		int *num_bytes, RSA *rsa)
+			int *num_bytes, RSA *rsa)
 {
 	int key_bits;
 
@@ -432,10 +503,8 @@ static int hpre_rsa_check(const int flen, const BIGNUM *n, const BIGNUM *e,
 	return HPRE_CRYPTO_SUCC;
 }
 
-
-
 int hpre_get_prienc_res(int padding, BIGNUM *f, const BIGNUM *n, BIGNUM
-		*bn_ret, BIGNUM **res)
+			*bn_ret, BIGNUM **res)
 {
 	if (padding == RSA_X931_PADDING) {
 		if (!BN_sub(f, n, bn_ret))
@@ -453,13 +522,18 @@ int hpre_get_prienc_res(int padding, BIGNUM *f, const BIGNUM *n, BIGNUM
 
 static BN_ULONG *bn_get_words(const BIGNUM *a)
 {
-	return 0;
+	return a->d;
 }
 
 static __u32 rsa_pick_next_ctx(handle_t sched_ctx, const void *req,
-		const struct sched_key *key)
+			const struct sched_key *key)
 {
-	return 0;
+	const struct wd_rsa_req *rsa_req = req;
+	
+	if (rsa_req->cb)
+		return CTX_ASYNC;
+	else
+		return CTX_SYNC;
 }
 
 static int rsa_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
@@ -467,18 +541,35 @@ static int rsa_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return 0;
 }
 
-/* let's make resource configure static now */
+int uadk_rsa_poll(void *ctx)
+{
+	int ret = 0;
+	int expt = 1;
+	int recv;
+
+	do {
+		ret = wd_rsa_poll_ctx(CTX_ASYNC, expt, &recv);
+		if (recv >= expt)
+			return 0;
+		else if (ret < 0 && ret != -EAGAIN)
+			return ret;
+	} while (ret == -EAGAIN);
+
+	return ret;
+}
+
+/* make resource configure static */
 struct rsa_res_config rsa_res_config = {
 	.dev_num = 2,
 	.dev_res[0] = {
 		.numa_id = 0,
-		.sync_ctx_num = 10,
-		.async_ctx_num = 10,
+		.sync_ctx_num = 1,
+		.async_ctx_num = 1,
 	},
 	.dev_res[1] = {
 		.numa_id = 2,
-		.sync_ctx_num = 10,
-		.async_ctx_num = 10,
+		.sync_ctx_num = 1,
+		.async_ctx_num = 1,
 	},
 	.sched = {
 		.sched_type = -1,
@@ -492,7 +583,7 @@ struct rsa_res_config rsa_res_config = {
 };
 
 static struct uacce_dev *get_uacce_dev(struct rsa_res_per_dev *dev_res,
-		struct uacce_dev_list *list)
+				struct uacce_dev_list *list)
 {
 	struct uacce_dev *dev = NULL;
 
@@ -507,7 +598,7 @@ static struct uacce_dev *get_uacce_dev(struct rsa_res_per_dev *dev_res,
 }
 
 static int init_ctx_cfg(struct wd_ctx_config *ctx_cfg,
-		struct rsa_res_config *config)
+			struct rsa_res_config *config)
 {
 	struct rsa_res_per_dev *dev_res;
 	struct uacce_dev *uacce_dev;
@@ -524,7 +615,8 @@ static int init_ctx_cfg(struct wd_ctx_config *ctx_cfg,
 		if (!uacce_dev)
 			continue;
 		for (k = 0; k < 2; k++) {
-			ctx_num = (k == 0) ? dev_res->sync_ctx_num : dev_res->async_ctx_num;
+			ctx_num = (k == 0) ? dev_res->sync_ctx_num :
+			dev_res->async_ctx_num;
 			for (j = 0; j < ctx_num; j++) {
 				ctx = ctx_cfg->ctxs + ctx_index;
 				ctx->ctx = wd_request_ctx(uacce_dev);
@@ -532,13 +624,13 @@ static int init_ctx_cfg(struct wd_ctx_config *ctx_cfg,
 					ret = -ENODEV;
 					goto release_ctx;
 				}
-				ctx->ctx_mode = (k == 0) ? 0 : 1;
+				ctx->ctx_mode = (k == 0) ? CTX_SYNC :
+				CTX_ASYNC;
 				ctx->op_type = 0;
 				ctx_index++;
 			}
 		}
 	}
-
 	wd_free_list_accels(list);
 	return 0;
 
@@ -598,6 +690,7 @@ static int uadk_wd_rsa_init(struct rsa_res_config *config)
 	ret = wd_rsa_init(ctx_cfg, sched);
 	if (ret)
 		goto unit_ctx;
+	async_register_poll_fn(ASYNC_TASK_RSA, uadk_rsa_poll);
 	return 0;
 unit_ctx:
 	uninit_ctx_cfg(ctx_cfg);
@@ -695,7 +788,7 @@ static uadk_rsa_sess_t *uadk_get_eng_session(RSA *rsa, int bits, int is_crt)
 }
 
 static int uadk_rsa_fill_pubkey(const BIGNUM *e, const BIGNUM *n,
-		uadk_rsa_sess_t *rsa_sess)
+			uadk_rsa_sess_t *rsa_sess)
 {
 	struct wd_rsa_pubkey *pubkey = NULL;
 	struct wd_dtb *wd_e = NULL;
@@ -712,7 +805,7 @@ static int uadk_rsa_fill_pubkey(const BIGNUM *e, const BIGNUM *n,
 }
 
 static int uadk_rsa_fill_prikey(RSA *rsa, uadk_rsa_sess_t *rsa_sess,
-		const BIGNUM *d, const BIGNUM *n)
+			const BIGNUM *d, const BIGNUM *n)
 {
 	struct wd_rsa_prikey *prikey = NULL;
 	struct wd_dtb *wd_d = NULL;
@@ -728,9 +821,9 @@ static int uadk_rsa_fill_prikey(RSA *rsa, uadk_rsa_sess_t *rsa_sess,
 	return HPRE_CRYPTO_SUCC;
 }
 
-static int uadk_rsa_fill_prikey_crt(RSA *rsa, uadk_rsa_sess_t *rsa_sess, const BIGNUM *p,
-		const BIGNUM *q, const BIGNUM *dmp1, const BIGNUM *dmq1,
-		const BIGNUM *iqmp)
+static int uadk_rsa_fill_prikey_crt(RSA *rsa, uadk_rsa_sess_t *rsa_sess, const
+				BIGNUM *p, const BIGNUM *q, const BIGNUM
+				*dmp1, const BIGNUM *dmq1, const BIGNUM *iqmp)
 {
 	struct wd_rsa_prikey *prikey = NULL;
 	struct wd_dtb *wd_dq, *wd_dp, *wd_q, *wd_p, *wd_qinv;
@@ -750,7 +843,8 @@ static int uadk_rsa_fill_prikey_crt(RSA *rsa, uadk_rsa_sess_t *rsa_sess, const B
 
 
 static int uadk_rsa_fill_keygen_data(handle_t ctx, struct wd_rsa_req *req,
-		struct wd_dtb *wd_e, struct wd_dtb *wd_p, struct wd_dtb *wd_q)
+				struct wd_dtb *wd_e, struct wd_dtb *wd_p,
+				struct wd_dtb *wd_q)
 {
 	struct wd_rsa_pubkey *pubkey = NULL;
 	struct wd_rsa_prikey *prikey = NULL;
@@ -772,7 +866,7 @@ static int uadk_rsa_fill_keygen_data(handle_t ctx, struct wd_rsa_req *req,
 }
 
 static int uadk_rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
-		BIGNUM *e_value, BIGNUM *p, BIGNUM *q)
+				BIGNUM *e_value, BIGNUM *p, BIGNUM *q)
 {
 	BIGNUM *n = BN_new();
 	BIGNUM *d = BN_new();
@@ -807,25 +901,53 @@ static int uadk_rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *
 
 static int uadk_rsa_sync(handle_t ctx, struct wd_rsa_req *req)
 {
-	void *tag = NULL;
 	int ret = wd_do_rsa_sync(ctx, req);
 	return ret;
 }
 
 void uadk_rsa_sync_free(handle_t ctx, struct wd_rsa_req *req)
 {
+	return;
 }
 
-static int uadk_rsa_async(handle_t ctx, struct wd_rsa_req *req)
+static void uadk_rsa_cb(void)
 {
-	int ret = wd_do_rsa_async(ctx, req);
-	return ret;
+}
+
+int uadk_rsa_crypto(handle_t ctx, struct wd_rsa_req *req)
+{
+	int ret;
+	struct async_op op;
+	uadk_rsa_sess_t *rsa_sess = (uadk_rsa_sess_t *)ctx;
+
+	async_setup_async_event_notification(&op);
+	if (op.job == NULL) {
+		ret = wd_do_rsa_sync(ctx, req);
+		if (ret)
+			return 0;
+	} else {
+		req->cb = (void *)uadk_rsa_cb;
+		req->cb_param = req;
+		do {
+			ret = wd_do_rsa_async(ctx, req);
+			if (ret < 0 && ret != -EBUSY)
+				goto err;
+		} while (ret == -EBUSY);
+
+		ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA);
+		if (!ret)
+			goto err;
+	}
+	return HPRE_CRYPTO_SUCC; 
+err:
+	(void)async_clear_async_event_notification();
+	return HPRE_CRYPTO_FAIL;
 }
 
 static int uadk_rsa_prepare_req(const BIGNUM *n, int flen,
-		const unsigned char *from,
-		BN_CTX **bn_ctx,
-		BIGNUM **bn_ret, BIGNUM **f_ret)
+			const unsigned char *from,
+			BN_CTX **bn_ctx,
+			BIGNUM **bn_ret, BIGNUM **f_ret)
 {
 	BN_CTX *bn_ctx_tmp;
 	BIGNUM *bn_ret_tmp = NULL;
@@ -889,10 +1011,8 @@ static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 		printf("\n%s: rsa primes generate failed.\n", __func__);
 		return HPRE_CRYPTO_FAIL;
 	}
-	if (!BN_copy(e_value, e)) {
-		printf("\n%s: rsa primes generate failed.\n", __func__);
+	if (!BN_copy(e_value, e))
 		return OPENSSL_FAIL;
-	}
 	/* Get addresses of public key and public key params.*/
 	wd_rsa_get_pubkey(rsa_sess->sess, &pubkey);
 	wd_rsa_get_pubkey_params(pubkey, &wd_e, NULL);
@@ -917,7 +1037,6 @@ static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	ret = uadk_rsa_sync(rsa_sess->sess, &rsa_sess->req);
 	if (ret || rsa_sess->req.status) {
 		printf("\n%s: do rsa sync failed.\n", __func__);
-		//uadk_rsa_sync_free(rsa_sess->sess, &rsa_sess->req);
 		return HPRE_CRYPTO_FAIL;
 	}
 	ret = uadk_rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa,
@@ -926,7 +1045,7 @@ static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 }
 
 static int uadk_rsa_public_encrypt(int flen, const unsigned char *from,
-		unsigned char *to, RSA *rsa, int Padding)
+				unsigned char *to, RSA *rsa, int Padding)
 {
 	const BIGNUM *n = NULL;
 	const BIGNUM *e = NULL;
@@ -984,7 +1103,7 @@ static int uadk_rsa_public_encrypt(int flen, const unsigned char *from,
 	memcpy(rsa_sess->req.src, in_buf, rsa_sess->req.src_bytes);
 	ret = uadk_rsa_sync(rsa_sess->sess, &rsa_sess->req);
 	if (ret || rsa_sess->req.status) {
-		printf("\n%s: do rsa sync failed.\n", __func__);
+		printf("\n%s: do rsa encrypt failed.\n", __func__);
 		return HPRE_CRYPTO_FAIL;
 	}
 	BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
@@ -994,7 +1113,7 @@ static int uadk_rsa_public_encrypt(int flen, const unsigned char *from,
 }
 
 static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
-		unsigned char *to, RSA *rsa, int padding)
+				unsigned char *to, RSA *rsa, int padding)
 {
 	const BIGNUM *n = (const BIGNUM *)NULL;
 	const BIGNUM *e = (const BIGNUM *)NULL;
@@ -1045,7 +1164,7 @@ static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
 	RSA_get0_crt_params(rsa, &dmp1, &dmq1, &iqmp);
 	in_buf = (unsigned char *)OPENSSL_malloc(num_bytes);
 	if (!bn_ret || !in_buf) {
-		printf("\n%s: pulic encrypt malloc failed.\n", __func__);
+		printf("\n%s: pulic decrypt malloc failed.\n", __func__);
 		return OPENSSL_FAIL;
 	}
 	BN_bin2bn(from, (int)flen, f);
@@ -1092,7 +1211,7 @@ static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
 }
 
 static int uadk_rsa_private_sign(int flen, const unsigned char *from,
-		unsigned char *to, RSA *rsa, int padding)
+				unsigned char *to, RSA *rsa, int padding)
 {
 	int ret = 0;
 	uadk_rsa_sess_t *rsa_sess = NULL;
@@ -1140,10 +1259,11 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	num_bytes = BN_num_bytes(n);
 	in_buf = (unsigned char *)OPENSSL_malloc(num_bytes);
 	if (!bn_ret || !in_buf) {
-		printf("\n%s: pulic encrypt malloc failed.\n", __func__);
+		printf("\n%s: sign malloc failed.\n", __func__);
 		return OPENSSL_FAIL;
 	}
-	ret = hpre_rsa_padding(flen, from, in_buf, num_bytes, padding, PRI_ENC);
+	ret = hpre_rsa_padding(flen, from, in_buf, num_bytes, padding,
+	PRI_ENC);
 	if (!ret) {
 		printf("\n%s: rsa padding failed.\n", __func__);
 		return HPRE_CRYPTO_FAIL;
@@ -1156,9 +1276,11 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 		return HPRE_CRYPTO_FAIL;
 	}
 	if (hpre_rsa_iscrt(rsa)) {
-		ret = uadk_rsa_fill_prikey_crt(rsa, rsa_sess, p, q, dmp1, dmq1, iqmp);
+		ret = uadk_rsa_fill_prikey_crt(rsa, rsa_sess, p, q, dmp1,
+		dmq1, iqmp);
 		if (!ret) {
-			printf("\n%s: rsa fill pubkey failed.\n", __func__);
+			printf("\n%s: rsa fill crt prikey failed.\n",
+			__func__);
 			return HPRE_CRYPTO_FAIL;
 		}
 	} else {
@@ -1174,9 +1296,9 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	rsa_sess->req.dst = to;
 	rsa_sess->req.dst_bytes = rsa_sess->key_size;
 	memcpy(rsa_sess->req.src, in_buf, rsa_sess->req.src_bytes);
-	ret = uadk_rsa_sync(rsa_sess->sess, &rsa_sess->req);
-	if (ret || rsa_sess->req.status) {
-		printf("\n%s: do rsa sync failed.\n", __func__);
+	ret = uadk_rsa_crypto(rsa_sess->sess, &rsa_sess->req);
+	if (!ret || rsa_sess->req.status) {
+		printf("\n%s: do rsa sign failed. ret = %d\n", __func__, ret);
 		return HPRE_CRYPTO_FAIL;
 	}
 	BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
@@ -1187,7 +1309,7 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 }
 
 static int uadk_rsa_public_verify(int flen, const unsigned char *from,
-		unsigned char *to, RSA *rsa, int padding)
+				unsigned char *to, RSA *rsa, int padding)
 {
 	uadk_rsa_sess_t *rsa_sess = NULL;
 	BIGNUM *bn_ret = NULL;
@@ -1231,9 +1353,9 @@ static int uadk_rsa_public_verify(int flen, const unsigned char *from,
 	rsa_sess->req.dst = to;
 	rsa_sess->req.dst_bytes = rsa_sess->key_size;
 	memcpy(rsa_sess->req.src, from, rsa_sess->req.src_bytes);
-	ret = uadk_rsa_sync(rsa_sess->sess, &rsa_sess->req);
-	if (ret || rsa_sess->req.status) {
-		printf("\n%s: do rsa sync failed.\n", __func__);
+	ret = uadk_rsa_crypto(rsa_sess->sess, &rsa_sess->req);
+	if (!ret || rsa_sess->req.status) {
+		printf("\n%s: do rsa verify failed.\n", __func__);
 		return HPRE_CRYPTO_FAIL;
 	}
 	BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
