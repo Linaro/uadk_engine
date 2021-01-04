@@ -67,6 +67,7 @@ struct rsa_res_config {
 /* rsa global hardware resource is saved here */
 struct rsa_res {
 	struct wd_ctx_config *ctx_res;
+	int pid;
 } rsa_res;
 
 enum {
@@ -675,10 +676,12 @@ static void uadk_wd_rsa_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = rsa_res.ctx_res;
 
-	wd_rsa_uninit();
-	uninit_ctx_cfg(ctx_cfg);
-	free(ctx_cfg->ctxs);
-	free(ctx_cfg);
+	if (rsa_res.pid == getpid()) {
+		wd_rsa_uninit();
+		uninit_ctx_cfg(ctx_cfg);
+		free(ctx_cfg->ctxs);
+		free(ctx_cfg);
+	}
 }
 
 static uadk_rsa_sess_t *uadk_new_eng_session(RSA *rsa_alg)
@@ -920,6 +923,20 @@ static int uadk_rsa_prepare_req(const BIGNUM *n, int flen,
 	return 1;
 }
 
+static void uadk_init_rsa(void)
+{
+	struct uacce_dev_list *list;
+
+	if (rsa_res.pid != getpid()) {
+		list = wd_get_accel_list("rsa");
+		if (list) {
+			uadk_wd_rsa_init(&rsa_res_config, list);
+			wd_free_list_accels(list);
+		}
+		rsa_res.pid = getpid();
+	}
+}
+
 static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	uadk_rsa_sess_t *rsa_sess = NULL;
@@ -934,6 +951,8 @@ static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int ret = 0;
 	int key_size = 0;
 	int is_crt = 1; /* default mode: crt*/
+
+	uadk_init_rsa();
 
 	/* Check bits from two aspects: size and supports.*/
 	if (bits < RSA_MIN_MODULUS_BITS)
@@ -998,6 +1017,7 @@ static int uadk_rsa_public_encrypt(int flen, const unsigned char *from,
 	BN_CTX *bn_ctx = NULL;
 	int key_bits = 0;
 
+	uadk_init_rsa();
 	/* Check bits. */
 	key_bits = RSA_bits(rsa);
 	if (!check_bit_useful(key_bits))
@@ -1059,6 +1079,8 @@ static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
 	int len = 0;
 	int key_bits = 0;
 	int num_bytes = 0;
+
+	uadk_init_rsa();
 
 	hpre_rsa_check_para(flen, from, to, rsa);
 	RSA_get0_key(rsa, &n, &e, &d);
@@ -1141,6 +1163,8 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	int num_bytes = 0;
 	BN_CTX *bn_ctx = NULL;
 
+	uadk_init_rsa();
+
 	hpre_rsa_check_para(flen, from, to, rsa);
 	key_bits = RSA_bits(rsa);
 	if (!check_bit_useful(key_bits))
@@ -1215,6 +1239,8 @@ static int uadk_rsa_public_verify(int flen, const unsigned char *from,
 	unsigned char *in_buf = NULL;
 	int ret = 0;
 	int len = 0;
+
+	uadk_init_rsa();
 
 	if (hpre_rsa_check_para(flen, from, to, rsa) != 1)
 		return 0;
@@ -1305,8 +1331,7 @@ static void uadk_free_rsa_methods(void)
 /*uadk_bind_rsa():This function is used to manage the initial work of RSA alg engine,
  *similar to the old API "int uadk_init_rsa(void)".
  */
-int uadk_bind_rsa(ENGINE *e, struct uacce_dev_list *list)
+int uadk_bind_rsa(ENGINE *e)
 {
-	uadk_wd_rsa_init(&rsa_res_config, list);
 	return ENGINE_set_RSA(e, uadk_get_rsa_methods());
 }
