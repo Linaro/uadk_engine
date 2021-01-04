@@ -54,6 +54,11 @@ static int uadk_finish(ENGINE *e)
 	return 1;
 }
 
+static void engine_init_child_at_fork_handler(void)
+{
+	async_module_init();
+}
+
 /*
  * This stuff is needed if this ENGINE is being
  * compiled into a self-contained shared-library.
@@ -77,6 +82,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	}
 
 	async_module_init();
+        pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
 
 	list = wd_get_accel_list("cipher");
 	if (list) {
@@ -95,7 +101,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	}
 	list = wd_get_accel_list("rsa");
 	if (list) {
-		if (!uadk_bind_rsa(e, list))
+		if (!uadk_bind_rsa(e))
 			fprintf(stderr, "uadk bind rsa failed\n");
 		wd_free_list_accels(list);
 	}
