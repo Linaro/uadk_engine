@@ -23,9 +23,18 @@
 #include "uadk.h"
 #include "uadk_async.h"
 
+#define CTX_SYNC	0
+#define CTX_ASYNC	1
+#define CTX_NUM		2
+
+#define BUF_LEN (16 * 1024 * 1024)
+#define SM3_DIGEST_LENGTH	32
+#define SM3_CBLOCK		64
+
 struct digest_engine {
 	struct wd_ctx_config ctx_cfg;
 	struct wd_sched sched;
+	int pid;
 };
 
 static struct digest_engine engine;
@@ -34,16 +43,9 @@ struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
+	unsigned char data[BUF_LEN];
 	long tail;
 };
-
-#define CTX_SYNC	0
-#define CTX_ASYNC	1
-#define CTX_NUM		2
-
-#define BUF_LEN (16 * 1024 * 1024)
-#define SM3_DIGEST_LENGTH	32
-#define SM3_CBLOCK		64
 
 static int digest_nids[] = {
 	NID_md5,
@@ -112,11 +114,81 @@ static int sched_single_poll_policy(handle_t h_sched_ctx,
 	return 0;
 }
 
+int uadk_digest_poll(void *ctx)
+{
+	int ret = 0;
+	int expt = 1;
+	int recv;
+
+	do {
+		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
+		if (recv >= expt)
+			return 0;
+		else if (ret < 0 && ret != -EAGAIN)
+			return ret;
+	} while (ret == -EAGAIN);
+
+	return ret;
+}
+
+static int uadk_init_digest(void)
+{
+	struct uacce_dev_list *list;
+	int ret;
+	int i;
+
+	if (engine.pid != getpid()) {
+		list = wd_get_accel_list("digest");
+		if (list) {
+			memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
+			engine.ctx_cfg.ctx_num = CTX_NUM;
+			engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
+			if (!engine.ctx_cfg.ctxs)
+				return 0;
+
+			for (i = 0; i < CTX_NUM; i++) {
+				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
+				if (!engine.ctx_cfg.ctxs[i].ctx)
+					goto err;
+
+				engine.ctx_cfg.ctxs[i].op_type = CTX_TYPE_ENCRYPT;
+				engine.ctx_cfg.ctxs[i].ctx_mode =
+					(i == 0) ? CTX_MODE_SYNC : CTX_MODE_ASYNC;
+			}
+
+			engine.sched.name = "sched_single";
+			engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
+			engine.sched.poll_policy = sched_single_poll_policy;
+
+			ret = wd_digest_init(&engine.ctx_cfg, &engine.sched);
+			if (ret)
+				goto err;
+
+			async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
+			wd_free_list_accels(list);
+		}
+		engine.pid = getpid();
+	}
+
+	return 1;
+
+err:
+	for (i = 0; i < engine.ctx_cfg.ctx_num; i++) {
+		if (engine.ctx_cfg.ctxs[i].ctx)
+			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+	}
+	free(engine.ctx_cfg.ctxs);
+
+	return 0;
+}
+
 static int uadk_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
+
+	uadk_init_digest();
 
 	switch (nid) {
 	case NID_md5:
@@ -150,24 +222,10 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 		priv->req.out_bytes = 64;
 		break;
 	default:
-		goto out;
+		return 0;
 	}
 
-	priv->req.in = malloc(BUF_LEN);
-	if (!priv->req.in)
-		goto out;
-
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (!priv->sess)
-		goto out;
-
 	return 1;
-
-out:
-	if (priv->req.in)
-		free(priv->req.in);
-
-	return 0;
 }
 
 static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
@@ -175,14 +233,14 @@ static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 
-	if (data_len < BUF_LEN - priv->tail) {
-		memcpy(priv->req.in + priv->tail, data, data_len);
+	if ((data_len < BUF_LEN - priv->tail) && (data_len > 0)) {
+		memcpy(priv->data + priv->tail, data, data_len);
 		priv->tail += data_len;
-	} else {
-		return 0;
+
+		return 1;
 	}
 
-	return 1;
+	return 0;
 }
 
 static void async_cb(struct wd_cipher_req *req, void *data)
@@ -197,6 +255,11 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	struct async_op op;
 	int ret;
 
+	priv->sess = wd_digest_alloc_sess(&priv->setup);
+	if (!priv->sess)
+		return 0;
+
+	priv->req.in = priv->data;
 	priv->req.out = digest;
 	priv->req.in_bytes = priv->tail;
 
@@ -205,7 +268,7 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 		/* sync */
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret)
-			return 0;
+			goto err;
 	} else {
 		/* async */
 		priv->req.cb = (void *)async_cb;
@@ -222,41 +285,23 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 			goto err;
 	}
 
+	if (priv->sess)
+		wd_digest_free_sess(priv->sess);
+
 	return 1;
+
 err:
+	if (priv->sess)
+		wd_digest_free_sess(priv->sess);
 	async_clear_async_event_notification();
 	return 0;
 }
 
 static int uadk_digest_cleanup(EVP_MD_CTX *ctx)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
-
-	if (priv->req.in)
-		free(priv->req.in);
-
-	if (priv->sess)
-		wd_digest_free_sess(priv->sess);
 	return 1;
 }
 
-int uadk_digest_poll(void *ctx)
-{
-	int ret = 0;
-	int expt = 1;
-	int recv;
-
-	do {
-		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (recv >= expt)
-			return 0;
-		else if (ret < 0 && ret != -EAGAIN)
-			return ret;
-	} while (ret == -EAGAIN);
-
-	return ret;
-}
 
 #define UADK_DIGEST_DESCR(name, pkey_type, md_size, flags,		\
 	block_size, ctx_size, init, update, final, cleanup)		\
@@ -276,34 +321,6 @@ do { \
 
 int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list)
 {
-	int ret;
-	int i;
-
-	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
-	engine.ctx_cfg.ctx_num = CTX_NUM;
-	engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
-	if (!engine.ctx_cfg.ctxs)
-		return 0;
-
-	for (i = 0; i < CTX_NUM; i++) {
-		engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
-		if (!engine.ctx_cfg.ctxs[i].ctx)
-			return 0;
-
-		engine.ctx_cfg.ctxs[i].op_type = CTX_TYPE_ENCRYPT;
-		engine.ctx_cfg.ctxs[i].ctx_mode = (i == 0) ? CTX_MODE_SYNC : CTX_MODE_ASYNC;
-	}
-
-	engine.sched.name = "sched_single";
-	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
-	engine.sched.poll_policy = sched_single_poll_policy;
-
-	ret = wd_digest_init(&engine.ctx_cfg, &engine.sched);
-	if (ret)
-		return 0;
-
-	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
-
 	UADK_DIGEST_DESCR(md5, md5WithRSAEncryption, MD5_DIGEST_LENGTH,
 			  0, MD5_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
@@ -331,23 +348,18 @@ int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list)
 			  uadk_digest_final, uadk_digest_cleanup);
 
 	return ENGINE_set_digests(e, uadk_engine_digests);
-
-out:
-	for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-	free(engine.ctx_cfg.ctxs);
-
-	return 0;
 }
 
 void uadk_destroy_digest(void)
 {
 	int i;
 
-	wd_digest_uninit();
-	for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-	free(engine.ctx_cfg.ctxs);
+	if (engine.pid == getpid()) {
+		wd_digest_uninit();
+		for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
+			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+		free(engine.ctx_cfg.ctxs);
+	}
 
 	EVP_MD_meth_free(uadk_md5);
 	uadk_md5 = 0;
