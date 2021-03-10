@@ -30,14 +30,21 @@
 struct digest_engine {
 	struct wd_ctx_config ctx_cfg;
 	struct wd_sched sched;
+	int pid;
 };
 
 static struct digest_engine engine;
+
+#define KEY_LEN 64
+#define IV_LEN 16
+
 
 struct cipher_priv_ctx {
 	handle_t sess;
 	struct wd_cipher_sess_setup setup;
 	struct wd_cipher_req req;
+	unsigned char key[KEY_LEN];
+	unsigned char iv[IV_LEN];
 };
 
 static int cipher_nids[] = {
@@ -146,26 +153,103 @@ static int sched_single_poll_policy(handle_t h_sched_ctx,
 	return 0;
 }
 
+int uadk_cipher_poll(void *ctx)
+{
+	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *) ctx;
+	int ret = 0;
+	int expt = 1;
+	int recv;
+	int idx;
+
+	if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
+		idx = CTX_ASYNC_ENC;
+	else
+		idx = CTX_ASYNC_DEC;
+
+	do {
+		ret = wd_cipher_poll_ctx(idx, expt, &recv);
+		if (recv >= expt)
+			return 0;
+		else if (ret < 0 && ret != -EAGAIN)
+			return ret;
+	} while (ret == -EAGAIN);
+
+	return ret;
+}
+
+static int uadk_init_cipher(void)
+{
+	struct uacce_dev_list *list;
+	int ret;
+	int i;
+
+	if (engine.pid != getpid()) {
+		list = wd_get_accel_list("cipher");
+		if (list) {
+			memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
+			engine.ctx_cfg.ctx_num = CTX_NUM;
+			engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
+			if (!engine.ctx_cfg.ctxs)
+				return 0;
+
+			for (i = 0; i < CTX_NUM; i++) {
+				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
+				if (!engine.ctx_cfg.ctxs[i].ctx)
+					return 0;
+			}
+
+			engine.ctx_cfg.ctxs[CTX_SYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
+			engine.ctx_cfg.ctxs[CTX_SYNC_DEC].op_type = CTX_TYPE_DECRYPT;
+			engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
+			engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].op_type = CTX_TYPE_DECRYPT;
+			engine.ctx_cfg.ctxs[CTX_SYNC_ENC].ctx_mode = CTX_MODE_SYNC;
+			engine.ctx_cfg.ctxs[CTX_SYNC_DEC].ctx_mode = CTX_MODE_SYNC;
+			engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].ctx_mode = CTX_MODE_ASYNC;
+			engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].ctx_mode = CTX_MODE_ASYNC;
+
+			engine.sched.name = "sched_single";
+			engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
+			engine.sched.poll_policy = sched_single_poll_policy;
+
+			ret = wd_cipher_init(&engine.ctx_cfg, &engine.sched);
+			if (ret)
+				return 0;
+
+			async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
+		}
+		engine.pid = getpid();
+	}
+
+	return 1;
+
+err:
+	for (i = 0; i < engine.ctx_cfg.ctx_num; i++) {
+		if (engine.ctx_cfg.ctxs[i].ctx)
+			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+	}
+	free(engine.ctx_cfg.ctxs);
+
+	return 0;
+}
+
 static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 			    const unsigned char *iv, int enc)
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
 	int nid = EVP_CIPHER_CTX_nid(ctx);
-	int ret, len;
+	int ret;
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION;
 	else
 		priv->req.op_type = WD_CIPHER_DECRYPTION;
 
-	len = EVP_CIPHER_CTX_iv_length(ctx);
-	priv->req.iv_bytes = len;
-	priv->req.iv = malloc(len);
-	if (!priv->req.iv)
-		goto out;
 	if (iv)
-		memcpy(priv->req.iv, iv, len);
+		memcpy(priv->iv, iv, EVP_CIPHER_CTX_iv_length(ctx));
+
+	if (key)
+		memcpy(priv->key, key, EVP_CIPHER_CTX_key_length(ctx));
 
 	switch (nid) {
 	case NID_aes_128_cbc:
@@ -224,39 +308,14 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		priv->req.out_bytes = 512;
 		break;
 	default:
-		goto out;
-	}
-
-	priv->sess = wd_cipher_alloc_sess(&priv->setup);
-	if (!priv->sess)
-		goto out;
-
-	ret = wd_cipher_set_key(priv->sess, key, EVP_CIPHER_CTX_key_length(ctx));
-	if (ret) {
-		ret = 0;
-		goto out;
+		return 0;
 	}
 
 	return 1;
-
-out:
-	if (priv->req.iv)
-		free(priv->req.iv);
-
-	return 0;
 }
 
 static int uadk_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 {
-	struct cipher_priv_ctx *priv =
-		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
-
-	if (priv->sess)
-		wd_cipher_free_sess(priv->sess);
-
-	if (priv->req.iv)
-		free(priv->req.iv);
-
 	return 1;
 }
 
@@ -272,7 +331,19 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	struct async_op op;
 	int ret;
 
-	priv->req.src = in;
+	uadk_init_cipher();
+
+	priv->sess = wd_cipher_alloc_sess(&priv->setup);
+	if (!priv->sess)
+		return 0;
+
+	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));
+	if (ret)
+		goto out_sess;
+
+	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
+	priv->req.iv = priv->iv;
+	priv->req.src = (unsigned char *)in;
 	priv->req.in_bytes = inlen;
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
@@ -282,7 +353,7 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		/* sync */
 		ret = wd_do_cipher_sync(priv->sess, &priv->req);
 		if (ret)
-			return 0;
+			goto out_notify;
 	} else {
 		/* async */
 		priv->req.cb = (void *)async_cb;
@@ -290,42 +361,25 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		do {
 			ret = wd_do_cipher_async(priv->sess, &priv->req);
 			if (ret < 0 && ret != -EBUSY)
-				goto err;
+				goto out_notify;
 		} while (ret == -EBUSY);
 
 		ret = async_pause_job(priv, &op, ASYNC_TASK_CIPHER);
 		if (!ret)
-			goto err;
+			goto out_notify;
 	}
 
+	if (priv->sess)
+		wd_cipher_free_sess(priv->sess);
+
 	return 1;
-err:
+
+out_notify:
 	async_clear_async_event_notification();
+out_sess:
+	if (priv->sess)
+		wd_cipher_free_sess(priv->sess);
 	return 0;
-}
-
-int uadk_cipher_poll(void *ctx)
-{
-	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *) ctx;
-	int ret = 0;
-	int expt = 1;
-	int recv;
-	int idx;
-
-	if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
-		idx = CTX_ASYNC_ENC;
-	else
-		idx = CTX_ASYNC_DEC;
-
-	do {
-		ret = wd_cipher_poll_ctx(idx, expt, &recv);
-		if (recv >= expt)
-			return 0;
-		else if (ret < 0 && ret != -EAGAIN)
-			return ret;
-	} while (ret == -EAGAIN);
-
-	return ret;
 }
 
 #define UADK_CIPHER_DESCR(name, block_size, key_size, iv_len, flags, ctx_size,\
@@ -346,39 +400,6 @@ do { \
 
 int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list)
 {
-	int ret, i;
-
-	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
-	engine.ctx_cfg.ctx_num = CTX_NUM;
-	engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
-	if (!engine.ctx_cfg.ctxs)
-		return 0;
-
-	for (i = 0; i < CTX_NUM; i++) {
-		engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
-		if (!engine.ctx_cfg.ctxs[i].ctx)
-			goto out;
-	}
-
-	engine.ctx_cfg.ctxs[CTX_SYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
-	engine.ctx_cfg.ctxs[CTX_SYNC_DEC].op_type = CTX_TYPE_DECRYPT;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].op_type = CTX_TYPE_DECRYPT;
-	engine.ctx_cfg.ctxs[CTX_SYNC_ENC].ctx_mode = CTX_MODE_SYNC;
-	engine.ctx_cfg.ctxs[CTX_SYNC_DEC].ctx_mode = CTX_MODE_SYNC;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].ctx_mode = CTX_MODE_ASYNC;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].ctx_mode = CTX_MODE_ASYNC;
-
-	engine.sched.name = "sched_single";
-	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
-	engine.sched.poll_policy = sched_single_poll_policy;
-
-	ret = wd_cipher_init(&engine.ctx_cfg, &engine.sched);
-	if (ret)
-		goto out;
-
-	async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
-
 	UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
@@ -425,22 +446,18 @@ int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list)
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
 
 	return ENGINE_set_ciphers(e, uadk_engine_ciphers);
-
-out:
-	for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-	free(engine.ctx_cfg.ctxs);
-	return 0;
 }
 
 void uadk_destroy_cipher(void)
 {
 	int i;
 
-	wd_cipher_uninit();
-	for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-	free(engine.ctx_cfg.ctxs);
+	if (engine.pid == getpid()) {
+		wd_cipher_uninit();
+		for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
+			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+		free(engine.ctx_cfg.ctxs);
+	}
 
 	EVP_CIPHER_meth_free(uadk_aes_128_cbc);
 	uadk_aes_128_cbc = 0;
