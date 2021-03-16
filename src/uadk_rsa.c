@@ -637,6 +637,7 @@ static int uadk_wd_rsa_init(struct rsa_res_config *config,
 	struct wd_sched *sched = &config->sched.wd_sched;
 	struct rsa_res_per_dev *dev_res;
 	struct wd_ctx_config *ctx_cfg;
+	struct uacce_dev *uacce_dev;
 	int ctx_num = 0;
 	int ret, i;
 
@@ -647,6 +648,9 @@ static int uadk_wd_rsa_init(struct rsa_res_config *config,
 
 	for (i = 0; i < config->dev_num; i++) {
 		dev_res = &config->dev_res[i];
+		uacce_dev = get_uacce_dev(dev_res, list);
+		if (!uacce_dev)
+			continue;
 		ctx_num += dev_res->sync_ctx_num + dev_res->async_ctx_num;
 	}
 	ctx_cfg->ctxs = calloc(ctx_num, sizeof(struct wd_ctx));
