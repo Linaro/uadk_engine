@@ -40,12 +40,14 @@ static int uadk_destroy(ENGINE *e)
 	uadk_destroy_cipher();
 	uadk_destroy_digest();
 	uadk_destroy_rsa();
+	uadk_destroy_ecc();
 	return 1;
 }
 
 
 static int uadk_init(ENGINE *e)
 {
+	uadk_init_ecc();
 	return 1;
 }
 
@@ -99,12 +101,16 @@ static int bind_fn(ENGINE *e, const char *id)
 
 		wd_free_list_accels(list);
 	}
+
 	list = wd_get_accel_list("rsa");
 	if (list) {
 		if (!uadk_bind_rsa(e))
 			fprintf(stderr, "uadk bind rsa failed\n");
 		wd_free_list_accels(list);
 	}
+
+	if (!uadk_bind_pkey(e))
+		fprintf(stderr, "uadk bind rsa failed\n");
 
 	return 1;
 }
