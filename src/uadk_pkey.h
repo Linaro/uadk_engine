@@ -12,19 +12,21 @@
  * limitations under the License.
  *
  */
-#ifndef UADK_H
-#define UADK_H
-#include <openssl/engine.h>
-#include <uadk/wd.h>
+#ifndef UADK_PKEY_H
+#define UADK_PKEY_H
+#include <openssl/evp.h>
 
-extern const char *engine_uadk_id;
-extern int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list);
-extern void uadk_destroy_cipher(void);
-extern int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list);
-extern void uadk_destroy_digest(void);
-extern void uadk_destroy_rsa(void);
-extern void uadk_init_ecc(void);
-extern void uadk_destroy_ecc(void);
-extern int uadk_bind_rsa(ENGINE *e);
-extern int uadk_bind_pkey(ENGINE *e);
+#define UADK_PKEY_DEBUG(fmt, args...)	printf(fmt, ##args)
+
+struct uadk_pkey_meth {
+	EVP_PKEY_METHOD *sm2;
+	EVP_PKEY_METHOD *ec;
+};
+
+extern int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+extern void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+extern int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+extern void uadk_ec_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+
+
 #endif
