@@ -158,7 +158,7 @@ int uadk_cipher_poll(void *ctx)
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *) ctx;
 	int ret = 0;
 	int expt = 1;
-	int recv;
+	__u32 recv;
 	int idx;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
@@ -221,15 +221,6 @@ static int uadk_init_cipher(void)
 	}
 
 	return 1;
-
-err:
-	for (i = 0; i < engine.ctx_cfg.ctx_num; i++) {
-		if (engine.ctx_cfg.ctxs[i].ctx)
-			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-	}
-	free(engine.ctx_cfg.ctxs);
-
-	return 0;
 }
 
 static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
@@ -238,7 +229,6 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
 	int nid = EVP_CIPHER_CTX_nid(ctx);
-	int ret;
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION;
