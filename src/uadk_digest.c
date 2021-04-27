@@ -118,7 +118,7 @@ int uadk_digest_poll(void *ctx)
 {
 	int ret = 0;
 	int expt = 1;
-	int recv;
+	__u32 recv;
 
 	do {
 		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
@@ -251,7 +251,6 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
-	enum task_type type = ASYNC_TASK_DIGEST;
 	struct async_op op;
 	int ret;
 
