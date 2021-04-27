@@ -1,3 +1,17 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 #include <openssl/bn.h>
 #include <openssl/asn1t.h>
 #include <openssl/evp.h>
@@ -20,9 +34,6 @@
 #define CTX_SYNC	0
 
 #define ECC_DEBUG(fmt, args...)	printf(fmt, ##args)
-
-static EVP_PKEY_METHOD *sm2_pmeth;
-static EVP_PKEY_METHOD *ecc_pmeth;
 
 struct sm2_ctx {
 	handle_t sess;
@@ -112,9 +123,9 @@ static int ecc_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 
 int uadk_ecc_poll(void *ctx)
 {
-	int ret = 0;
+	unsigned int recv = 0;
 	int expt = 1;
-	int recv;
+	int ret;
 
 	do {
 		ret = wd_ecc_poll_ctx(CTX_ASYNC, expt, &recv);
@@ -404,7 +415,6 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 {
 	int nid_hash = smctx->md ? EVP_MD_type(smctx->md) : NID_sm3;
 	struct wd_ecc_sess_setup setup;
-	handle_t sess;
 	int type;
 
 	if (smctx->sess)
@@ -469,7 +479,7 @@ static int update_public_key(EVP_PKEY_CTX *ctx)
 		return -EINVAL;
 	}
 
-	pubkey.x.data = point_bin + 1;
+	pubkey.x.data = (char *)point_bin + 1;
 	pubkey.x.dsize = key_bytes;
 	pubkey.y.data = pubkey.x.data + key_bytes;
 	pubkey.y.dsize = key_bytes;
@@ -505,7 +515,7 @@ static int update_private_key(EVP_PKEY_CTX *ctx)
 		return 0;
 
 	ecc_key = wd_ecc_get_key(smctx->sess);
-	prikey.data = bin;
+	prikey.data = (void *)bin;
 	prikey.dsize = BN_bn2bin(d, bin);
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret)
@@ -534,13 +544,13 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 		return 0;
 	}
 
-	br = BN_bin2bn(r->data, r->dsize, NULL);
+	br = BN_bin2bn((void *)r->data, r->dsize, NULL);
 	if (!br) {
 		printf("Failed to BN_bin2bn r\n");
 		goto free_sig;
 	}
 
-	bs = BN_bin2bn(s->data, s->dsize, NULL);
+	bs = BN_bin2bn((void *)s->data, s->dsize, NULL);
 	if (!bs) {
 		printf("Failed to BN_bin2bn s\n");
 		goto free_r;
@@ -621,8 +631,8 @@ static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 		ret = -EINVAL;
 		goto free_der;
 	}
-	r->dsize = BN_bn2bin(b_r, r->data);
-	s->dsize = BN_bn2bin(b_s, s->data);
+	r->dsize = BN_bn2bin(b_r, (void *)r->data);
+	s->dsize = BN_bn2bin(b_s, (void *)s->data);
 	ret = 0;
 free_der:
 	OPENSSL_free(der);
@@ -632,24 +642,24 @@ free_sig:
 	return ret;
 }
 
-static int cipher_bin_to_ber(EVP_MD *md, struct wd_ecc_point *c1,
+static int cipher_bin_to_ber(const EVP_MD *md, struct wd_ecc_point *c1,
 			     struct wd_dtb *c2, struct wd_dtb *c3,
 			     unsigned char *ber, size_t *ber_len)
 {
 	struct sm2_ciphertext ctext_struct;
-	const int C3_size = EVP_MD_size(md);
 	int ciphertext_leni, ret;
 	BIGNUM *x1, *y1;
 
-	x1 = BN_bin2bn(c1->x.data, c1->x.dsize, NULL);
+	x1 = BN_bin2bn((void *)c1->x.data, c1->x.dsize, NULL);
 	if (!x1) {
 		printf("Failed to BN_bin2bn x1\n");
 		return -ENOMEM;
 	}
 
-	y1 = BN_bin2bn(c1->y.data, c1->y.dsize, NULL);
+	y1 = BN_bin2bn((void *)c1->y.data, c1->y.dsize, NULL);
 	if (!y1) {
 		printf("Failed to BN_bin2bn y1\n");
+		ret = -ENOMEM;
 		goto free_x1;
 	}
 
@@ -667,8 +677,8 @@ static int cipher_bin_to_ber(EVP_MD *md, struct wd_ecc_point *c1,
 		goto free_y1;
 	}
 
-	if (!ASN1_OCTET_STRING_set(ctext_struct.C3, c3->data, c3->dsize)
-		|| !ASN1_OCTET_STRING_set(ctext_struct.C2, c2->data, c2->dsize)) {
+	if (!ASN1_OCTET_STRING_set(ctext_struct.C3, (void *)c3->data, c3->dsize)
+		|| !ASN1_OCTET_STRING_set(ctext_struct.C2, (void *)c2->data, c2->dsize)) {
 		printf("Failed to ASN1_OCTET_STRING_set\n");
 		ret = -EINVAL;
 		goto free_y1;
@@ -676,10 +686,12 @@ static int cipher_bin_to_ber(EVP_MD *md, struct wd_ecc_point *c1,
 
 	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct, (unsigned char **)&ber);
 	/* Ensure cast to size_t is safe */
-	if (ciphertext_leni < 0)
+	if (ciphertext_leni < 0) {
+		ret = -EINVAL;
 		goto free_y1;
+	}
 	*ber_len = (size_t)ciphertext_leni;
-	ret = 1;
+	ret = 0;
 free_y1:
 	BN_free(y1);
 free_x1:
@@ -695,7 +707,6 @@ static int cipher_ber_to_bin(EVP_MD *md, unsigned char *ber, size_t ber_len,
 			     struct wd_dtb *c3)
 {
 	struct sm2_ciphertext *ctext_struct;
-	int md_size = EVP_MD_size(md);
 	int ret, len, len1;
 
 	ctext_struct = d2i_SM2_Ciphertext(NULL, (const unsigned char **)&ber, ber_len);
@@ -719,8 +730,8 @@ static int cipher_ber_to_bin(EVP_MD *md, unsigned char *ber, size_t ber_len,
 	memcpy(c3->data, ctext_struct->C3->data, ctext_struct->C3->length);
 	c2->dsize = ctext_struct->C2->length;
 	c3->dsize = ctext_struct->C3->length;
-	c1->x.dsize = BN_bn2bin(ctext_struct->C1x, c1->x.data);
-	c1->y.dsize = BN_bn2bin(ctext_struct->C1y, c1->y.data);
+	c1->x.dsize = BN_bn2bin(ctext_struct->C1x, (void *)c1->x.data);
+	c1->y.dsize = BN_bn2bin(ctext_struct->C1y, (void *)c1->y.data);
 
 	return 0;
 free_ctext:
@@ -843,7 +854,6 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		  const unsigned char *tbs, size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
-	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	struct wd_dtb *r = NULL;
 	struct wd_dtb *s = NULL;
 	struct wd_ecc_req req;
@@ -905,12 +915,6 @@ static int sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	return 0;
 }
 
-static int sm2_verify_check(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen,
-		    const unsigned char *tbs, size_t tbslen)
-{
-	return 0;
-}
-
 static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen,
 		      const unsigned char *tbs, size_t tbslen)
 {
@@ -925,8 +929,8 @@ static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen
 	struct wd_ecc_req req;
 	int ret;
 
-	r.data = buf_r;
-	s.data = buf_s;
+	r.data = (void *)buf_r;
+	s.data = (void *)buf_s;
 	r.bsize = ECC_MAX_KEY_BYTES;
 	s.bsize = ECC_MAX_KEY_BYTES;
 	ret = sig_ber_to_bin(ec, (void *)sig, siglen, &r, &s);
@@ -962,7 +966,6 @@ static int sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_ecc_out *ecc_out;
 	struct wd_ecc_in *ecc_in;
 	struct wd_dtb e = { 0 };
-	int ret;
 
 	ecc_out = wd_sm2_new_enc_out(sess, inlen);
 	if (!ecc_out) {
@@ -1021,16 +1024,11 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 		       const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
-	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	struct wd_ecc_out *ecc_out;
-	struct wd_ecc_in *ecc_in;
 	struct wd_ecc_point *c1 = NULL;
 	struct wd_dtb *c2 = NULL;
 	struct wd_dtb *c3 = NULL;
 	struct wd_ecc_req req;
-	struct wd_dtb e, k;
-	EVP_MD *md;
+	const EVP_MD *md;
 	int ret;
 
 	ret = sm2_encrypt_check(ctx, out, outlen, in, inlen);
@@ -1052,6 +1050,7 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 		goto uninit_iot;
 	}
 
+	md = (smctx->md == NULL) ? EVP_sm3() : smctx->md;
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
 	ret = cipher_bin_to_ber(md, c1, c2, c3, out, outlen);
 	if (ret)
@@ -1155,8 +1154,6 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 		       const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
-	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	struct wd_ecc_point c1;
 	struct wd_dtb c2, c3;
 	struct wd_ecc_req req;
