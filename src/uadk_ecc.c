@@ -75,7 +75,6 @@ struct ecc_res_config {
 /* ecc global hardware resource is saved here */
 struct ecc_res {
 	struct wd_ctx_config *ctx_res;
-	int pid;
 } ecc_res;
 
 typedef struct uadk_ecc_sess {
@@ -246,6 +245,9 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config,
 	int ctx_num = 0;
 	int ret, i;
 
+	if (ecc_res.ctx_res)
+		return 0;
+
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
 		return -ENOMEM;
@@ -284,6 +286,7 @@ free_ctx:
 	free(ctx_cfg->ctxs);
 free_cfg:
 	free(ctx_cfg);
+	ecc_res.ctx_res = NULL;
 	return ret;
 }
 
@@ -291,12 +294,14 @@ static void uadk_wd_ecc_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
 
-	if (ecc_res.pid == getpid()) {
-		wd_ecc_uninit();
-		uninit_ctx_cfg(ctx_cfg);
-		free(ctx_cfg->ctxs);
-		free(ctx_cfg);
-	}
+	if (!ctx_cfg)
+		return;
+
+	wd_ecc_uninit();
+	uninit_ctx_cfg(ctx_cfg);
+	free(ctx_cfg->ctxs);
+	free(ctx_cfg);
+	ecc_res.ctx_res = NULL;
 }
 
 void uadk_destroy_ecc(void)
@@ -342,13 +347,10 @@ void uadk_init_ecc(void)
 
 	struct uacce_dev_list *list;
 
-	if (ecc_res.pid != getpid()) {
-		list = wd_get_accel_list("rsa");
-		if (list) {
-			uadk_wd_ecc_init(&ecc_res_config, list);
-			wd_free_list_accels(list);
-		}
-		ecc_res.pid = getpid();
+	list = wd_get_accel_list("sm2");
+	if (list) {
+		uadk_wd_ecc_init(&ecc_res_config, list);
+		wd_free_list_accels(list);
 	}
 }
 
