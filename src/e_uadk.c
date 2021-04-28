@@ -25,6 +25,11 @@
 const char *engine_uadk_id = "uadk";
 static const char *engine_uadk_name = "uadk hardware engine support";
 
+static int uadk_cipher;
+static int uadk_digest;
+static int uadk_rsa;
+static int uadk_pkey;
+
 __attribute__((constructor))
 static void uadk_constructor(void)
 {
@@ -37,10 +42,14 @@ static void uadk_destructor(void)
 
 static int uadk_destroy(ENGINE *e)
 {
-	uadk_destroy_cipher();
-	uadk_destroy_digest();
-	uadk_destroy_rsa();
-	uadk_destroy_ecc();
+	if (uadk_cipher)
+		uadk_destroy_cipher();
+	if (uadk_digest)
+		uadk_destroy_digest();
+	if (uadk_rsa)
+		uadk_destroy_rsa();
+	if (uadk_pkey)
+		uadk_destroy_ecc();
 	return 1;
 }
 
@@ -90,6 +99,8 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_cipher(e, list))
 			fprintf(stderr, "uadk bind cipher failed\n");
+		else
+			uadk_cipher = 1;
 
 		wd_free_list_accels(list);
 	}
@@ -98,6 +109,8 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_digest(e, list))
 			fprintf(stderr, "uadk bind digest failed\n");
+		else
+			uadk_digest = 1;
 
 		wd_free_list_accels(list);
 	}
@@ -106,11 +119,21 @@ static int bind_fn(ENGINE *e, const char *id)
 	if (list) {
 		if (!uadk_bind_rsa(e))
 			fprintf(stderr, "uadk bind rsa failed\n");
+		else
+			uadk_rsa = 1;
+
 		wd_free_list_accels(list);
 	}
 
-	if (!uadk_bind_pkey(e))
-		fprintf(stderr, "uadk bind rsa failed\n");
+	list = wd_get_accel_list("sm2");
+	if (list) {
+		if (!uadk_bind_pkey(e))
+			fprintf(stderr, "uadk bind pkey failed\n");
+		else
+			uadk_pkey = 1;
+
+		wd_free_list_accels(list);
+	}
 
 	return 1;
 }
