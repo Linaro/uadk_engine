@@ -1,3 +1,17 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 #include <openssl/bn.h>
 #include <openssl/engine.h>
 #include <openssl/ossl_typ.h>
@@ -521,7 +535,7 @@ int uadk_rsa_poll(void *ctx)
 {
 	int ret = 0;
 	int expt = 1;
-	int recv;
+	__u32 recv;
 
 	do {
 		ret = wd_rsa_poll_ctx(CTX_ASYNC, expt, &recv);
@@ -817,9 +831,6 @@ static int uadk_rsa_fill_keygen_data(handle_t ctx, struct wd_rsa_req *req,
 				     struct wd_dtb *wd_e, struct wd_dtb *wd_p,
 				     struct wd_dtb *wd_q)
 {
-	struct wd_rsa_pubkey *pubkey = NULL;
-	struct wd_rsa_prikey *prikey = NULL;
-
 	req->src = wd_rsa_new_kg_in(ctx, wd_e, wd_p, wd_q);
 	if (!req->src)
 		return 0;
@@ -1164,7 +1175,6 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	const BIGNUM *iqmp = (const BIGNUM *)NULL;
 	unsigned char *in_buf = (unsigned char *)NULL;
 	int key_bits = 0;
-	int version = 0;
 	int num_bytes = 0;
 	BN_CTX *bn_ctx = NULL;
 
@@ -1185,7 +1195,6 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	bn_ret = BN_CTX_get(bn_ctx);
 	RSA_get0_factors(rsa, &p, &q);
 	RSA_get0_crt_params(rsa, &dmp1, &dmq1, &iqmp);
-	version = RSA_get_version(rsa);
 	RSA_get0_key(rsa, &n, &e, &d);
 	num_bytes = BN_num_bytes(n);
 	in_buf = (unsigned char *)OPENSSL_malloc(num_bytes);
@@ -1286,15 +1295,6 @@ static int uadk_rsa_public_verify(int flen, const unsigned char *from,
 	return ret;
 }
 
-static int uadk_rsa_mod_exp(void)
-{
-	return 1;
-}
-static int uadk_rsa_bn_mod_exp(void)
-{
-	return 1;
-}
-
 void uadk_destroy_rsa(void)
 {
 	return uadk_wd_rsa_uninit();
@@ -1323,14 +1323,6 @@ RSA_METHOD *uadk_get_rsa_methods(void)
 		return NULL;
 	}
 	return uadk_rsa_method;
-}
-
-static void uadk_free_rsa_methods(void)
-{
-	if (uadk_rsa_method) {
-		RSA_meth_free(uadk_rsa_method);
-		uadk_rsa_method = NULL;
-	}
 }
 
 /*uadk_bind_rsa():This function is used to manage the initial work of RSA alg engine,
