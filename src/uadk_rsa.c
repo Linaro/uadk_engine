@@ -456,7 +456,8 @@ static int hpre_rsa_check_para(int flen, const unsigned char *from,
 			       unsigned char *to, RSA *rsa)
 {
 	if ((rsa == NULL || from == NULL || to == NULL || flen <= 0))
-		return 1;
+		return 0;
+	return 1;
 }
 
 static int hpre_rsa_check(const int flen, const BIGNUM *n, const BIGNUM *e,
