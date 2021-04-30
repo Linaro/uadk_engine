@@ -33,6 +33,14 @@ openssl speed -engine uadk -evp aes-128-xts
 openssl speed -engine uadk -async_jobs 1 -evp aes-128-xts
 openssl speed -engine uadk -evp aes-256-xts
 openssl speed -engine uadk -async_jobs 1 -evp aes-256-xts
+openssl speed -engine uadk -evp sm4-cbc
+openssl speed -engine uadk -async_jobs 1 -evp sm4-cbc
+openssl speed -engine uadk -evp sm4-ecb
+openssl speed -engine uadk -async_jobs 1 -evp sm4-ecb
+openssl speed -engine uadk -evp des-ede3-cbc
+openssl speed -engine uadk -async_jobs 1 -evp des-ede3-cbc
+openssl speed -engine uadk -evp des-ede3-ecb
+openssl speed -engine uadk -async_jobs 1 -evp des-ede3-ecb
 
 #rsa
 openssl speed -elapsed -engine uadk rsa1024
