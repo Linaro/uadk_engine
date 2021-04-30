@@ -136,7 +136,17 @@ openssl enc -aes-192-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv 
 openssl enc -aes-192-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p -nopad
 openssl enc -aes-256-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
 openssl enc -aes-256-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p -nopad
+openssl enc -sm4-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
+openssl enc -sm4-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p -nopad
+openssl enc -sm4-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
+openssl enc -sm4-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
+openssl enc -des-ede3-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
+openssl enc -des-ede3-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p -nopad
+openssl enc -des-ede3-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
+openssl enc -des-ede3-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
 openssl speed -engine uadk -async_jobs 1 -evp aes-128-cbc
+openssl speed -engine uadk -async_jobs 1 -evp sm4-cbc
+openssl speed -engine uadk -async_jobs 1 -evp des-ede3-cbc
 ```
 2. RSA
 ```
