@@ -173,3 +173,33 @@ openssl sha1 -engine uadk data
 openssl sha256 -engine uadk data
 openssl sha512 -engine uadk data
 ```
+6. DH
+[step 1] Generate global public parameters, and save them in the file
+dhparam.pem:
+```
+openssl dhparam -out dhparam.pem 2048
+```
+[step 2] Generate own private key:
+```
+openssl genpkey -paramfile dhparam.pem -out privatekey1.pem
+openssl genpkey -paramfile dhparam.pem -out privatekey2.pem
+```
+[step 3] Generate public key:
+```
+openssl pkey -in privatekey1.pem -pubout -out publickey1.pem -engine uadk
+openssl pkey -in privatekey2.pem -pubout -out publickey2.pem -engine uadk
+```
+[step 4] After exchanging public key, each user can derive the shared secret:
+```
+openssl pkeyutl -derive -inkey privatekey1.pem -peerkey publickey2.pem -out
+secret1.bin -engine uadk
+openssl pkeyutl -derive -inkey privatekey2.pem -peerkey publickey1.pem -out
+secret2.bin -engine uadk
+```
+[step 5] Check secret1.bin and secret2.bin:
+```
+cmp secret1.bin secret2.bin
+xxd secret1.bin
+xxd secret2.bin
+```
+secret1.bin and secret2.bin should be the same.
