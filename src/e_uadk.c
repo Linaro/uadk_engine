@@ -29,6 +29,7 @@ static int uadk_cipher;
 static int uadk_digest;
 static int uadk_rsa;
 static int uadk_pkey;
+static int uadk_dh;
 
 __attribute__((constructor))
 static void uadk_constructor(void)
@@ -50,6 +51,8 @@ static int uadk_destroy(ENGINE *e)
 		uadk_destroy_rsa();
 	if (uadk_pkey)
 		uadk_destroy_ecc();
+	if (uadk_dh)
+		uadk_destroy_dh();
 	return 1;
 }
 
@@ -131,6 +134,16 @@ static int bind_fn(ENGINE *e, const char *id)
 			fprintf(stderr, "uadk bind pkey failed\n");
 		else
 			uadk_pkey = 1;
+
+		wd_free_list_accels(list);
+	}
+
+	list = wd_get_accel_list("dh");
+	if (list) {
+		if (!uadk_bind_dh(e))
+			fprintf(stderr, "uadk bind dh failed\n");
+		else
+			uadk_dh = 1;
 
 		wd_free_list_accels(list);
 	}
