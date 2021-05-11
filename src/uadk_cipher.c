@@ -199,13 +199,13 @@ int uadk_cipher_poll(void *ctx)
 
 static int uadk_init_cipher(void)
 {
-	struct uacce_dev_list *list;
+	struct uacce_dev *dev;
 	int ret;
 	int i;
 
 	if (engine.pid != getpid()) {
-		list = wd_get_accel_list("cipher");
-		if (list) {
+		dev = wd_get_accel_dev("cipher");
+		if (dev) {
 			memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
 			engine.ctx_cfg.ctx_num = CTX_NUM;
 			engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
@@ -213,7 +213,7 @@ static int uadk_init_cipher(void)
 				return 0;
 
 			for (i = 0; i < CTX_NUM; i++) {
-				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
+				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
 				if (!engine.ctx_cfg.ctxs[i].ctx)
 					return 0;
 			}
@@ -236,6 +236,7 @@ static int uadk_init_cipher(void)
 				return 0;
 
 			async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
+			free(dev);
 		}
 		engine.pid = getpid();
 	}
@@ -431,7 +432,7 @@ do { \
 		return 0;\
 } while (0)
 
-int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list)
+int uadk_bind_cipher(ENGINE *e)
 {
 	UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,

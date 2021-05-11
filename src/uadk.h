@@ -18,9 +18,9 @@
 #include <uadk/wd.h>
 
 extern const char *engine_uadk_id;
-extern int uadk_bind_cipher(ENGINE *e, struct uacce_dev_list *list);
+extern int uadk_bind_cipher(ENGINE *e);
 extern void uadk_destroy_cipher(void);
-extern int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list);
+extern int uadk_bind_digest(ENGINE *e);
 extern void uadk_destroy_digest(void);
 extern void uadk_destroy_rsa(void);
 extern void uadk_init_ecc(void);

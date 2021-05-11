@@ -133,13 +133,13 @@ int uadk_digest_poll(void *ctx)
 
 static int uadk_init_digest(void)
 {
-	struct uacce_dev_list *list;
+	struct uacce_dev *dev;
 	int ret;
 	int i;
 
 	if (engine.pid != getpid()) {
-		list = wd_get_accel_list("digest");
-		if (list) {
+		dev = wd_get_accel_dev("digest");
+		if (dev) {
 			memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
 			engine.ctx_cfg.ctx_num = CTX_NUM;
 			engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
@@ -147,7 +147,7 @@ static int uadk_init_digest(void)
 				return 0;
 
 			for (i = 0; i < CTX_NUM; i++) {
-				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(list->dev);
+				engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
 				if (!engine.ctx_cfg.ctxs[i].ctx)
 					goto err;
 
@@ -165,7 +165,7 @@ static int uadk_init_digest(void)
 				goto err;
 
 			async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
-			wd_free_list_accels(list);
+			free(dev);
 		}
 		engine.pid = getpid();
 	}
@@ -318,7 +318,7 @@ do { \
 		return 0; \
 } while (0)
 
-int uadk_bind_digest(ENGINE *e, struct uacce_dev_list *list)
+int uadk_bind_digest(ENGINE *e)
 {
 	UADK_DIGEST_DESCR(md5, md5WithRSAEncryption, MD5_DIGEST_LENGTH,
 			  0, MD5_CBLOCK,
