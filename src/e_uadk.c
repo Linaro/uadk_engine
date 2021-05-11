@@ -79,7 +79,7 @@ static void engine_init_child_at_fork_handler(void)
  */
 static int bind_fn(ENGINE *e, const char *id)
 {
-	struct uacce_dev_list *list;
+	struct uacce_dev *dev;
 
 	if (id && (strcmp(id, engine_uadk_id) != 0)) {
 		fprintf(stderr, "wrong engine id\n");
@@ -98,54 +98,49 @@ static int bind_fn(ENGINE *e, const char *id)
 	async_module_init();
 	pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
 
-	list = wd_get_accel_list("cipher");
-	if (list) {
-		if (!uadk_bind_cipher(e, list))
+	dev = wd_get_accel_dev("cipher");
+	if (dev) {
+		if (!uadk_bind_cipher(e))
 			fprintf(stderr, "uadk bind cipher failed\n");
 		else
 			uadk_cipher = 1;
-
-		wd_free_list_accels(list);
+		free(dev);
 	}
 
-	list = wd_get_accel_list("digest");
-	if (list) {
-		if (!uadk_bind_digest(e, list))
+	dev = wd_get_accel_dev("digest");
+	if (dev) {
+		if (!uadk_bind_digest(e))
 			fprintf(stderr, "uadk bind digest failed\n");
 		else
 			uadk_digest = 1;
-
-		wd_free_list_accels(list);
+		free(dev);
 	}
 
-	list = wd_get_accel_list("rsa");
-	if (list) {
+	dev = wd_get_accel_dev("rsa");
+	if (dev) {
 		if (!uadk_bind_rsa(e))
 			fprintf(stderr, "uadk bind rsa failed\n");
 		else
 			uadk_rsa = 1;
-
-		wd_free_list_accels(list);
+		free(dev);
 	}
 
-	list = wd_get_accel_list("sm2");
-	if (list) {
+	dev = wd_get_accel_dev("sm2");
+	if (dev) {
 		if (!uadk_bind_pkey(e))
 			fprintf(stderr, "uadk bind pkey failed\n");
 		else
 			uadk_pkey = 1;
-
-		wd_free_list_accels(list);
+		free(dev);
 	}
 
-	list = wd_get_accel_list("dh");
-	if (list) {
+	dev = wd_get_accel_dev("dh");
+	if (dev) {
 		if (!uadk_bind_dh(e))
 			fprintf(stderr, "uadk bind dh failed\n");
 		else
 			uadk_dh = 1;
-
-		wd_free_list_accels(list);
+		free(dev);
 	}
 
 	return 1;
