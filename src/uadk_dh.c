@@ -46,6 +46,9 @@
 #define OPENSSL_FAIL		0
 #define UN_SET			0
 #define IS_SET			1
+#define CTX_ASYNC		1
+#define CTX_SYNC		0
+#define CTX_NUM			2
 
 static DH_METHOD *uadk_dh_method;
 
@@ -88,8 +91,6 @@ struct alg_sched {
 struct alg_res dh_res;
 
 struct dh_res_config {
-	int dev_num;
-	struct alg_res_per_dev dev_res[DH_MAX_DEV_NUM];
 	struct alg_sched sched;
 };
 
@@ -142,9 +143,9 @@ static __u32 dh_pick_next_ctx(handle_t sched_ctx, const void *req,
 	const struct wd_dh_req *dh_req = req;
 
 	if (dh_req->cb)
-		return SYNC_CTX_NUM;
+		return CTX_ASYNC;
 	else
-		return 0;
+		return CTX_SYNC;
 }
 
 int uadk_dh_poll(void *ctx)
@@ -174,17 +175,6 @@ static void uadk_dh_cb(void *req_t)
 }
 
 struct dh_res_config dh_res_config = {
-	.dev_num = 2,
-	.dev_res[0] = {
-		.numa_id = 0,
-		.sync_ctx_num = SYNC_CTX_NUM,
-		.async_ctx_num = ASYNC_CTX_NUM,
-	},
-	.dev_res[1] = {
-		.numa_id = 0,
-		.sync_ctx_num = SYNC_CTX_NUM,
-		.async_ctx_num = ASYNC_CTX_NUM,
-	},
 	.sched = {
 		.sched_type = -1,
 		.wd_sched = {
@@ -196,80 +186,10 @@ struct dh_res_config dh_res_config = {
 	},
 };
 
-struct uacce_dev *dh_get_uacce_dev(struct alg_res_per_dev *dev_res,
-				   struct uacce_dev_list *list)
-{
-	struct uacce_dev *dev = NULL;
-
-	while (list) {
-		if (list->dev->numa_id == dev_res->numa_id) {
-			dev = list->dev;
-			break;
-		}
-		list = list->next;
-	}
-	return dev;
-}
-
-static void uninit_dh_ctx_cfg(struct wd_ctx_config *ctx_cfg)
-{
-	int i;
-	struct wd_ctx *ctx = ctx_cfg->ctxs;
-
-	for (i = 0; i < ctx_cfg->ctx_num; i++) {
-		wd_release_ctx(ctx->ctx);
-		ctx->ctx = 0;
-		ctx->op_type = 0;
-		ctx->ctx_mode = 0;
-		ctx++;
-	}
-}
-
-static int init_dh_ctx_cfg(struct wd_ctx_config *ctx_cfg,
-			struct dh_res_config *config,
-			struct uacce_dev_list *list)
-{
-	struct alg_res_per_dev *dev_res;
-	struct uacce_dev *uacce_dev;
-	struct wd_ctx *ctx;
-	int i, j, k, ret, ctx_num, ctx_index = 0;
-
-	for (i = 0; i < config->dev_num; i++) {
-		dev_res = &config->dev_res[i];
-		uacce_dev = dh_get_uacce_dev(dev_res, list);
-		if (!uacce_dev)
-			continue;
-		for (k = 0; k < CTX_MODE_NUM; k++) {
-			ctx_num = (k == 0) ? dev_res->sync_ctx_num :
-			dev_res->async_ctx_num;
-			for (j = 0; j < ctx_num; j++) {
-				ctx = ctx_cfg->ctxs + ctx_index;
-				ctx->ctx = wd_request_ctx(uacce_dev);
-				if (!ctx->ctx) {
-					ret = -ENODEV;
-					goto release_ctx;
-				}
-				ctx->ctx_mode = (k == 0) ? CTX_MODE_SYNC :
-				CTX_MODE_ASYNC;
-				ctx->op_type = 0;
-				ctx_index++;
-			}
-		}
-	}
-	return 0;
-
-release_ctx:
-	uninit_dh_ctx_cfg(ctx_cfg);
-	return ret;
-}
-
-static int uadk_wd_dh_ctx_init(struct dh_res_config *config, struct uacce_dev_list *list)
+static int uadk_wd_dh_ctx_init(struct dh_res_config *config, struct uacce_dev *dev)
 {
 	struct wd_sched *sched = &config->sched.wd_sched;
-	struct alg_res_per_dev *dev_res;
 	struct wd_ctx_config *ctx_cfg;
-	struct uacce_dev *uacce_dev;
-	int ctx_num = 0;
 	int ret, i;
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
@@ -277,30 +197,33 @@ static int uadk_wd_dh_ctx_init(struct dh_res_config *config, struct uacce_dev_li
 		return -ENOMEM;
 	dh_res.ctx_res = ctx_cfg;
 
-	for (i = 0; i < config->dev_num; i++) {
-		dev_res = &config->dev_res[i];
-		uacce_dev = dh_get_uacce_dev(dev_res, list);
-		if (!uacce_dev)
-			continue;
-		ctx_num += dev_res->sync_ctx_num + dev_res->async_ctx_num;
-	}
-	ctx_cfg->ctxs = calloc(ctx_num, sizeof(struct wd_ctx));
+	ctx_cfg->ctx_num = CTX_NUM;
+	ctx_cfg->ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
 	if (!ctx_cfg->ctxs) {
 		ret = -ENOMEM;
 		goto free_cfg;
 	}
-	ctx_cfg->ctx_num = ctx_num;
-	ret = init_dh_ctx_cfg(ctx_cfg, config, list);
-	if (ret)
-		goto free_ctx;
+
+	for (i = 0; i < CTX_NUM; i++) {
+		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
+		if (!ctx_cfg->ctxs[i].ctx)
+			goto free_ctx;
+		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
+	}
+
 	ret = wd_dh_init(ctx_cfg, sched);
 	if (ret)
-		goto uninit_ctx;
+		goto free_ctx;
 	async_register_poll_fn(ASYNC_TASK_DH, uadk_dh_poll);
 	return 0;
-uninit_ctx:
-	uninit_dh_ctx_cfg(ctx_cfg);
+
 free_ctx:
+	for (i = 0; i < CTX_NUM; i++) {
+		if (ctx_cfg->ctxs[i].ctx) {
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+			ctx_cfg->ctxs[i].ctx = 0;
+		}
+	}
 	free(ctx_cfg->ctxs);
 free_cfg:
 	free(ctx_cfg);
@@ -310,10 +233,12 @@ free_cfg:
 static void uadk_wd_dh_ctx_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = dh_res.ctx_res;
+	int i;
 
 	if (dh_res.pid == getpid()) {
 		wd_dh_uninit();
-		uninit_dh_ctx_cfg(ctx_cfg);
+		for (i = 0; i < ctx_cfg->ctx_num; i++)
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
 		free(ctx_cfg->ctxs);
 		free(ctx_cfg);
 	}
@@ -321,13 +246,13 @@ static void uadk_wd_dh_ctx_uninit(void)
 
 static void uadk_init_dh(void)
 {
-	struct uacce_dev_list *list;
+	struct uacce_dev *dev;
 
 	if (dh_res.pid != getpid()) {
-		list = wd_get_accel_list("dh");
-		if (list) {
-			uadk_wd_dh_ctx_init(&dh_res_config, list);
-			wd_free_list_accels(list);
+		dev = wd_get_accel_dev("dh");
+		if (dev) {
+			uadk_wd_dh_ctx_init(&dh_res_config, dev);
+			free(dev);
 		}
 		dh_res.pid = getpid();
 	}
