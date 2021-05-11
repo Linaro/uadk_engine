@@ -32,6 +32,7 @@
 #define ECC_MAX_DEV_NUM			16
 #define CTX_ASYNC	1
 #define CTX_SYNC	0
+#define CTX_NUM		2
 
 #define ECC_DEBUG(fmt, args...)	printf(fmt, ##args)
 
@@ -55,20 +56,12 @@ struct sm2_ctx {
 	int id_set;
 };
 
-struct ecc_res_per_dev {
-	int numa_id;
-	int sync_ctx_num;
-	int async_ctx_num;
-};
-
 struct ecc_sched {
 	int sched_type;
 	struct wd_sched wd_sched;
 };
 
 struct ecc_res_config {
-	int dev_num;
-	struct ecc_res_per_dev dev_res[ECC_MAX_DEV_NUM];
 	struct ecc_sched sched;
 };
 
@@ -139,17 +132,6 @@ int uadk_ecc_poll(void *ctx)
 
 /* make resource configure static */
 struct ecc_res_config ecc_res_config = {
-	.dev_num = 2,
-	.dev_res[0] = {
-		.numa_id = 0,
-		.sync_ctx_num = 1,
-		.async_ctx_num = 1,
-	},
-	.dev_res[1] = {
-		.numa_id = -1,
-		.sync_ctx_num = 1,
-		.async_ctx_num = 1,
-	},
 	.sched = {
 		.sched_type = -1,
 		.wd_sched = {
@@ -161,88 +143,11 @@ struct ecc_res_config ecc_res_config = {
 	},
 };
 
-static struct uacce_dev *get_uacce_dev(struct ecc_res_per_dev *dev_res,
-				       struct uacce_dev_list *list)
-{
-	struct uacce_dev *dev = NULL;
-
-	while (list) {
-		if (list->dev->numa_id == dev_res->numa_id) {
-			dev = list->dev;
-			break;
-		}
-		list = list->next;
-	}
-	return dev;
-}
-
-static int init_ctx_cfg(struct wd_ctx_config *ctx_cfg,
-			struct ecc_res_config *config,
-			struct uacce_dev_list *list)
-{
-	struct ecc_res_per_dev *dev_res;
-	struct uacce_dev *uacce_dev;
-	struct wd_ctx *ctx;
-	int i, j, k, ret, ctx_num, ctx_index = 0;
-
-	for (i = 0; i < config->dev_num; i++) {
-		dev_res = &config->dev_res[i];
-		uacce_dev = get_uacce_dev(dev_res, list);
-		if (!uacce_dev)
-			continue;
-		for (k = 0; k < 2; k++) {
-			ctx_num = (k == 0) ? dev_res->sync_ctx_num :
-			dev_res->async_ctx_num;
-			for (j = 0; j < ctx_num; j++) {
-				ctx = ctx_cfg->ctxs + ctx_index;
-				ctx->ctx = wd_request_ctx(uacce_dev);
-				if (!ctx->ctx) {
-					ret = -ENODEV;
-					goto release_ctx;
-				}
-				ctx->ctx_mode = (k == 0) ? CTX_SYNC :
-				CTX_ASYNC;
-				ctx->op_type = 0;
-				ctx_index++;
-			}
-		}
-	}
-	return 0;
-
-release_ctx:
-	ctx = ctx_cfg->ctxs;
-	while (ctx->ctx) {
-		wd_release_ctx(ctx->ctx);
-		ctx->ctx = 0;
-		ctx->op_type = 0;
-		ctx->ctx_mode = 0;
-		ctx++;
-	}
-	return ret;
-}
-
-static void uninit_ctx_cfg(struct wd_ctx_config *ctx_cfg)
-{
-	struct wd_ctx *ctx = ctx_cfg->ctxs;
-	int i;
-
-	for (i = 0; i < ctx_cfg->ctx_num; i++) {
-		wd_release_ctx(ctx->ctx);
-		ctx->ctx = 0;
-		ctx->op_type = 0;
-		ctx->ctx_mode = 0;
-		ctx++;
-	}
-}
-
 static int uadk_wd_ecc_init(struct ecc_res_config *config,
-			    struct uacce_dev_list *list)
+			    struct uacce_dev *dev)
 {
 	struct wd_sched *sched = &config->sched.wd_sched;
-	struct ecc_res_per_dev *dev_res;
 	struct wd_ctx_config *ctx_cfg;
-	struct uacce_dev *uacce_dev;
-	int ctx_num = 0;
 	int ret, i;
 
 	if (ecc_res.ctx_res)
@@ -253,36 +158,33 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config,
 		return -ENOMEM;
 	ecc_res.ctx_res = ctx_cfg;
 
-	for (i = 0; i < config->dev_num; i++) {
-		dev_res = &config->dev_res[i];
-		uacce_dev = get_uacce_dev(dev_res, list);
-		if (!uacce_dev)
-			continue;
-		ctx_num += dev_res->sync_ctx_num + dev_res->async_ctx_num;
-	}
-
-	if (!ctx_num) {
-		printf("not find dev\n");
-		goto free_cfg;
-	}
-
-	ctx_cfg->ctxs = calloc(ctx_num, sizeof(struct wd_ctx));
+	ctx_cfg->ctx_num = CTX_NUM;
+	ctx_cfg->ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
 	if (!ctx_cfg->ctxs) {
 		ret = -ENOMEM;
 		goto free_cfg;
 	}
-	ctx_cfg->ctx_num = ctx_num;
-	ret = init_ctx_cfg(ctx_cfg, config, list);
-	if (ret)
-		goto free_ctx;
+
+	for (i = 0; i < CTX_NUM; i++) {
+		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
+		if (!ctx_cfg->ctxs[i].ctx)
+			goto free_ctx;
+		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
+	}
+
 	ret = wd_ecc_init(ctx_cfg, sched);
 	if (ret)
-		goto uninit_ctx;
+		goto free_ctx;
+
 	async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
 	return 0;
-uninit_ctx:
-	uninit_ctx_cfg(ctx_cfg);
 free_ctx:
+	for (i = 0; i < CTX_NUM; i++) {
+		if (ctx_cfg->ctxs[i].ctx) {
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+			ctx_cfg->ctxs[i].ctx = 0;
+		}
+	}
 	free(ctx_cfg->ctxs);
 free_cfg:
 	free(ctx_cfg);
@@ -293,12 +195,14 @@ free_cfg:
 static void uadk_wd_ecc_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
+	int i;
 
 	if (!ctx_cfg)
 		return;
 
 	wd_ecc_uninit();
-	uninit_ctx_cfg(ctx_cfg);
+	for (i = 0; i < ctx_cfg->ctx_num; i++)
+		wd_release_ctx(ctx_cfg->ctxs[i].ctx);
 	free(ctx_cfg->ctxs);
 	free(ctx_cfg);
 	ecc_res.ctx_res = NULL;
@@ -344,13 +248,12 @@ err:
 
 void uadk_init_ecc(void)
 {
+	struct uacce_dev *dev;
 
-	struct uacce_dev_list *list;
-
-	list = wd_get_accel_list("sm2");
-	if (list) {
-		uadk_wd_ecc_init(&ecc_res_config, list);
-		wd_free_list_accels(list);
+	dev = wd_get_accel_dev("sm2");
+	if (dev) {
+		uadk_wd_ecc_init(&ecc_res_config, dev);
+		free(dev);
 	}
 }
 
