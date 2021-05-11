@@ -49,29 +49,29 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 int uadk_bind_pkey(ENGINE *e)
 {
-	struct uacce_dev_list *list;
+	struct uacce_dev *dev;
 	int is_setup_sm2 = 0;
 	int is_setup_ec = 0;
 	int ret;
 
-	list = wd_get_accel_list("sm2");
-	if (list) {
-		wd_free_list_accels(list);
+	dev = wd_get_accel_dev("sm2");
+	if (dev) {
 		if (!uadk_sm2_create_pmeth(&pkey_meth)) {
 			printf("Failed to register sm2 pmeth");
 			return 0;
 		}
 		is_setup_sm2 = 1;
+		free(dev);
 	}
 
-	list = wd_get_accel_list("ecdsa");
-	if (list) {
-		wd_free_list_accels(list);
+	dev = wd_get_accel_dev("ecdsa");
+	if (dev) {
 		if (!uadk_ec_create_pmeth(&pkey_meth)) {
 			printf("Failed to register ec pmeth");
 			goto del_sm2_meth;
 		}
 		is_setup_ec = 1;
+		free(dev);
 	}
 
 	ret = ENGINE_set_pkey_meths(e, get_pkey_meths);
