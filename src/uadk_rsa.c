@@ -12,6 +12,8 @@
  * limitations under the License.
  *
  */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/bn.h>
 #include <openssl/engine.h>
 #include <openssl/ossl_typ.h>
@@ -326,9 +328,11 @@ static int hpre_pubenc_padding(int flen, const unsigned char *from,
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_add_PKCS1_OAEP(buf, num, from, flen, NULL, 0);
 		break;
+#if OPENSSL_API_LEVEL < 30000
 	case RSA_SSLV23_PADDING:
 		ret = RSA_padding_add_SSLv23(buf, num, from, flen);
 		break;
+#endif
 	case RSA_NO_PADDING:
 		ret = RSA_padding_add_none(buf, num, from, flen);
 		break;
@@ -419,9 +423,11 @@ static int hpre_check_pridec_padding(unsigned char *to, int num,
 		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, len, num,
 		NULL, 0);
 		break;
+#if OPENSSL_API_LEVEL < 30000
 	case RSA_SSLV23_PADDING:
 		ret = RSA_padding_check_SSLv23(to, num, buf, len, num);
 		break;
+#endif
 	case RSA_NO_PADDING:
 		memcpy(to, buf, len);
 		ret = len;

@@ -12,6 +12,8 @@
  * limitations under the License.
  *
  */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/bn.h>
 #include <openssl/asn1t.h>
 #include <openssl/evp.h>
@@ -1520,7 +1522,11 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 	return EVP_DigestUpdate(mctx, z, (size_t)mdlen);
 }
 
+#if OPENSSL_API_LEVEL >= 30000
+static int sm2_copy(EVP_PKEY_CTX *dst, const EVP_PKEY_CTX *src)
+#else
 static int sm2_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
+#endif
 {
 	struct sm2_ctx *dctx, *sctx;
 

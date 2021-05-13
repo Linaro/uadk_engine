@@ -13,6 +13,8 @@
  *
  */
 
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <stdio.h>
 #include <string.h>
 #include <dlfcn.h>

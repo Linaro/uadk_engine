@@ -12,6 +12,8 @@
  * limitations under the License.
  *
  */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <errno.h>
 #include <openssl/bn.h>
 #include <openssl/engine.h>

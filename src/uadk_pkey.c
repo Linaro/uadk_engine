@@ -12,6 +12,8 @@
  * limitations under the License.
  *
  */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 #include "uadk_pkey.h"
