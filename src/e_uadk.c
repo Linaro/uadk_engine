@@ -81,11 +81,6 @@ static int bind_fn(ENGINE *e, const char *id)
 {
 	struct uacce_dev *dev;
 
-	if (id && (strcmp(id, engine_uadk_id) != 0)) {
-		fprintf(stderr, "wrong engine id\n");
-		return 0;
-	}
-
 	if (!ENGINE_set_id(e, engine_uadk_id) ||
 	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
 	    !ENGINE_set_init_function(e, uadk_init) ||
