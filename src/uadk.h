@@ -23,7 +23,6 @@ extern void uadk_destroy_cipher(void);
 extern int uadk_bind_digest(ENGINE *e);
 extern void uadk_destroy_digest(void);
 extern void uadk_destroy_rsa(void);
-extern void uadk_init_ecc(void);
 extern void uadk_destroy_ecc(void);
 extern int uadk_bind_rsa(ENGINE *e);
 extern int uadk_bind_pkey(ENGINE *e);
