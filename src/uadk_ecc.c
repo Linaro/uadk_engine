@@ -246,7 +246,7 @@ err:
 	return 0;
 }
 
-void uadk_init_ecc(void)
+static void uadk_init_ecc(void)
 {
 	struct uacce_dev *dev;
 
@@ -1251,6 +1251,9 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 {
 	struct sm2_ctx *smctx;
 	int ret;
+
+	if (!ecc_res.ctx_res)
+		uadk_init_ecc();
 
 	smctx = malloc(sizeof(*smctx));
 	if (!smctx) {

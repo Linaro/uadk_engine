@@ -59,7 +59,6 @@ static int uadk_destroy(ENGINE *e)
 
 static int uadk_init(ENGINE *e)
 {
-	uadk_init_ecc();
 	return 1;
 }
 
