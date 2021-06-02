@@ -85,7 +85,7 @@ enum {
 	MAX_CODE,
 };
 
-int check_bit_useful(const int bit)
+static int check_bit_useful(const int bit)
 {
 	switch (bit) {
 	case RSA1024BITS:
@@ -448,7 +448,7 @@ static int check_rsa_padding(unsigned char *to, int num,
 	return ret;
 }
 
-int check_pubkey_param(const BIGNUM *n, const BIGNUM *e)
+static int check_pubkey_param(const BIGNUM *n, const BIGNUM *e)
 {
 	if (BN_num_bits(n) > OPENSSL_RSA_MAX_MODULUS_BITS)
 		return 0;
@@ -485,7 +485,7 @@ static int hpre_rsa_check(const int flen, const BIGNUM *n, const BIGNUM *e,
 	return 1;
 }
 
-int hpre_get_prienc_res(int padding, BIGNUM *f, const BIGNUM *n, BIGNUM
+static int hpre_get_prienc_res(int padding, BIGNUM *f, const BIGNUM *n, BIGNUM
 			*bn_ret, BIGNUM **res)
 {
 	if (padding == RSA_X931_PADDING) {
@@ -523,7 +523,7 @@ static int rsa_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return 0;
 }
 
-int uadk_rsa_poll(void *ctx)
+static int uadk_rsa_poll(void *ctx)
 {
 	int ret = 0;
 	int expt = 1;
@@ -790,16 +790,11 @@ static int uadk_rsa_sync(handle_t ctx, struct wd_rsa_req *req)
 	return ret;
 }
 
-void uadk_rsa_sync_free(handle_t ctx, struct wd_rsa_req *req)
-{
-	return;
-}
-
 static void uadk_rsa_cb(void)
 {
 }
 
-int uadk_rsa_crypto(handle_t ctx, struct wd_rsa_req *req)
+static int uadk_rsa_crypto(handle_t ctx, struct wd_rsa_req *req)
 {
 	int ret;
 	struct async_op op;
@@ -1210,7 +1205,7 @@ void uadk_destroy_rsa(void)
 	return uadk_wd_rsa_uninit();
 }
 
-RSA_METHOD *uadk_get_rsa_methods(void)
+static RSA_METHOD *uadk_get_rsa_methods(void)
 {
 	int ret;
 
