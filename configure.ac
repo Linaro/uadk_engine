@@ -10,8 +10,12 @@ AC_PROG_CC
 AC_PROG_LIBTOOL
 AM_PROG_LIBTOOL
 
-AC_CHECK_HEADERS([openssl/engine.h])
+AC_ARG_ENABLE(kae,
+	      AS_HELP_STRING([--enable-kae],[Enable kae support]))
+AC_SUBST(enable_kae)
+AM_CONDITIONAL([WD_KAE], [test "$enable_kae" = "yes"])
 
+AC_CHECK_HEADERS([openssl/engine.h])
 
 AC_CONFIG_FILES([
 	Makefile

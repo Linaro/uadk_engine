@@ -20,6 +20,9 @@
 #include <uadk/wd.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#ifdef KAE
+#include "v1/uadk_v1.h"
+#endif
 
 /* Constants used when creating the ENGINE */
 const char *engine_uadk_id = "uadk";
@@ -30,6 +33,14 @@ static int uadk_digest;
 static int uadk_rsa;
 static int uadk_pkey;
 static int uadk_dh;
+
+#ifdef KAE
+static int uadk_cipher_nosva;
+static int uadk_digest_nosva;
+static int uadk_rsa_nosva;
+static int uadk_pkey_nosva;
+static int uadk_dh_nosva;
+#endif
 
 __attribute__((constructor))
 static void uadk_constructor(void)
@@ -43,6 +54,17 @@ static void uadk_destructor(void)
 
 static int uadk_destroy(ENGINE *e)
 {
+#ifdef KAE
+	if (uadk_cipher_nosva)
+		sec_ciphers_free_ciphers();
+	if (uadk_digest_nosva)
+		sec_digests_free_methods();
+	if (uadk_rsa_nosva)
+		hpre_destroy();
+	if (uadk_dh_nosva)
+		hpre_dh_destroy();
+#endif
+
 	if (uadk_cipher)
 		uadk_destroy_cipher();
 	if (uadk_digest)
@@ -88,6 +110,74 @@ static int bind_fn(ENGINE *e, const char *id)
 		fprintf(stderr, "bind failed\n");
 		return 0;
 	}
+
+#ifdef KAE
+	dev = wd_get_accel_dev("cipher");
+	if (dev) {
+		if (!(dev->flags & UACCE_DEV_SVA)) {
+			cipher_module_init();
+			if (!ENGINE_set_ciphers(e, sec_engine_ciphers))
+				fprintf(stderr, "uadk bind cipher failed\n");
+			else
+				uadk_cipher_nosva = 1;
+		}
+		free(dev);
+	}
+
+	dev = wd_get_accel_dev("digest");
+	if (dev) {
+		if (!(dev->flags & UACCE_DEV_SVA)) {
+			digest_module_init();
+			if (!ENGINE_set_digests(e, sec_engine_digests))
+				fprintf(stderr, "uadk bind digest failed\n");
+			else
+				uadk_digest_nosva = 1;
+		}
+		free(dev);
+	}
+
+	dev = wd_get_accel_dev("rsa");
+	if (dev) {
+		if (!(dev->flags & UACCE_DEV_SVA)) {
+			hpre_module_init();
+			if (!ENGINE_set_RSA(e, hpre_get_rsa_methods()))
+				fprintf(stderr, "uadk bind rsa failed\n");
+			else
+				uadk_rsa_nosva = 1;
+		}
+		free(dev);
+	}
+
+	dev = wd_get_accel_dev("dh");
+	if (dev) {
+		if (!(dev->flags & UACCE_DEV_SVA)) {
+			hpre_module_dh_init();
+			if (!ENGINE_set_DH(e, hpre_get_dh_methods()))
+				fprintf(stderr, "uadk bind dh failed\n");
+			else
+				uadk_dh_nosva = 1;
+		}
+		free(dev);
+	}
+
+	dev = wd_get_accel_dev("sm2");
+	if (dev) {
+		if (!(dev->flags & UACCE_DEV_SVA)) {
+			if (!ENGINE_set_pkey_meths(e, hpre_pkey_meths))
+				fprintf(stderr, "uadk bind pkey failed\n");
+			else
+				uadk_pkey_nosva = 1;
+		}
+		free(dev);
+	}
+
+	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
+	   uadk_pkey_nosva || uadk_pkey_nosva) {
+		async_module_init_v1();
+		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
+		return 1;
+	}
+#endif
 
 	async_module_init();
 	pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
