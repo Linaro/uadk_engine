@@ -95,10 +95,12 @@ Build & Install OpenSSL UADK Engine
     git clone https://github.com/Linaro/openssl-uadk.git
 ```
 2. build and install OpenSSL UADK Engine:
+
+   Option --enable-kae can be chosen to enable KAE for non-sva version
 ```
     cd openssl-uadk
     autoreconf -i
-    ./configure --libdir=/usr/local/lib/engines-1.1/
+    ./configure --libdir=/usr/local/lib/engines-1.1/ --enable-kae
     make
     sudo make install
 ```
