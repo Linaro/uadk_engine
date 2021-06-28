@@ -28,4 +28,5 @@ extern int uadk_bind_rsa(ENGINE *e);
 extern int uadk_bind_pkey(ENGINE *e);
 extern void uadk_destroy_dh(void);
 extern int uadk_bind_dh(ENGINE *e);
+extern int uadk_bind_ec(ENGINE *e);
 #endif

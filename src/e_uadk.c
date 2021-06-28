@@ -33,6 +33,7 @@ static int uadk_digest;
 static int uadk_rsa;
 static int uadk_pkey;
 static int uadk_dh;
+static int uadk_ec;
 
 #ifdef KAE
 static int uadk_cipher_nosva;
@@ -209,15 +210,6 @@ static int bind_fn(ENGINE *e, const char *id)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("sm2");
-	if (dev) {
-		if (!uadk_bind_pkey(e))
-			fprintf(stderr, "uadk bind pkey failed\n");
-		else
-			uadk_pkey = 1;
-		free(dev);
-	}
-
 	dev = wd_get_accel_dev("dh");
 	if (dev) {
 		if (!uadk_bind_dh(e))
@@ -226,6 +218,16 @@ static int bind_fn(ENGINE *e, const char *id)
 			uadk_dh = 1;
 		free(dev);
 	}
+
+	if (!uadk_bind_pkey(e))
+		fprintf(stderr, "uadk bind pkey failed\n");
+	else
+		uadk_pkey = 1;
+
+	if (!uadk_bind_ec(e))
+		fprintf(stderr, "uadk bind ec failed\n");
+	else
+		uadk_ec = 1;
 
 	return 1;
 }
