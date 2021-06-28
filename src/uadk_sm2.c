@@ -22,19 +22,6 @@
 #include <uadk/wd_ecc.h>
 #include "uadk.h"
 #include "uadk_pkey.h"
-#include "uadk_async.h"
-
-#define BIT_BYTES_SHIFT			3
-#define ECC_MAX_KEY_BITS		521
-#define ECC_MAX_KEY_BYTES		((ECC_MAX_KEY_BITS + 7) >> BIT_BYTES_SHIFT)
-#define SM2_KEY_BYTES			32
-
-#define ECC_MAX_DEV_NUM			16
-#define CTX_ASYNC	1
-#define CTX_SYNC	0
-#define CTX_NUM		2
-
-#define ECC_DEBUG(fmt, args...)	printf(fmt, ##args)
 
 struct sm2_ctx {
 	handle_t sess;
@@ -97,182 +84,6 @@ ASN1_SEQUENCE(SM2_Ciphertext) = {
 
 IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
 
-static __u32 ecc_pick_next_ctx(handle_t sched_ctx, const void *req,
-			       const struct sched_key *key)
-{
-	const struct wd_ecc_req *ecc_req = req;
-
-	if (ecc_req->cb)
-		return CTX_ASYNC;
-	else
-		return CTX_SYNC;
-}
-
-static int ecc_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
-{
-	return 0;
-}
-
-int uadk_ecc_poll(void *ctx)
-{
-	unsigned int recv = 0;
-	int expt = 1;
-	int ret;
-
-	do {
-		ret = wd_ecc_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (recv >= expt)
-			return 0;
-		else if (ret < 0 && ret != -EAGAIN)
-			return ret;
-	} while (ret == -EAGAIN);
-
-	return ret;
-}
-
-/* make resource configure static */
-struct ecc_res_config ecc_res_config = {
-	.sched = {
-		.sched_type = -1,
-		.wd_sched = {
-			.name = "ECC RR",
-			.pick_next_ctx = ecc_pick_next_ctx,
-			.poll_policy = ecc_poll_policy,
-			.h_sched_ctx = 0,
-		},
-	},
-};
-
-static int uadk_wd_ecc_init(struct ecc_res_config *config,
-			    struct uacce_dev *dev)
-{
-	struct wd_sched *sched = &config->sched.wd_sched;
-	struct wd_ctx_config *ctx_cfg;
-	int ret, i;
-
-	if (ecc_res.ctx_res)
-		return 0;
-
-	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
-	if (!ctx_cfg)
-		return -ENOMEM;
-	ecc_res.ctx_res = ctx_cfg;
-
-	ctx_cfg->ctx_num = CTX_NUM;
-	ctx_cfg->ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
-	if (!ctx_cfg->ctxs) {
-		ret = -ENOMEM;
-		goto free_cfg;
-	}
-
-	for (i = 0; i < CTX_NUM; i++) {
-		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
-		if (!ctx_cfg->ctxs[i].ctx)
-			goto free_ctx;
-		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
-	}
-
-	ret = wd_ecc_init(ctx_cfg, sched);
-	if (ret)
-		goto free_ctx;
-
-	async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
-	return 0;
-free_ctx:
-	for (i = 0; i < CTX_NUM; i++) {
-		if (ctx_cfg->ctxs[i].ctx) {
-			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-			ctx_cfg->ctxs[i].ctx = 0;
-		}
-	}
-	free(ctx_cfg->ctxs);
-free_cfg:
-	free(ctx_cfg);
-	ecc_res.ctx_res = NULL;
-	return ret;
-}
-
-static void uadk_wd_ecc_uninit(void)
-{
-	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
-	int i;
-
-	if (!ctx_cfg)
-		return;
-
-	wd_ecc_uninit();
-	for (i = 0; i < ctx_cfg->ctx_num; i++)
-		wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-	free(ctx_cfg->ctxs);
-	free(ctx_cfg);
-	ecc_res.ctx_res = NULL;
-}
-
-void uadk_destroy_ecc(void)
-{
-	return uadk_wd_ecc_uninit();
-}
-
-static void uadk_ecc_cb(void)
-{
-}
-
-static int uadk_ecc_crypto(struct sm2_ctx *ctx, struct wd_ecc_req *req)
-{
-	int ret;
-	struct async_op op;
-
-	async_setup_async_event_notification(&op);
-	if (op.job != NULL) {
-		req->cb = (void *)uadk_ecc_cb;
-		req->cb_param = req;
-		do {
-			ret = wd_do_ecc_async(ctx->sess, req);
-			if (ret < 0 && ret != -EBUSY)
-				goto err;
-		} while (ret == -EBUSY);
-
-		ret = async_pause_job((void *)ctx, &op, ASYNC_TASK_ECC);
-		if (!ret)
-			goto err;
-	} else {
-		ret = wd_do_ecc_sync(ctx->sess, req);
-		if (ret < 0)
-			return ret;
-	}
-	return 1;
-err:
-	(void)async_clear_async_event_notification();
-	return 0;
-}
-
-static void uadk_init_ecc(void)
-{
-	struct uacce_dev *dev;
-
-	dev = wd_get_accel_dev("sm2");
-	if (dev) {
-		uadk_wd_ecc_init(&ecc_res_config, dev);
-		free(dev);
-	}
-}
-
-static int get_rand(char *out, size_t out_len, void *usr)
-{
-	int ret;
-
-	if (!out)
-		return -1;
-
-	ret = RAND_priv_bytes((void *)out, out_len);
-	if (ret != 1) {
-		printf("RAND_priv_bytes fail = %d\n", ret);
-		return -1;
-	}
-
-		return 0;
-}
-
 static int get_hash_type(int nid_hash)
 {
 	switch (nid_hash) {
@@ -329,7 +140,6 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 
 	memset(&setup, 0, sizeof(setup));
 	setup.alg = "sm2";
-	setup.rand.cb = get_rand;
 	if (smctx->md) {
 		setup.hash.cb = compute_hash;
 		setup.hash.usr = (void *)smctx->md;
@@ -355,45 +165,27 @@ static int update_public_key(EVP_PKEY_CTX *ctx)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	unsigned char *point_bin = NULL;
-	struct wd_ecc_key *ecc_key;
-	struct wd_ecc_point pubkey;
-	unsigned int key_bytes;
-	const EC_POINT *point;
+	EC_KEY *eckey = EVP_PKEY_get0(p_key);
 	const EC_GROUP *group;
-	int ret, len;
+	const EC_POINT *point;
+	int ret;
 
-	point = EC_KEY_get0_public_key(ec);
+	point = EC_KEY_get0_public_key(eckey);
 	if (!point) {
 		printf("pubkey not set!\n");
 		return -EINVAL;
 	}
 
-	group = EC_KEY_get0_group(ec);
 	if (smctx->pubkey) {
+		group = EC_KEY_get0_group(eckey);
 		ret = EC_POINT_cmp(group, (void *)smctx->pubkey, point, NULL);
 		if (!ret)
 			return 0;
 	}
 
-	key_bytes = (EC_GROUP_order_bits(group) + 7) / 8;
-	len = EC_POINT_point2buf(group, point, 4, &point_bin, NULL);
-	if (len != 2 * key_bytes + 1) {
-		printf("EC_POINT_point2buf err.\n");
-		return -EINVAL;
-	}
-
-	pubkey.x.data = (char *)point_bin + 1;
-	pubkey.x.dsize = key_bytes;
-	pubkey.y.data = pubkey.x.data + key_bytes;
-	pubkey.y.dsize = key_bytes;
-	ecc_key = wd_ecc_get_key(smctx->sess);
-	ret = wd_ecc_set_pubkey(ecc_key, &pubkey);
-	if (ret) {
-		free(point_bin);
+	ret = uadk_ecc_set_public_key(smctx->sess, eckey);
+	if (ret)
 		return ret;
-	}
 
 	smctx->pubkey = point;
 	return 0;
@@ -403,14 +195,11 @@ static int update_private_key(EVP_PKEY_CTX *ctx)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	unsigned char bin[ECC_MAX_KEY_BYTES];
-	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	struct wd_ecc_key *ecc_key;
-	struct wd_dtb prikey;
+	EC_KEY *eckey = EVP_PKEY_get0(p_key);
 	const BIGNUM *d;
 	int ret;
 
-	d = EC_KEY_get0_private_key(ec);
+	d = EC_KEY_get0_private_key(eckey);
 	if (!d) {
 		printf("private key not set\n");
 		return -EINVAL;
@@ -419,10 +208,7 @@ static int update_private_key(EVP_PKEY_CTX *ctx)
 	if (smctx->prikey && !BN_cmp(d, smctx->prikey))
 		return 0;
 
-	ecc_key = wd_ecc_get_key(smctx->sess);
-	prikey.data = (void *)bin;
-	prikey.dsize = BN_bn2bin(d, bin);
-	ret = wd_ecc_set_prikey(ecc_key, &prikey);
+	ret = uadk_ecc_set_private_key(smctx->sess, eckey);
 	if (ret)
 		return ret;
 
@@ -531,7 +317,7 @@ static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 
 	len1 = BN_num_bytes(b_r);
 	len2 = BN_num_bytes(b_s);
-	if (len1 > ECC_MAX_KEY_BYTES || len2 > ECC_MAX_KEY_BYTES) {
+	if (len1 > UADK_ECC_MAX_KEY_BYTES || len2 > UADK_ECC_MAX_KEY_BYTES) {
 		printf("r or s bytes = (%d, %d) error\n", len1, len2);
 		ret = -EINVAL;
 		goto free_der;
@@ -644,13 +430,6 @@ free_ctext:
 	return ret;
 }
 
-static void fill_req(struct wd_ecc_req *req, unsigned int op, void *in, void *out)
-{
-	req->op_type = op;
-	req->src = in;
-	req->dst = out;
-}
-
 static size_t ec_field_size(const EC_GROUP *group)
 {
 	/* Is there some simpler way to do this? */
@@ -719,7 +498,7 @@ static int sm2_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 		return -ENOMEM;
 	}
 
-	fill_req(req, WD_SM2_SIGN, ecc_in, ecc_out);
+	uadk_ecc_fill_req(req, WD_SM2_SIGN, ecc_in, ecc_out);
 
 	return 0;
 }
@@ -777,7 +556,7 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_ecc_crypto(smctx, &req);
+	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
 		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -815,7 +594,7 @@ static int sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 		return -ENOMEM;
 	}
 
-	fill_req(req, WD_SM2_VERIFY, ecc_in, NULL);
+	uadk_ecc_fill_req(req, WD_SM2_VERIFY, ecc_in, NULL);
 
 	return 0;
 }
@@ -826,8 +605,8 @@ static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	unsigned char buf_r[ECC_MAX_KEY_BYTES] = { 0 };
-	unsigned char buf_s[ECC_MAX_KEY_BYTES] = { 0 };
+	unsigned char buf_r[UADK_ECC_MAX_KEY_BYTES] = { 0 };
+	unsigned char buf_s[UADK_ECC_MAX_KEY_BYTES] = { 0 };
 	struct wd_dtb e = { 0 };
 	struct wd_dtb r = { 0 };
 	struct wd_dtb s = { 0 };
@@ -836,8 +615,8 @@ static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen
 
 	r.data = (void *)buf_r;
 	s.data = (void *)buf_s;
-	r.bsize = ECC_MAX_KEY_BYTES;
-	s.bsize = ECC_MAX_KEY_BYTES;
+	r.bsize = UADK_ECC_MAX_KEY_BYTES;
+	s.bsize = UADK_ECC_MAX_KEY_BYTES;
 	ret = sig_ber_to_bin(ec, (void *)sig, siglen, &r, &s);
 	if (ret)
 		return ret;
@@ -853,7 +632,7 @@ static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_ecc_crypto(smctx, &req);
+	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
 		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -887,7 +666,7 @@ static int sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 		return -ENOMEM;
 	}
 
-	fill_req(req, WD_SM2_ENCRYPT, ecc_in, ecc_out);
+	uadk_ecc_fill_req(req, WD_SM2_ENCRYPT, ecc_in, ecc_out);
 	return 0;
 }
 
@@ -949,7 +728,7 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_ecc_crypto(smctx, &req);
+	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
 		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -1027,7 +806,7 @@ static int sm2_decrypt_init_iot(handle_t sess,
 		return -ENOMEM;
 	}
 
-	fill_req(req, WD_SM2_DECRYPT, ecc_in, ecc_out);
+	uadk_ecc_fill_req(req, WD_SM2_DECRYPT, ecc_in, ecc_out);
 
 	return 0;
 }
@@ -1088,7 +867,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_ecc_crypto(smctx, &req);
+	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
 		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -1103,131 +882,6 @@ uninit_iot:
 	sm2_decrypt_uninit_iot(smctx->sess, &req);
 free_bin:
 	free(c1.x.data);
-	return ret;
-}
-
-static int sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
-{
-	struct wd_ecc_out *ecc_out;
-
-	ecc_out = wd_sm2_new_kg_out(sess);
-	if (!ecc_out) {
-		printf("Failed to new sign out\n");
-		return -ENOMEM;
-	}
-
-	fill_req(req, WD_SM2_KG, NULL, ecc_out);
-
-	return 0;
-}
-
-static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
-{
-	unsigned char buff[SM2_KEY_BYTES * 2 + 1] = { 0x4 };
-	struct wd_ecc_point *pubkey = NULL;
-	struct wd_dtb *privkey = NULL;
-	const EC_GROUP *group;
-	EC_POINT *point, *ptr;
-	BIGNUM *tmp;
-	int ret;
-
-	wd_sm2_get_kg_out_params(req->dst, &privkey, &pubkey);
-
-	tmp = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
-	ret = EC_KEY_set_private_key(ec, tmp);
-	BN_free(tmp);
-	if (ret != 1) {
-		printf("Failed to EC KEY set private key\n");
-		return ret;
-	}
-
-	group = EC_KEY_get0_group(ec);
-	point = EC_POINT_new(group);
-	if (!point) {
-		printf("Failed to EC POINT new\n");
-		return -ENOMEM;
-	}
-
-	memcpy(buff + 1, pubkey->x.data, SM2_KEY_BYTES * 2);
-	tmp = BN_bin2bn(buff, SM2_KEY_BYTES * 2 + 1, NULL);
-	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
-	BN_free(tmp);
-	if (!ptr) {
-		printf("EC_POINT_bn2point failed\n");
-		EC_POINT_free(point);
-		return -EINVAL;
-	}
-
-	ret = EC_KEY_set_public_key(ec, point);
-	EC_POINT_free(point);
-	if (ret != 1) {
-		printf("EC_KEY_set_public_key failed\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int sm2_keygen_init(EVP_PKEY_CTX *ctx)
-{
-	return 1;
-}
-
-static int sm2_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *ppkey)
-{
-	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
-	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	struct wd_ecc_req req;
-	EC_KEY *ec;
-	int ret;
-
-	if (p_key == NULL && smctx->gen_group == NULL) {
-		printf("no parameters set\n");
-		return 0;
-	}
-
-	ec = EC_KEY_new();
-	if (ec == NULL) {
-		printf("Failed to EC KEY new\n");
-		return -ENOMEM;
-	}
-	EVP_PKEY_set1_EC_KEY(p_key, ec);
-
-	if (!EVP_PKEY_assign_EC_KEY(ppkey, ec)) {
-		printf("Failed to EVP PKEY assign EC KEY\n");
-		EC_KEY_free(ec);
-		return 0;
-	}
-	/* Note: if error is returned, we count on caller to free
-	 * pkey->pkey.ec
-	 */
-	if (p_key != NULL)
-		ret = EVP_PKEY_copy_parameters(ppkey, p_key);
-	else
-		ret = EC_KEY_set_group(ec, smctx->gen_group);
-	if (ret != 1) {
-		printf("Failed to set group\n");
-		return ret;
-	}
-
-	memset(&req, 0, sizeof(req));
-	ret = sm2_keygen_init_iot(smctx->sess, &req);
-	if (ret)
-		return ret;
-
-	ret = uadk_ecc_crypto(smctx, &req);
-	if (ret != 1) {
-		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
-		goto uninit_iot;
-	}
-
-	ret = set_key_to_ec_key(ec, &req);
-	if (ret)
-		goto uninit_iot;
-
-	ret = 1;
-uninit_iot:
-	wd_ecc_del_out(smctx->sess, req.dst);
 	return ret;
 }
 
@@ -1252,8 +906,11 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	struct sm2_ctx *smctx;
 	int ret;
 
-	if (!ecc_res.ctx_res)
-		uadk_init_ecc();
+	ret = uadk_init_ecc();
+	if (ret) {
+		printf("failed to uadk_init_ecc, ret = %d\n", ret);
+		return -1;
+	}
 
 	smctx = malloc(sizeof(*smctx));
 	if (!smctx) {
@@ -1558,11 +1215,21 @@ static int sm2_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
 
 int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 {
+	const EVP_PKEY_METHOD *openssl_meth;
 	EVP_PKEY_METHOD *meth;
 
 	meth = EVP_PKEY_meth_new(EVP_PKEY_SM2, 0);
-	if (meth == NULL)
+	if (meth == NULL) {
+		printf("failed to EVP_PKEY_meth_new\n");
 		return 0;
+	}
+
+	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	EVP_PKEY_meth_copy(meth, openssl_meth);
+	pkey_meth->sm2 = meth;
+
+	if (!uadk_support_algorithm("sm2"))
+		return 1;
 
 	EVP_PKEY_meth_set_init(meth, sm2_init);
 	EVP_PKEY_meth_set_copy(meth, sm2_copy);
@@ -1574,7 +1241,6 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	EVP_PKEY_meth_set_sign(meth, sm2_sign_init, sm2_sign);
 	EVP_PKEY_meth_set_verify(meth, sm2_verify_init, sm2_verify);
 
-	pkey_meth->sm2 = meth;
 	return 1;
 }
 
@@ -1587,29 +1253,3 @@ void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
 	pkey_meth->sm2 = NULL;
 }
 
-int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	EVP_PKEY_METHOD *meth;
-
-	meth = EVP_PKEY_meth_new(EVP_PKEY_EC, 0);
-	if (meth == NULL)
-		return 0;
-
-	EVP_PKEY_meth_set_init(meth, sm2_init);
-	EVP_PKEY_meth_set_copy(meth, sm2_copy);
-	EVP_PKEY_meth_set_ctrl(meth, sm2_ctrl, sm2_ctrl_str);
-	EVP_PKEY_meth_set_cleanup(meth, sm2_cleanup);
-	EVP_PKEY_meth_set_keygen(meth, sm2_keygen_init, sm2_keygen);
-
-	pkey_meth->ec = meth;
-	return 1;
-}
-
-void uadk_ec_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	if (!pkey_meth->ec)
-		return;
-
-	EVP_PKEY_meth_free(pkey_meth->ec);
-	pkey_meth->ec = NULL;
-}

@@ -31,8 +31,8 @@ static const char *engine_uadk_name = "uadk hardware engine support";
 static int uadk_cipher;
 static int uadk_digest;
 static int uadk_rsa;
-static int uadk_pkey;
 static int uadk_dh;
+static int uadk_ecc;
 
 #ifdef KAE
 static int uadk_cipher_nosva;
@@ -71,7 +71,7 @@ static int uadk_destroy(ENGINE *e)
 		uadk_destroy_digest();
 	if (uadk_rsa)
 		uadk_destroy_rsa();
-	if (uadk_pkey)
+	if (uadk_ecc)
 		uadk_destroy_ecc();
 	if (uadk_dh)
 		uadk_destroy_dh();
@@ -209,15 +209,6 @@ static int bind_fn(ENGINE *e, const char *id)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("sm2");
-	if (dev) {
-		if (!uadk_bind_pkey(e))
-			fprintf(stderr, "uadk bind pkey failed\n");
-		else
-			uadk_pkey = 1;
-		free(dev);
-	}
-
 	dev = wd_get_accel_dev("dh");
 	if (dev) {
 		if (!uadk_bind_dh(e))
@@ -226,6 +217,11 @@ static int bind_fn(ENGINE *e, const char *id)
 			uadk_dh = 1;
 		free(dev);
 	}
+
+	if (!uadk_bind_ecc(e))
+		fprintf(stderr, "uadk bind ecc failed\n");
+	else
+		uadk_ecc = 1;
 
 	return 1;
 }
