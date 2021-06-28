@@ -25,7 +25,7 @@ extern void uadk_destroy_digest(void);
 extern void uadk_destroy_rsa(void);
 extern void uadk_destroy_ecc(void);
 extern int uadk_bind_rsa(ENGINE *e);
-extern int uadk_bind_pkey(ENGINE *e);
 extern void uadk_destroy_dh(void);
 extern int uadk_bind_dh(ENGINE *e);
+extern int uadk_bind_ecc(ENGINE *e);
 #endif
