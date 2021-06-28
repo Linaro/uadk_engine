@@ -205,3 +205,16 @@ xxd secret1.bin
 xxd secret2.bin
 ```
 secret1.bin and secret2.bin should be the same.
+
+7. SM2
+```
+openssl speed -elapsed -engine uadk sm2
+openssl speed -elapsed -engine uadk -async_jobs 1 sm2
+openssl ecparam -genkey -name SM2 -out SM2PrivateKey.pem
+openssl ec -in SM2PrivateKey.pem -pubout -out SM2PublicKey.pem
+```
+8. ECDSA
+```
+openssl speed -elapsed -engine uadk ecdsap256
+openssl speed -elapsed -engine uadk -async_jobs 1 ecdsap256
+```
