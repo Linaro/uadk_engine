@@ -82,3 +82,16 @@ if [[ $algs =~ "RSA" ]]; then
 	openssl speed -elapsed -engine $engine_id rsa4096
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 rsa4096
 fi
+
+#ecdsa only supported in Kunpeng930 or later
+if [[ $algs =~ "id-ecPublicKey" ]]; then
+	echo "testing ECDSA"
+	openssl speed -elapsed -engine $engine_id ecdsap224
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap224
+	openssl speed -elapsed -engine $engine_id ecdsap256
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap256
+	openssl speed -elapsed -engine $engine_id ecdsap384
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap384
+	openssl speed -elapsed -engine $engine_id ecdsap521
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap521
+fi
