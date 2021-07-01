@@ -17,6 +17,9 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 
+#define OPENSSL_SUCCESS 1
+#define OPENSSL_FAIL    0
+
 extern const char *engine_uadk_id;
 extern int uadk_bind_cipher(ENGINE *e);
 extern void uadk_destroy_cipher(void);
