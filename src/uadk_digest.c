@@ -27,7 +27,9 @@
 #define CTX_ASYNC	1
 #define CTX_NUM		2
 
-#define BUF_LEN (16 * 1024 * 1024)
+/* The max BD data length is 16M-512B */
+#define BUF_LEN      0xFFFE00
+
 #define SM3_DIGEST_LENGTH	32
 #define SM3_CBLOCK		64
 
@@ -43,8 +45,9 @@ struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
-	unsigned char data[BUF_LEN];
+	unsigned char *data;
 	long tail;
+	int copy;
 };
 
 static int digest_nids[] = {
@@ -234,6 +237,9 @@ static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 
 	if ((data_len < BUF_LEN - priv->tail) && (data_len > 0)) {
+		if (!priv->data)
+			priv->data = OPENSSL_malloc(BUF_LEN);
+
 		memcpy(priv->data + priv->tail, data, data_len);
 		priv->tail += data_len;
 
@@ -298,12 +304,43 @@ err:
 
 static int uadk_digest_cleanup(EVP_MD_CTX *ctx)
 {
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+
+	if (!priv)
+		return 1;
+
+	if (priv->copy)
+		return 1;
+
+	if (priv && priv->data)
+		OPENSSL_free(priv->data);
+
+	return 1;
+}
+
+static int uadk_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
+{
+	struct digest_priv_ctx *f =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(from);
+	struct digest_priv_ctx *t =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(to);
+
+	/*
+	 * EVP_MD_CTX_copy will copy from->priv to to->priv,
+	 * including data pointer. Instead of coping data contents,
+	 * add a flag to prevent double-free.
+	 */
+
+	if (f && f->data)
+		t->copy = 1;
+
 	return 1;
 }
 
 
 #define UADK_DIGEST_DESCR(name, pkey_type, md_size, flags,		\
-	block_size, ctx_size, init, update, final, cleanup)		\
+	block_size, ctx_size, init, update, final, cleanup, copy)	\
 do { \
 	uadk_##name = EVP_MD_meth_new(NID_##name, NID_##pkey_type);	\
 	if (uadk_##name == 0 ||						\
@@ -314,7 +351,8 @@ do { \
 	    !EVP_MD_meth_set_init(uadk_##name, init) ||			\
 	    !EVP_MD_meth_set_update(uadk_##name, update) ||		\
 	    !EVP_MD_meth_set_final(uadk_##name, final) ||		\
-	    !EVP_MD_meth_set_cleanup(uadk_##name, cleanup))		\
+	    !EVP_MD_meth_set_cleanup(uadk_##name, cleanup) ||		\
+	    !EVP_MD_meth_set_copy(uadk_##name, copy))			\
 		return 0; \
 } while (0)
 
@@ -324,27 +362,32 @@ int uadk_bind_digest(ENGINE *e)
 			  0, MD5_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_digest_init, uadk_digest_update,
-			  uadk_digest_final, uadk_digest_cleanup);
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sm3, sm3WithRSAEncryption, SM3_DIGEST_LENGTH,
 			  0, SM3_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_digest_init, uadk_digest_update,
-			  uadk_digest_final, uadk_digest_cleanup);
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sha1, sha1WithRSAEncryption, 20,
 			  EVP_MD_FLAG_FIPS, 64,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_digest_init, uadk_digest_update,
-			  uadk_digest_final, uadk_digest_cleanup);
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sha256, sha256WithRSAEncryption, 32,
 			  EVP_MD_FLAG_FIPS, 64,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_digest_init, uadk_digest_update,
-			  uadk_digest_final, uadk_digest_cleanup);
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sha512, sha512WithRSAEncryption, 64,
 			  EVP_MD_FLAG_FIPS, 128,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_digest_init, uadk_digest_update,
-			  uadk_digest_final, uadk_digest_cleanup);
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 
 	return ENGINE_set_digests(e, uadk_engine_digests);
 }
