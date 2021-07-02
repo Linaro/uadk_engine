@@ -55,6 +55,7 @@ static int digest_nids[] = {
 	NID_sm3,
 	NID_sha1,
 	NID_sha256,
+	NID_sha384,
 	NID_sha512,
 	0,
 	};
@@ -63,6 +64,7 @@ static EVP_MD *uadk_md5;
 static EVP_MD *uadk_sm3;
 static EVP_MD *uadk_sha1;
 static EVP_MD *uadk_sha256;
+static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
 static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
@@ -217,6 +219,12 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 		priv->setup.alg = WD_DIGEST_SHA256;
 		priv->req.out_buf_bytes = 32;
 		priv->req.out_bytes = 32;
+		break;
+	case NID_sha384:
+		priv->setup.mode = WD_DIGEST_NORMAL; // fixme: how to distinguish hmac
+		priv->setup.alg = WD_DIGEST_SHA384;
+		priv->req.out_buf_bytes = 48;
+		priv->req.out_bytes = 48;
 		break;
 	case NID_sha512:
 		priv->setup.mode = WD_DIGEST_NORMAL; // fixme: how to distinguish hmac
@@ -382,6 +390,12 @@ int uadk_bind_digest(ENGINE *e)
 			  uadk_digest_init, uadk_digest_update,
 			  uadk_digest_final, uadk_digest_cleanup,
 			  uadk_digest_copy);
+	UADK_DIGEST_DESCR(sha384, sha384WithRSAEncryption, 48,
+			  EVP_MD_FLAG_FIPS, 128,
+			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
+			  uadk_digest_init, uadk_digest_update,
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sha512, sha512WithRSAEncryption, 64,
 			  EVP_MD_FLAG_FIPS, 128,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
@@ -411,6 +425,8 @@ void uadk_destroy_digest(void)
 	uadk_sha1 = 0;
 	EVP_MD_meth_free(uadk_sha256);
 	uadk_sha256 = 0;
+	EVP_MD_meth_free(uadk_sha384);
+	uadk_sha384 = 0;
 	EVP_MD_meth_free(uadk_sha512);
 	uadk_sha512 = 0;
 }
