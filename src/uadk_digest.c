@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 #include <openssl/engine.h>
 #include <openssl/md5.h>
+#include <openssl/evp.h>
 #include <uadk/wd_cipher.h>
 #include <uadk/wd_digest.h>
 #include "uadk.h"
@@ -41,6 +42,18 @@ struct digest_engine {
 
 static struct digest_engine engine;
 
+struct evp_md_ctx_st {
+	const EVP_MD *digest;
+	/* functional reference if 'digest' is ENGINE-provided */
+	ENGINE *engine;
+	unsigned long flags;
+	void *md_data;
+	/* Public key context for sign/verify */
+	EVP_PKEY_CTX *pctx;
+	/* Update function: usually copied from EVP_MD */
+	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
+} /* EVP_MD_CTX */;
+
 struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
@@ -48,6 +61,8 @@ struct digest_priv_ctx {
 	unsigned char *data;
 	long tail;
 	int copy;
+	uint32_t     e_nid;
+	EVP_MD_CTX *soft_ctx;
 };
 
 static int digest_nids[] = {
@@ -67,6 +82,72 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
+static const EVP_MD *uadk_digests_soft_md(uint32_t e_nid)
+{
+	const EVP_MD *digest_md = NULL;
+
+	switch (e_nid) {
+	case NID_sm3:
+		digest_md = EVP_sm3();
+		break;
+	case NID_md5:
+		digest_md = EVP_md5();
+		break;
+	case NID_sha1:
+		digest_md = EVP_sha1();
+		break;
+	case NID_sha256:
+		digest_md = EVP_sha256();
+		break;
+	case NID_sha384:
+		digest_md = EVP_sha384();
+		break;
+	case NID_sha512:
+		digest_md = EVP_sha512();
+		break;
+	default:
+		break;
+	}
+	return digest_md;
+}
+
+static int uadk_digest_soft_work(struct digest_priv_ctx *md_ctx, int len, unsigned char *digest)
+{
+	const EVP_MD *digest_md = NULL;
+	EVP_MD_CTX *ctx;
+	int ctx_len;
+
+	if (unlikely(md_ctx->soft_ctx == NULL))
+		md_ctx->soft_ctx = EVP_MD_CTX_new();
+
+	ctx = md_ctx->soft_ctx;
+
+	digest_md = uadk_digests_soft_md(md_ctx->e_nid);
+	if (unlikely(digest_md == NULL)) {
+		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
+		return 0;
+	}
+
+	ctx_len = EVP_MD_meth_get_app_datasize(digest_md);
+	if (ctx->md_data == NULL)
+		ctx->md_data = OPENSSL_malloc(ctx_len);
+
+	(void)EVP_MD_meth_get_init(digest_md)(ctx);
+
+	(void)EVP_MD_meth_get_update(digest_md)(ctx, md_ctx->data, len);
+
+	(void)EVP_MD_meth_get_final(digest_md)(ctx, digest);
+
+	if (ctx->md_data)
+		OPENSSL_free(ctx->md_data);
+
+	if (md_ctx->soft_ctx != NULL) {
+		EVP_MD_CTX_free(md_ctx->soft_ctx);
+		md_ctx->soft_ctx = NULL;
+	}
+
+	return 1;
+}
 static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 			       const int **nids, int nid)
 {
@@ -275,6 +356,8 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.in = priv->data;
 	priv->req.out = digest;
 	priv->req.in_bytes = priv->tail;
+	priv->soft_ctx = EVP_MD_CTX_new();
+	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	async_setup_async_event_notification(&op);
 	if (op.job == NULL) {
@@ -304,10 +387,13 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	return 1;
 
 err:
+	fprintf(stderr, "do sec digest failed, switch to soft digest.\n");
+	ret = uadk_digest_soft_work(priv, priv->tail, digest);
+
 	if (priv->sess)
 		wd_digest_free_sess(priv->sess);
 	async_clear_async_event_notification();
-	return 0;
+	return ret;
 }
 
 static int uadk_digest_cleanup(EVP_MD_CTX *ctx)
