@@ -69,6 +69,7 @@ static int digest_nids[] = {
 	NID_md5,
 	NID_sm3,
 	NID_sha1,
+	NID_sha224,
 	NID_sha256,
 	NID_sha384,
 	NID_sha512,
@@ -78,6 +79,7 @@ static int digest_nids[] = {
 static EVP_MD *uadk_md5;
 static EVP_MD *uadk_sm3;
 static EVP_MD *uadk_sha1;
+static EVP_MD *uadk_sha224;
 static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
@@ -95,6 +97,9 @@ static const EVP_MD *uadk_digests_soft_md(uint32_t e_nid)
 		break;
 	case NID_sha1:
 		digest_md = EVP_sha1();
+		break;
+	case NID_sha224:
+		digest_md = EVP_sha224();
 		break;
 	case NID_sha256:
 		digest_md = EVP_sha256();
@@ -167,6 +172,9 @@ static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 		break;
 	case NID_sha1:
 		*digest = uadk_sha1;
+		break;
+	case NID_sha224:
+		*digest = uadk_sha224;
 		break;
 	case NID_sha256:
 		*digest = uadk_sha256;
@@ -294,6 +302,12 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 		priv->setup.alg = WD_DIGEST_SHA1;
 		priv->req.out_buf_bytes = 20;
 		priv->req.out_bytes = 20;
+		break;
+	case NID_sha224:
+		priv->setup.mode = WD_DIGEST_NORMAL; // fixme: how to distinguish hmac
+		priv->setup.alg = WD_DIGEST_SHA224;
+		priv->req.out_buf_bytes = 28;
+		priv->req.out_bytes = 28;
 		break;
 	case NID_sha256:
 		priv->setup.mode = WD_DIGEST_NORMAL; // fixme: how to distinguish hmac
@@ -470,6 +484,12 @@ int uadk_bind_digest(ENGINE *e)
 			  uadk_digest_init, uadk_digest_update,
 			  uadk_digest_final, uadk_digest_cleanup,
 			  uadk_digest_copy);
+	UADK_DIGEST_DESCR(sha224, sha224WithRSAEncryption, 28,
+			  EVP_MD_FLAG_FIPS, 64,
+			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
+			  uadk_digest_init, uadk_digest_update,
+			  uadk_digest_final, uadk_digest_cleanup,
+			  uadk_digest_copy);
 	UADK_DIGEST_DESCR(sha256, sha256WithRSAEncryption, 32,
 			  EVP_MD_FLAG_FIPS, 64,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
@@ -509,6 +529,8 @@ void uadk_destroy_digest(void)
 	uadk_sm3 = 0;
 	EVP_MD_meth_free(uadk_sha1);
 	uadk_sha1 = 0;
+	EVP_MD_meth_free(uadk_sha224);
+	uadk_sha224 = 0;
 	EVP_MD_meth_free(uadk_sha256);
 	uadk_sha256 = 0;
 	EVP_MD_meth_free(uadk_sha384);
