@@ -35,15 +35,12 @@ struct digest_engine {
 
 static struct digest_engine engine;
 
-#define KEY_LEN 64
 #define IV_LEN 16
-
 
 struct cipher_priv_ctx {
 	handle_t sess;
 	struct wd_cipher_sess_setup setup;
 	struct wd_cipher_req req;
-	unsigned char key[KEY_LEN];
 	unsigned char iv[IV_LEN];
 };
 
@@ -250,6 +247,7 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
 	int nid = EVP_CIPHER_CTX_nid(ctx);
+	int ret;
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION;
@@ -258,9 +256,6 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	if (iv)
 		memcpy(priv->iv, iv, EVP_CIPHER_CTX_iv_length(ctx));
-
-	if (key)
-		memcpy(priv->key, key, EVP_CIPHER_CTX_key_length(ctx));
 
 	switch (nid) {
 	case NID_aes_128_cbc:
@@ -346,6 +341,14 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	if (!priv->sess)
 		return 0;
 
+	if (key) {
+		ret = wd_cipher_set_key(priv->sess, key, EVP_CIPHER_CTX_key_length(ctx));
+		if (ret) {
+			wd_cipher_free_sess(priv->sess);
+			return 0;
+		}
+	}
+
 	return 1;
 }
 
@@ -373,10 +376,6 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	int ret;
 
 	uadk_init_cipher();
-
-	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));
-	if (ret)
-		goto out_sess;
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
@@ -410,9 +409,6 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 out_notify:
 	async_clear_async_event_notification();
-out_sess:
-	if (priv->sess)
-		wd_cipher_free_sess(priv->sess);
 	return 0;
 }
 
