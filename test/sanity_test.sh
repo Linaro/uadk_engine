@@ -28,8 +28,12 @@ if [[ $algs =~ "SHA" ]]; then
 	echo "testing SHA"
 	openssl speed -engine $engine_id -evp sha1
 	openssl speed -engine $engine_id -async_jobs 1 -evp sha1
+	openssl speed -engine $engine_id -evp sha224
+	openssl speed -engine $engine_id -async_jobs 1 -evp sha224
 	openssl speed -engine $engine_id -evp sha256
 	openssl speed -engine $engine_id -async_jobs 1 -evp sha256
+	openssl speed -engine $engine_id -evp sha384
+	openssl speed -engine $engine_id -async_jobs 1 -evp sha384
 	openssl speed -engine $engine_id -evp sha512
 	openssl speed -engine $engine_id -async_jobs 1 -evp sha512
 fi
