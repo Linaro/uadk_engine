@@ -61,7 +61,7 @@ struct digest_priv_ctx {
 	unsigned char *data;
 	long tail;
 	int copy;
-	uint32_t     e_nid;
+	uint32_t e_nid;
 	EVP_MD_CTX *soft_ctx;
 };
 
@@ -117,7 +117,7 @@ static int uadk_digest_soft_work(struct digest_priv_ctx *md_ctx, int len, unsign
 	EVP_MD_CTX *ctx;
 	int ctx_len;
 
-	if (unlikely(md_ctx->soft_ctx == NULL))
+	if (md_ctx->soft_ctx == NULL)
 		md_ctx->soft_ctx = EVP_MD_CTX_new();
 
 	ctx = md_ctx->soft_ctx;
@@ -356,7 +356,6 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.in = priv->data;
 	priv->req.out = digest;
 	priv->req.in_bytes = priv->tail;
-	priv->soft_ctx = EVP_MD_CTX_new();
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	async_setup_async_event_notification(&op);
