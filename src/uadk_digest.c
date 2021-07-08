@@ -14,6 +14,7 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <dlfcn.h>
 #include <openssl/engine.h>
@@ -60,7 +61,7 @@ struct digest_priv_ctx {
 	struct wd_digest_req req;
 	unsigned char *data;
 	long tail;
-	int copy;
+	bool copy;
 	uint32_t e_nid;
 	EVP_MD_CTX *soft_ctx;
 };
@@ -440,7 +441,7 @@ static int uadk_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	 */
 
 	if (f && f->data)
-		t->copy = 1;
+		t->copy = true;
 
 	return 1;
 }
