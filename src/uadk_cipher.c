@@ -291,8 +291,14 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
-	int nid = EVP_CIPHER_CTX_nid(ctx);
-	int ret;
+	int nid, ret;
+
+	if (unlikely(key == NULL)) {
+		fprintf(stderr, "set key is NULL");
+		return 0;
+	}
+
+	nid = EVP_CIPHER_CTX_nid(ctx);
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION;
@@ -454,6 +460,11 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		(struct cipher_priv_ctx *) EVP_CIPHER_CTX_get_cipher_data(ctx);
 	struct async_op op;
 	int ret;
+
+	if (unlikely(inlen == 0)) {
+		fprintf(stderr, "input length is zero.");
+		return 0;
+	}
 
 	uadk_init_cipher();
 
