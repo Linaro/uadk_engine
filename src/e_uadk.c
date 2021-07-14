@@ -191,14 +191,10 @@ static int bind_fn(ENGINE *e, const char *id)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("digest");
-	if (dev) {
-		if (!uadk_bind_digest(e))
-			fprintf(stderr, "uadk bind digest failed\n");
-		else
-			uadk_digest = 1;
-		free(dev);
-	}
+	if (!uadk_bind_digest(e))
+		fprintf(stderr, "uadk bind digest failed\n");
+	else
+		uadk_digest = 1;
 
 	dev = wd_get_accel_dev("rsa");
 	if (dev) {
