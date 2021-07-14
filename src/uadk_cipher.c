@@ -44,7 +44,28 @@ struct cipher_priv_ctx {
 	unsigned char iv[IV_LEN];
 };
 
-static int cipher_nids[] = {
+static int platform;
+
+static int cipher_920_nids[] = {
+	NID_aes_128_cbc,
+	NID_aes_192_cbc,
+	NID_aes_256_cbc,
+	NID_aes_128_ctr,
+	NID_aes_192_ctr,
+	NID_aes_256_ctr,
+	NID_aes_128_ecb,
+	NID_aes_192_ecb,
+	NID_aes_256_ecb,
+	NID_aes_128_xts,
+	NID_aes_256_xts,
+	NID_sm4_cbc,
+	NID_sm4_ecb,
+	NID_des_ede3_cbc,
+	NID_des_ede3_ecb,
+	0,
+};
+
+static int cipher_930_nids[] = {
 	NID_aes_128_cbc,
 	NID_aes_192_cbc,
 	NID_aes_256_cbc,
@@ -70,7 +91,7 @@ static int cipher_nids[] = {
 	NID_sm4_ofb128,
 	NID_sm4_ctr,
 	0,
-	};
+};
 
 static EVP_CIPHER *uadk_aes_128_cbc;
 static EVP_CIPHER *uadk_aes_192_cbc;
@@ -101,10 +122,31 @@ static int uadk_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 			       const int **nids, int nid)
 {
 	int ok = 1;
+	int size = 0;
+	int *cipher_nids;
+	int i;
+
+	if (platform == KUNPENG920) {
+		size = (sizeof(cipher_920_nids) - 1) / sizeof(int);
+		cipher_nids = cipher_920_nids;
+	} else {
+		size = (sizeof(cipher_930_nids) - 1) / sizeof(int);
+		cipher_nids = cipher_930_nids;
+	}
 
 	if (!cipher) {
 		*nids = cipher_nids;
-		return (sizeof(cipher_nids) - 1) / sizeof(cipher_nids[0]);
+		return size;
+	}
+
+	for (i = 0; i < size; i++) {
+		if (nid == cipher_nids[i])
+			break;
+	}
+
+	if (i == size) {
+		*cipher = NULL;
+		return 0;
 	}
 
 	switch (nid) {
@@ -521,6 +563,18 @@ do { \
 
 int uadk_bind_cipher(ENGINE *e)
 {
+	struct uacce_dev *dev;
+
+	dev = wd_get_accel_dev("cipher");
+	if (dev == NULL)
+		return 0;
+
+	if (!strcmp(dev->api, "hisi_qm_v2"))
+		platform = KUNPENG920;
+	else
+		platform = KUNPENG930;
+	free(dev);
+
 	UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,

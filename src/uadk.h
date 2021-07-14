@@ -17,6 +17,11 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 
+enum {
+	KUNPENG920,
+	KUNPENG930,
+};
+
 extern const char *engine_uadk_id;
 extern int uadk_bind_cipher(ENGINE *e);
 extern void uadk_destroy_cipher(void);
