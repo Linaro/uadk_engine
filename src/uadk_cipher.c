@@ -495,6 +495,18 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 {
 }
 
+static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
+{
+	if (priv->setup.mode == WD_CIPHER_CBC) {
+		int iv_bytes = priv->req.iv_bytes;
+
+		if (priv->req.op_type == WD_CIPHER_ENCRYPTION) {
+			priv->req.dst += priv->req.in_bytes;
+			memcpy(priv->iv, priv->req.dst - iv_bytes, iv_bytes);
+		}
+	}
+}
+
 static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			  const unsigned char *in, size_t inlen)
 {
@@ -537,6 +549,8 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		if (!ret)
 			goto out_notify;
 	}
+
+	uadk_cipher_update_priv_ctx(priv);
 
 	return 1;
 
