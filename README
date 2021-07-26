@@ -103,7 +103,7 @@ openssl genrsa -out prikey.pem -engine uadk 2048
 openssl rsa -in prikey.pem -pubout -out pubkey.pem -engine uadk
 openssl rsautl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt -engine uadk
 openssl rsautl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt -engine uadk
-openssl rsautl -sign -in msg.txt -inkey prikey.pem -out sgined.txt -engine uadk
+openssl rsautl -sign -in msg.txt -inkey prikey.pem -out signed.txt -engine uadk
 openssl rsautl -verify -in signed.txt -inkey pubkey.pem -pubin -out verified.txt -engine uadk
 openssl speed -elapsed -engine uadk rsa2048
 openssl speed -elapsed -engine uadk -async_jobs 10 rsa2048
