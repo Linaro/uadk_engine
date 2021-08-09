@@ -1232,6 +1232,9 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	const EVP_PKEY_METHOD *openssl_meth;
 	EVP_PKEY_METHOD *meth;
 
+	if (pkey_meth->sm2)
+		return 1;
+
 	meth = EVP_PKEY_meth_new(EVP_PKEY_SM2, 0);
 	if (meth == NULL) {
 		printf("failed to EVP_PKEY_meth_new\n");
@@ -1257,13 +1260,3 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 
 	return 1;
 }
-
-void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	if (!pkey_meth->sm2)
-		return;
-
-	EVP_PKEY_meth_free(pkey_meth->sm2);
-	pkey_meth->sm2 = NULL;
-}
-

@@ -404,6 +404,8 @@ const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid)
 static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 			  const int **nids, int nid)
 {
+	int ret;
+
 	if (!pmeth) {
 		*nids = pkey_nids;
 		return 2;
@@ -411,9 +413,19 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 	switch (nid) {
 	case EVP_PKEY_SM2:
+		ret = uadk_sm2_create_pmeth(&pkey_meth);
+		if (!ret) {
+			printf("failed to register sm2 pmeth");
+			return 0;
+		}
 		*pmeth = pkey_meth.sm2;
 		break;
 	case EVP_PKEY_EC:
+		ret = uadk_ec_create_pmeth(&pkey_meth);
+		if (!ret) {
+			printf("failed to register ec pmeth");
+			return 0;
+		}
 		*pmeth = pkey_meth.ec;
 		break;
 	default:
@@ -426,40 +438,8 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 static int uadk_ecc_bind_pmeth(ENGINE *e)
 {
-	int ret = 0;
-
-	if (!uadk_sm2_create_pmeth(&pkey_meth)) {
-		printf("Failed to register sm2 pmeth");
-		return 0;
-	}
-
-	if (!uadk_ec_create_pmeth(&pkey_meth)) {
-		printf("Failed to register ec pmeth");
-		goto del_sm2_meth;
-	}
-
-	ret = ENGINE_set_pkey_meths(e, get_pkey_meths);
-	if (!ret) {
-		printf("Failed to engine set pkey meths, ret = %d\n", ret);
-		goto del_ec_meth;
-	}
-
-	return 1;
-
-del_ec_meth:
-	uadk_ec_delete_pmeth(&pkey_meth);
-del_sm2_meth:
-	uadk_sm2_delete_pmeth(&pkey_meth);
-
-	return ret;
+	return ENGINE_set_pkey_meths(e, get_pkey_meths);
 }
-
-static void uadk_ecc_delete_pmeth(void)
-{
-	uadk_ec_delete_pmeth(&pkey_meth);
-	uadk_sm2_delete_pmeth(&pkey_meth);
-}
-
 
 int uadk_bind_ecc(ENGINE *e)
 {
@@ -474,7 +454,6 @@ int uadk_bind_ecc(ENGINE *e)
 	ret = uadk_bind_ec(e);
 	if (!ret) {
 		printf("failed to bind ec\n");
-		uadk_ecc_delete_pmeth();
 		return ret;
 	}
 
@@ -483,7 +462,6 @@ int uadk_bind_ecc(ENGINE *e)
 
 void uadk_destroy_ecc(void)
 {
-	uadk_ecc_delete_pmeth();
 	uadk_ec_delete_meth();
 	uadk_uninit_ecc();
 }

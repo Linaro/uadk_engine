@@ -53,9 +53,7 @@ int uadk_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 int uadk_init_ecc(void);
 const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid);
 int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
-void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
-void uadk_ec_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_ec_delete_meth(void);
 int uadk_bind_ec(ENGINE *e);
 
