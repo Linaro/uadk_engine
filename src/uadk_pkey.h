@@ -21,6 +21,8 @@
 
 #define UADK_PKEY_DEBUG(fmt, args...)	printf(fmt, ##args)
 
+#define UADK_ARRAY_SIZE(array)	(sizeof(array) / sizeof(array[0]))
+
 #define UADK_DO_SOFT		(-0xE0)
 
 #define UADK_ECC_MAX_KEY_BITS	521
@@ -28,12 +30,15 @@
 #define UADK_ECC_CV_PARAM_NUM	6
 #define UADK_BITS_2_BYTES_SHIFT	3
 #define SM2_KEY_BYTES		32
+#define UADK_OCTET_STRING	4
+
 
 struct uadk_pkey_meth {
 	EVP_PKEY_METHOD *sm2;
 	EVP_PKEY_METHOD *ec;
 };
 
+bool uadk_is_all_zero(const unsigned char *data, size_t dlen);
 bool uadk_support_algorithm(char *alg);
 int uadk_ecc_get_rand(char *out, size_t out_len, void *usr);
 void uadk_ecc_cb(void);
@@ -48,7 +53,6 @@ int uadk_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
 		   BIGNUM *b, BN_CTX *ctx);
 int uadk_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 				BIGNUM *x, BIGNUM *y, BN_CTX *ctx);
-
 
 int uadk_init_ecc(void);
 const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid);
