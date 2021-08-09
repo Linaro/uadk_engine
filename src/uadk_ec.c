@@ -53,18 +53,6 @@ static void init_dtb_param(void *dtb, char *start,
 	}
 }
 
-static bool hw_key_width_support(unsigned int key_bits)
-{
-	/* key bit width check */
-	if (key_bits != 128 && key_bits != 192 &&
-	    key_bits != 224 && key_bits != 256 &&
-	    key_bits != 320 && key_bits != 384 &&
-	    key_bits != 448 && key_bits != 521)
-		return false;
-
-	return true;
-}
-
 static int set_sess_setup_cv(const EC_GROUP *group,
 			     struct wd_ecc_curve_cfg *cv)
 {
@@ -97,7 +85,16 @@ static int set_sess_setup_cv(const EC_GROUP *group,
 	order = (BIGNUM *)EC_GROUP_get0_order(group);
 	pparam->p.dsize = BN_bn2bin(p, (void *)pparam->p.data);
 	pparam->a.dsize = BN_bn2bin(a, (void *)pparam->a.data);
+	/* a or b is all zero, but uadk not allow parameter length is zero */
+	if (!pparam->a.dsize) {
+		pparam->a.dsize = 1;
+		pparam->a.data[0] = 0;
+	}
 	pparam->b.dsize = BN_bn2bin(b, (void *)pparam->b.data);
+	if (!pparam->b.dsize) {
+		pparam->b.dsize = 1;
+		pparam->b.data[0] = 0;
+	}
 	pparam->g.x.dsize = BN_bn2bin(xg, (void *)pparam->g.x.data);
 	pparam->g.y.dsize = BN_bn2bin(yg, (void *)pparam->g.y.data);
 	pparam->n.dsize = BN_bn2bin(order, (void *)pparam->n.data);
@@ -112,6 +109,23 @@ err:
 	return ret;
 }
 
+static int get_smallest_hw_keybits(int bits)
+{
+	/* ec curve order width */
+	if (bits > 384)
+		return 521;
+	else if (bits > 320)
+		return 384;
+	else if (bits > 256)
+		return 320;
+	else if (bits > 192)
+		return 256;
+	else if (bits > 128)
+		return 192;
+	else
+		return 128;
+}
+
 static handle_t ecc_alloc_sess(EC_KEY *eckey, const char *alg)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES * UADK_ECC_CV_PARAM_NUM];
@@ -119,8 +133,8 @@ static handle_t ecc_alloc_sess(EC_KEY *eckey, const char *alg)
 	struct wd_ecc_curve param;
 	const EC_GROUP *group;
 	const BIGNUM *order;
+	int ret, key_bits;
 	handle_t sess;
-	int ret;
 
 	init_dtb_param(&param, buff, 0, UADK_ECC_MAX_KEY_BYTES,
 		       UADK_ECC_CV_PARAM_NUM);
@@ -133,8 +147,9 @@ static handle_t ecc_alloc_sess(EC_KEY *eckey, const char *alg)
 		return (handle_t)0;
 
 	order = EC_GROUP_get0_order(group);
+	key_bits = BN_num_bits(order);
 	sp.alg = alg;
-	sp.key_bits = BN_num_bits(order);
+	sp.key_bits = get_smallest_hw_keybits(key_bits);
 	sp.rand.cb = uadk_ecc_get_rand;
 	sp.rand.usr = (void *)order;
 	sess = wd_ecc_alloc_sess(&sp);
@@ -174,7 +189,7 @@ static int eckey_check(EC_KEY *eckey)
 		return UADK_DO_SOFT;
 
 	bits = BN_num_bits(order);
-	if (!hw_key_width_support(bits))
+	if (bits > UADK_ECC_MAX_KEY_BITS)
 		return UADK_DO_SOFT;
 
 	return 0;
