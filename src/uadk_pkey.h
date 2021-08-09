@@ -31,6 +31,7 @@
 #define UADK_BITS_2_BYTES_SHIFT	3
 #define SM2_KEY_BYTES		32
 #define UADK_OCTET_STRING	4
+#define UADK_ECC_PUBKEY_PARAM_NUM	2
 
 
 struct uadk_pkey_meth {
