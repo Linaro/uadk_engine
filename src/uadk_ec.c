@@ -166,7 +166,6 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 		const unsigned char *dgst, int dlen,
 		const BIGNUM *k, const BIGNUM *r)
 {
-	const EC_POINT *pub_key;
 	const BIGNUM *priv_key;
 	int ret;
 
@@ -188,9 +187,8 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 		return ret;
 
 	priv_key = EC_KEY_get0_private_key(eckey);
-	pub_key = EC_KEY_get0_public_key(eckey);
-	if (!priv_key || !pub_key) {
-		printf("priv_key or pub_key is NULL\n");
+	if (!priv_key) {
+		printf("priv_key is NULL\n");
 		return -1;
 	}
 
@@ -417,7 +415,6 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 	const BIGNUM *sig_r = NULL;
 	const BIGNUM *sig_s = NULL;
 	const EC_POINT *pub_key;
-	const BIGNUM *priv_key;
 	const EC_GROUP *group;
 	const BIGNUM *order;
 	int ret;
@@ -436,10 +433,9 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 	if (ret)
 		return ret;
 
-	priv_key = EC_KEY_get0_private_key(eckey);
 	pub_key = EC_KEY_get0_public_key(eckey);
-	if (!priv_key || !pub_key) {
-		printf("priv_key or pub_key is NULL\n");
+	if (!pub_key) {
+		printf("pub_key is NULL\n");
 		return -1;
 	}
 
