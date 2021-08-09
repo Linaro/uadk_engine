@@ -23,24 +23,23 @@
 #include "uadk.h"
 #include "uadk_pkey.h"
 
-struct sm2_ctx {
-	handle_t sess;
-	const BIGNUM *prikey;
-	const EC_POINT *pubkey;
+typedef struct {
 	/* Key and paramgen group */
 	EC_GROUP *gen_group;
 	/* message digest */
 	const EVP_MD *md;
-	/* Distinguishing Identifier, ISO/IEC
-	 * 15946-3
-	 */
+	/* Distinguishing Identifier, ISO/IEC 15946-3 */
 	uint8_t *id;
 	size_t id_len;
-	/* id_set indicates if the
-	 * 'id' field is set (1) or
-	 * not (0)
-	 */
+	/* id_set indicates if the 'id' field is set (1) or not (0) */
 	int id_set;
+} SM2_PKEY_CTX;
+
+struct sm2_ctx {
+	SM2_PKEY_CTX ctx;
+	handle_t sess;
+	const BIGNUM *prikey;
+	const EC_POINT *pubkey;
 	BIGNUM *order;
 };
 
@@ -84,6 +83,29 @@ ASN1_SEQUENCE(SM2_Ciphertext) = {
 } ASN1_SEQUENCE_END(SM2_Ciphertext)
 
 IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
+
+typedef int (*PFUNC_SIGN)(EVP_PKEY_CTX *ctx,
+			  unsigned char *sig,
+			  size_t *siglen,
+			  const unsigned char *tbs,
+			  size_t tbslen);
+
+typedef int (*PFUNC_VERIFY)(EVP_PKEY_CTX *ctx,
+			    const unsigned char *sig,
+			    size_t siglen,
+			    const unsigned char *tbs,
+			    size_t tbslen);
+typedef int (*PFUNC_ENC)(EVP_PKEY_CTX *ctx,
+			 unsigned char *out,
+			 size_t *outlen,
+			 const unsigned char *in,
+			 size_t inlen);
+typedef int (*PFUNC_DEC)(EVP_PKEY_CTX *ctx,
+			 unsigned char *out,
+			 size_t *outlen,
+			 const unsigned char *in,
+			 size_t inlen);
+
 const unsigned char sm2_order[] = {
 	0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,\
 	0xff, 0xff, 0xff, 0xff, 0x72, 0x03, 0xdf, 0x6b, 0x21, 0xc6, 0x05, 0x2b,\
@@ -135,21 +157,17 @@ static int compute_hash(const char *in, size_t in_len,
 
 static int sm2_update_sess(struct sm2_ctx *smctx)
 {
-	int nid_hash = smctx->md ? EVP_MD_type(smctx->md) : NID_sm3;
+	int nid_hash = smctx->ctx.md ? EVP_MD_type(smctx->ctx.md) : NID_sm3;
 	struct wd_ecc_sess_setup setup;
+	handle_t sess;
 	BIGNUM *order;
 	int type;
 
-	if (smctx->sess)
-		wd_ecc_free_sess(smctx->sess);
-	smctx->prikey = NULL;
-	smctx->pubkey = NULL;
-
 	memset(&setup, 0, sizeof(setup));
 	setup.alg = "sm2";
-	if (smctx->md) {
+	if (smctx->ctx.md) {
 		setup.hash.cb = compute_hash;
-		setup.hash.usr = (void *)smctx->md;
+		setup.hash.usr = (void *)smctx->ctx.md;
 		type = get_hash_type(nid_hash);
 		if (type < 0) {
 			printf("uadk not support hash nid %d\n", nid_hash);
@@ -161,16 +179,20 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 	order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
 	setup.rand.cb = uadk_ecc_get_rand;
 	setup.rand.usr = (void *)order;
-	smctx->sess = wd_ecc_alloc_sess(&setup);
-	if (!smctx->sess) {
+	sess = wd_ecc_alloc_sess(&setup);
+	if (!sess) {
 		printf("failed to alloc sess\n");
 		BN_free(order);
 		return -EINVAL;
 	}
 
+	if (smctx->sess)
+		wd_ecc_free_sess(smctx->sess);
+	smctx->sess = sess;
+	smctx->prikey = NULL;
+	smctx->pubkey = NULL;
 	smctx->order = order;
 	return 0;
-
 }
 
 static int update_public_key(EVP_PKEY_CTX *ctx)
@@ -228,6 +250,73 @@ static int update_private_key(EVP_PKEY_CTX *ctx)
 	return 0;
 }
 
+static int openssl_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
+			const unsigned char *tbs, size_t tbslen)
+{
+	const EVP_PKEY_METHOD *openssl_meth;
+	PFUNC_SIGN sign_pfunc = NULL;
+
+	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	EVP_PKEY_meth_get_sign(openssl_meth, NULL, &sign_pfunc);
+	if (!sign_pfunc) {
+		printf("sign_pfunc is NULL\n");
+		return -1;
+	}
+
+	return (*sign_pfunc)(ctx, sig, siglen, tbs, tbslen);
+}
+
+static int openssl_verify(EVP_PKEY_CTX *ctx,
+			  const unsigned char *sig, size_t siglen,
+			  const unsigned char *tbs, size_t tbslen)
+{
+	const EVP_PKEY_METHOD *openssl_meth;
+	PFUNC_VERIFY verify_pfunc = NULL;
+
+	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	EVP_PKEY_meth_get_verify(openssl_meth, NULL, &verify_pfunc);
+	if (!verify_pfunc) {
+		printf("verify_pfunc is NULL\n");
+		return -1;
+	}
+
+	return (*verify_pfunc)(ctx, sig, siglen, tbs, tbslen);
+}
+
+static int openssl_encrypt(EVP_PKEY_CTX *ctx,
+			   unsigned char *out, size_t *outlen,
+			   const unsigned char *in, size_t inlen)
+{
+	const EVP_PKEY_METHOD *openssl_meth;
+	PFUNC_DEC enc_pfunc = NULL;
+
+	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	EVP_PKEY_meth_get_encrypt(openssl_meth, NULL, &enc_pfunc);
+	if (!enc_pfunc) {
+		printf("enc_pfunc is NULL\n");
+		return -1;
+	}
+
+	return (*enc_pfunc)(ctx, out, outlen, in, inlen);
+}
+
+static int openssl_decrypt(EVP_PKEY_CTX *ctx,
+			   unsigned char *out, size_t *outlen,
+			   const unsigned char *in, size_t inlen)
+{
+	const EVP_PKEY_METHOD *openssl_meth;
+	PFUNC_ENC dec_pfunc = NULL;
+
+	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	EVP_PKEY_meth_get_decrypt(openssl_meth, NULL, &dec_pfunc);
+	if (!dec_pfunc) {
+		printf("dec_pfunc is NULL\n");
+		return -1;
+	}
+
+	return (*dec_pfunc)(ctx, out, outlen, in, inlen);
+}
+
 static int sm2_sign_init(EVP_PKEY_CTX *ctx)
 {
 	return 1;
@@ -237,41 +326,43 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 			   unsigned char *sig, size_t *siglen)
 {
 	unsigned int sltmp;
+	int ret = -EINVAL;
 	ECDSA_SIG *e_sig;
 	BIGNUM *br, *bs;
-	int ret;
 
 	e_sig = ECDSA_SIG_new();
 	if (!e_sig) {
-		printf("Failed to ECDSA_SIG_new\n");
-		return 0;
+		printf("failed to ECDSA_SIG_new\n");
+		return -EINVAL;
 	}
 
 	br = BN_bin2bn((void *)r->data, r->dsize, NULL);
 	if (!br) {
-		printf("Failed to BN_bin2bn r\n");
+		printf("failed to BN_bin2bn r\n");
 		goto free_sig;
 	}
 
 	bs = BN_bin2bn((void *)s->data, s->dsize, NULL);
 	if (!bs) {
-		printf("Failed to BN_bin2bn s\n");
+		printf("failed to BN_bin2bn s\n");
 		goto free_r;
 	}
 
 	ret = ECDSA_SIG_set0(e_sig, br, bs);
 	if (ret != 1) {
-		printf("Failed to ECDSA_SIG_set0\n");
+		printf("failed to ECDSA_SIG_set0\n");
+		ret = -EINVAL;
 		goto free_s;
 	}
 
 	sltmp = i2d_ECDSA_SIG(e_sig, &sig);
 	if (sltmp < 0) {
-		printf("Failed to i2d_ECDSA_SIG\n");
+		printf("failed to i2d_ECDSA_SIG\n");
+		ret = -EINVAL;
 		goto free_s;
 	}
 	*siglen = (size_t)sltmp;
-	return 1;
+	return 0;
 
 free_s:
 	BN_free(bs);
@@ -280,21 +371,21 @@ free_r:
 free_sig:
 	ECDSA_SIG_free(e_sig);
 
-	return 0;
+	return ret;
 }
 
 static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 			  struct wd_dtb *r, struct wd_dtb *s)
 {
 	const unsigned char *p = sig;
-	BIGNUM *b_r, *b_s = NULL;
 	unsigned char *der = NULL;
 	ECDSA_SIG *e_sig = NULL;
 	int ret, len1, len2;
+	BIGNUM *b_r, *b_s;
 
 	e_sig = ECDSA_SIG_new();
 	if (!e_sig) {
-		printf("Failed to ECDSA_SIG_new\n");
+		printf("failed to ECDSA_SIG_new\n");
 		return -ENOMEM;
 	}
 
@@ -355,13 +446,13 @@ static int cipher_bin_to_ber(const EVP_MD *md, struct wd_ecc_point *c1,
 
 	x1 = BN_bin2bn((void *)c1->x.data, c1->x.dsize, NULL);
 	if (!x1) {
-		printf("Failed to BN_bin2bn x1\n");
+		printf("failed to BN_bin2bn x1\n");
 		return -ENOMEM;
 	}
 
 	y1 = BN_bin2bn((void *)c1->y.data, c1->y.dsize, NULL);
 	if (!y1) {
-		printf("Failed to BN_bin2bn y1\n");
+		printf("failed to BN_bin2bn y1\n");
 		ret = -ENOMEM;
 		goto free_x1;
 	}
@@ -381,13 +472,15 @@ static int cipher_bin_to_ber(const EVP_MD *md, struct wd_ecc_point *c1,
 	}
 
 	if (!ASN1_OCTET_STRING_set(ctext_struct.C3, (void *)c3->data, c3->dsize)
-		|| !ASN1_OCTET_STRING_set(ctext_struct.C2, (void *)c2->data, c2->dsize)) {
-		printf("Failed to ASN1_OCTET_STRING_set\n");
+		|| !ASN1_OCTET_STRING_set(ctext_struct.C2,
+					  (void *)c2->data, c2->dsize)) {
+		printf("failed to ASN1_OCTET_STRING_set\n");
 		ret = -EINVAL;
 		goto free_y1;
 	}
 
-	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct, (unsigned char **)&ber);
+	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct,
+					     (unsigned char **)&ber);
 	/* Ensure cast to size_t is safe */
 	if (ciphertext_leni < 0) {
 		ret = -EINVAL;
@@ -412,11 +505,15 @@ static int cipher_ber_to_bin(EVP_MD *md, unsigned char *ber, size_t ber_len,
 	struct sm2_ciphertext *ctext_struct;
 	int ret, len, len1;
 
-	ctext_struct = d2i_SM2_Ciphertext(NULL, (const unsigned char **)&ber, ber_len);
+	ctext_struct = d2i_SM2_Ciphertext(NULL, (const unsigned char **)&ber,
+					  ber_len);
 	if (!ctext_struct) {
-		printf("Failed to d2i_SM2_Ciphertext\n");
+		printf("failed to d2i_SM2_Ciphertext\n");
 		return -ENOMEM;
 	}
+
+	if (ctext_struct->C2->length > UINT_MAX)
+		return UADK_DO_SOFT;
 
 	len = BN_num_bytes(ctext_struct->C1x);
 	len1 = BN_num_bytes(ctext_struct->C1y);
@@ -465,7 +562,8 @@ done:
 	return field_size;
 }
 
-static int sm2_ciphertext_size(const EC_KEY *key, const EVP_MD *digest, size_t msg_len,
+static int sm2_ciphertext_size(const EC_KEY *key,
+			       const EVP_MD *digest, size_t msg_len,
 			       size_t *ct_size)
 {
 	const size_t field_size = ec_field_size(EC_KEY_get0_group(key));
@@ -493,21 +591,21 @@ static int sm2_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 {
 	struct wd_ecc_out *ecc_out;
 	struct wd_ecc_in *ecc_in;
-	struct wd_dtb e = { 0 };
+	struct wd_dtb e = {0};
 
 	ecc_out = wd_sm2_new_sign_out(sess);
 	if (!ecc_out) {
-		printf("Failed to new sign out\n");
-		return -ENOMEM;
+		printf("failed to new sign out\n");
+		return UADK_DO_SOFT;
 	}
 
 	e.data = (void *)digest;
 	e.dsize = digest_len;
 	ecc_in = wd_sm2_new_sign_in(sess, &e, NULL, NULL, 1);
 	if (!ecc_in) {
-		printf("Failed to new sign in\n");
+		printf("failed to new sign in\n");
 		wd_ecc_del_out(sess, ecc_out);
-		return -ENOMEM;
+		return UADK_DO_SOFT;
 	}
 
 	uadk_ecc_fill_req(req, WD_SM2_SIGN, ecc_in, ecc_out);
@@ -543,11 +641,17 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		return -EINVAL;
 	}
 
+	if (tbslen > SM2_KEY_BYTES)
+		return UADK_DO_SOFT;
+
+	if (uadk_is_all_zero(tbs, tbslen))
+		return UADK_DO_SOFT;
+
 	return 0;
 }
 
 static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
-		  const unsigned char *tbs, size_t tbslen)
+		    const unsigned char *tbs, size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	struct wd_dtb *r = NULL;
@@ -557,20 +661,23 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 
 	ret = sm2_sign_check(ctx, sig, siglen, tbs, tbslen);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_sign_init_iot(smctx->sess, &req, (void *)tbs, tbslen);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	ret = update_private_key(ctx);
-	if (ret)
+	if (ret) {
+		ret = UADK_DO_SOFT;
 		goto uninit_iot;
+	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
-		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
+		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
+		ret = UADK_DO_SOFT;
 		goto uninit_iot;
 	}
 
@@ -584,8 +691,11 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
+do_soft:
+	if (ret != UADK_DO_SOFT)
+		return ret;
 
-	return ret;
+	return openssl_sign(ctx, sig, siglen, tbs, tbslen);
 }
 
 static int sm2_verify_init(EVP_PKEY_CTX *ctx)
@@ -602,8 +712,8 @@ static int sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_in = wd_sm2_new_verf_in(sess, e, r, s, NULL, 1);
 	if (!ecc_in) {
-		printf("Failed to new verf in\n");
-		return -ENOMEM;
+		printf("failed to new verf in\n");
+		return UADK_DO_SOFT;
 	}
 
 	uadk_ecc_fill_req(req, WD_SM2_VERIFY, ecc_in, NULL);
@@ -611,19 +721,39 @@ static int sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	return 0;
 }
 
-static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen,
+static int sm2_verify_check(EVP_PKEY_CTX *ctx,
+			    const unsigned char *sig,
+			    size_t siglen,
+			    const unsigned char *tbs,
+			    size_t tbslen)
+{
+	if (tbslen > SM2_KEY_BYTES)
+		return UADK_DO_SOFT;
+
+	if (uadk_is_all_zero(tbs, tbslen))
+		return UADK_DO_SOFT;
+
+	return 0;
+}
+
+static int sm2_verify(EVP_PKEY_CTX *ctx,
+		      const unsigned char *sig, size_t siglen,
 		      const unsigned char *tbs, size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	unsigned char buf_r[UADK_ECC_MAX_KEY_BYTES] = {0};
+	unsigned char buf_s[UADK_ECC_MAX_KEY_BYTES] = {0};
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	unsigned char buf_r[UADK_ECC_MAX_KEY_BYTES] = { 0 };
-	unsigned char buf_s[UADK_ECC_MAX_KEY_BYTES] = { 0 };
-	struct wd_dtb e = { 0 };
-	struct wd_dtb r = { 0 };
-	struct wd_dtb s = { 0 };
+	struct wd_dtb e = {0};
+	struct wd_dtb r = {0};
+	struct wd_dtb s = {0};
 	struct wd_ecc_req req;
 	int ret;
+
+	ret = sm2_verify_check(ctx, sig, siglen, tbs, tbslen);
+	if (ret)
+		goto do_soft;
 
 	r.data = (void *)buf_r;
 	s.data = (void *)buf_s;
@@ -638,22 +768,28 @@ static int sm2_verify(EVP_PKEY_CTX *ctx, const unsigned char *sig, size_t siglen
 	memset(&req, 0, sizeof(req));
 	ret = sm2_verify_init_iot(smctx->sess, &req, &e, &r, &s);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	ret = update_public_key(ctx);
-	if (ret)
+	if (ret) {
+		ret = UADK_DO_SOFT;
 		goto uninit_iot;
+	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
-		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
+		ret = UADK_DO_SOFT;
+		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
+do_soft:
+	if (ret != UADK_DO_SOFT)
+		return ret;
 
-	return ret;
+	return openssl_verify(ctx, sig, siglen, tbs, tbslen);
 }
 
 static int sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
@@ -661,34 +797,35 @@ static int sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 {
 	struct wd_ecc_out *ecc_out;
 	struct wd_ecc_in *ecc_in;
-	struct wd_dtb e = { 0 };
+	struct wd_dtb e = {0};
 
 	ecc_out = wd_sm2_new_enc_out(sess, inlen);
 	if (!ecc_out) {
-		printf("Failed to new enc out\n");
-		return -ENOMEM;
+		printf("failed to new enc out\n");
+		return UADK_DO_SOFT;
 	}
 
 	e.data = (void *)in;
 	e.dsize = inlen;
 	ecc_in = wd_sm2_new_enc_in(sess, NULL, &e);
 	if (!ecc_in) {
-		printf("Failed to new enc in\n");
+		printf("failed to new enc in\n");
 		wd_ecc_del_out(sess, ecc_out);
-		return -ENOMEM;
+		return UADK_DO_SOFT;
 	}
 
 	uadk_ecc_fill_req(req, WD_SM2_ENCRYPT, ecc_in, ecc_out);
 	return 0;
 }
 
-static int sm2_encrypt_check(EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outlen,
-		  const unsigned char *in, size_t inlen)
+static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
+			     unsigned char *out, size_t *outlen,
+			     const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	const EVP_MD *md = (smctx->md == NULL) ? EVP_sm3() : smctx->md;
+	const EVP_MD *md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	int c3_size = EVP_MD_size(md);
 
 	if (!smctx || !smctx->sess) {
@@ -708,8 +845,12 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outl
 			return 1;
 	}
 
+	if (inlen > UINT_MAX)
+		return UADK_DO_SOFT;
+
 	return 0;
 }
+
 static int sm2_encrypt_init(EVP_PKEY_CTX *ctx)
 {
 	return 1;
@@ -729,24 +870,27 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 
 	ret = sm2_encrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_encrypt_init_iot(smctx->sess, &req, (void *)in, inlen);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	ret = update_public_key(ctx);
-	if (ret)
-		goto uninit_iot;
-
-	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
-	if (ret != 1) {
-		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
+	if (ret) {
+		ret = UADK_DO_SOFT;
 		goto uninit_iot;
 	}
 
-	md = (smctx->md == NULL) ? EVP_sm3() : smctx->md;
+	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
+	if (ret != 1) {
+		ret = UADK_DO_SOFT;
+		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
+		goto uninit_iot;
+	}
+
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
 	ret = cipher_bin_to_ber(md, c1, c2, c3, out, outlen);
 	if (ret)
@@ -756,8 +900,11 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
+do_soft:
+	if (ret != UADK_DO_SOFT)
+		return ret;
 
-	return ret;
+	return openssl_encrypt(ctx, out, outlen, in, inlen);
 }
 
 static int sm2_decrypt_init(EVP_PKEY_CTX *ctx)
@@ -765,7 +912,8 @@ static int sm2_decrypt_init(EVP_PKEY_CTX *ctx)
 	return 1;
 }
 
-static int sm2_decrypt_check(EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outlen,
+static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
+			     unsigned char *out, size_t *outlen,
 			     const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
@@ -779,7 +927,7 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outl
 		return -EINVAL;
 	}
 
-	md = (smctx->md == NULL) ? EVP_sm3() : smctx->md;
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	hash_size = EVP_MD_size(md);
 	if (hash_size <= 0) {
 		printf("hash size = %d error\n", hash_size);
@@ -797,25 +945,25 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx, unsigned char *out, size_t *outl
 }
 
 static int sm2_decrypt_init_iot(handle_t sess,
-			  struct wd_ecc_req *req,
-			  struct wd_ecc_point *c1,
-			  struct wd_dtb *c2,
-			  struct wd_dtb *c3)
+				struct wd_ecc_req *req,
+				struct wd_ecc_point *c1,
+				struct wd_dtb *c2,
+				struct wd_dtb *c3)
 {
 	struct wd_ecc_out *ecc_out;
 	struct wd_ecc_in *ecc_in;
 
 	ecc_out = wd_sm2_new_dec_out(sess, c2->dsize);
 	if (!ecc_out) {
-		printf("Failed to new dec out\n");
-		return -ENOMEM;
+		printf("failed to new dec out\n");
+		return UADK_DO_SOFT;
 	}
 
 	ecc_in = wd_sm2_new_dec_in(sess, c1, c2, c3);
 	if (!ecc_in) {
-		printf("Failed to new dec in\n");
+		printf("failed to new dec in\n");
 		wd_ecc_del_out(sess, ecc_out);
-		return -ENOMEM;
+		return UADK_DO_SOFT;
 	}
 
 	uadk_ecc_fill_req(req, WD_SM2_DECRYPT, ecc_in, ecc_out);
@@ -851,8 +999,8 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	struct wd_ecc_point c1;
-	struct wd_dtb c2, c3;
 	struct wd_ecc_req req;
+	struct wd_dtb c2, c3;
 	const EVP_MD *md;
 	int ret;
 
@@ -860,28 +1008,32 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		return ret;
 
-	md = (smctx->md == NULL) ? EVP_sm3() : smctx->md;
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	ret = cipher_ber_to_bin((void *)md, (void *)in, inlen, &c1, &c2, &c3);
 	if (ret)
-		return ret;
+		goto do_soft;
 
 	if (c3.dsize != EVP_MD_size(md)) {
 		printf("c3 dsize != hash_size\n");
-		goto free_bin;
+		ret = -EINVAL;
+		goto do_soft;
 	}
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_decrypt_init_iot(smctx->sess, &req, &c1, &c2, &c3);
 	if (ret)
-		goto free_bin;
+		goto do_soft;
 
 	ret = update_private_key(ctx);
-	if (ret)
+	if (ret) {
+		ret = UADK_DO_SOFT;
 		goto uninit_iot;
+	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret != 1) {
-		printf("Failed to uadk_ecc_crypto, ret = %d\n", ret);
+		ret = UADK_DO_SOFT;
+		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
@@ -892,9 +1044,12 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	ret = 1;
 uninit_iot:
 	sm2_decrypt_uninit_iot(smctx->sess, &req);
-free_bin:
+do_soft:
 	free(c1.x.data);
-	return ret;
+	if (ret != UADK_DO_SOFT)
+		return ret;
+
+	return openssl_decrypt(ctx, out, outlen, in, inlen);
 }
 
 static void sm2_cleanup(EVP_PKEY_CTX *ctx)
@@ -904,8 +1059,8 @@ static void sm2_cleanup(EVP_PKEY_CTX *ctx)
 	if (!smctx)
 		return;
 
-	EC_GROUP_free(smctx->gen_group);
-	OPENSSL_free(smctx->id);
+	EC_GROUP_free(smctx->ctx.gen_group);
+	OPENSSL_free(smctx->ctx.id);
 
 	if (smctx->sess)
 		wd_ecc_free_sess(smctx->sess);
@@ -923,12 +1078,12 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	ret = uadk_init_ecc();
 	if (ret) {
 		printf("failed to uadk_init_ecc, ret = %d\n", ret);
-		return -1;
+		return 0;
 	}
 
 	smctx = malloc(sizeof(*smctx));
 	if (!smctx) {
-		printf("Failed to alloc sm2 ctx\n");
+		printf("failed to alloc sm2 ctx\n");
 		return 0;
 	}
 
@@ -936,7 +1091,7 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 
 	ret = sm2_update_sess(smctx);
 	if (ret) {
-		printf("Failed to update sess\n");
+		printf("failed to update sess\n");
 		free(smctx);
 		return 0;
 	}
@@ -960,47 +1115,47 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 			printf("invalid curve %d\n", p1);
 			return 0;
 		}
-		EC_GROUP_free(smctx->gen_group);
-		smctx->gen_group = group;
+		EC_GROUP_free(smctx->ctx.gen_group);
+		smctx->ctx.gen_group = group;
 		return 1;
 	case EVP_PKEY_CTRL_EC_PARAM_ENC:
-		if (smctx->gen_group == NULL) {
+		if (smctx->ctx.gen_group == NULL) {
 			printf("no parameters set\n");
 			return 0;
 		}
-		EC_GROUP_set_asn1_flag(smctx->gen_group, p1);
+		EC_GROUP_set_asn1_flag(smctx->ctx.gen_group, p1);
 		return 1;
 	case EVP_PKEY_CTRL_MD:
-		smctx->md = p2;
+		smctx->ctx.md = p2;
 		if (sm2_update_sess(smctx))
 			return 0;
 		return 1;
 	case EVP_PKEY_CTRL_GET_MD:
-		*(const EVP_MD **)p2 = smctx->md;
+		*(const EVP_MD **)p2 = smctx->ctx.md;
 		return 1;
 	case EVP_PKEY_CTRL_SET1_ID:
 		if (p1 > 0) {
 			tmp_id = OPENSSL_malloc(p1);
 			if (tmp_id == NULL) {
-				printf("Failed to malloc\n");
+				printf("failed to malloc\n");
 				return 0;
 			}
 			memcpy(tmp_id, p2, p1);
-			OPENSSL_free(smctx->id);
-			smctx->id = tmp_id;
+			OPENSSL_free(smctx->ctx.id);
+			smctx->ctx.id = tmp_id;
 		} else {
 			/* set null-ID */
-			OPENSSL_free(smctx->id);
-			smctx->id = NULL;
+			OPENSSL_free(smctx->ctx.id);
+			smctx->ctx.id = NULL;
 		}
-		smctx->id_len = (size_t)p1;
-		smctx->id_set = 1;
+		smctx->ctx.id_len = (size_t)p1;
+		smctx->ctx.id_set = 1;
 		return 1;
 	case EVP_PKEY_CTRL_GET1_ID:
-		memcpy(p2, smctx->id, smctx->id_len);
+		memcpy(p2, smctx->ctx.id, smctx->ctx.id_len);
 		return 1;
 	case EVP_PKEY_CTRL_GET1_ID_LEN:
-		*(size_t *)p2 = smctx->id_len;
+		*(size_t *)p2 = smctx->ctx.id_len;
 		return 1;
 	case EVP_PKEY_CTRL_DIGESTINIT:
 		/* nothing to be inited, this is to suppress the error... */
@@ -1052,10 +1207,10 @@ static int sm2_compute_z_digest(uint8_t *out,
 				const size_t id_len,
 				const EC_KEY *key)
 {
-	int rc = 0;
 	const EC_GROUP *group = EC_KEY_get0_group(key);
-	BN_CTX *ctx = NULL;
 	EVP_MD_CTX *hash = NULL;
+	uint8_t *buf = NULL;
+	BN_CTX *ctx = NULL;
 	BIGNUM *p = NULL;
 	BIGNUM *a = NULL;
 	BIGNUM *b = NULL;
@@ -1063,15 +1218,15 @@ static int sm2_compute_z_digest(uint8_t *out,
 	BIGNUM *yG = NULL;
 	BIGNUM *xA = NULL;
 	BIGNUM *yA = NULL;
-	int p_bytes = 0;
-	uint8_t *buf = NULL;
-	uint16_t entl = 0;
-	uint8_t e_byte = 0;
+	uint8_t e_byte;
+	uint16_t entl;
+	int p_bytes;
+	int rc = 0;
 
 	hash = EVP_MD_CTX_new();
 	ctx = BN_CTX_new();
 	if (hash == NULL || ctx == NULL) {
-		printf("Failed to EVP_CTX_new\n");
+		printf("failed to EVP_CTX_new\n");
 		goto done;
 	}
 
@@ -1084,7 +1239,7 @@ static int sm2_compute_z_digest(uint8_t *out,
 	yA = BN_CTX_get(ctx);
 
 	if (yA == NULL) {
-		printf("Failed to malloc\n");
+		printf("failed to malloc\n");
 		goto done;
 	}
 
@@ -1127,7 +1282,7 @@ static int sm2_compute_z_digest(uint8_t *out,
 	p_bytes = BN_num_bytes(p);
 	buf = OPENSSL_zalloc(p_bytes);
 	if (buf == NULL) {
-		printf("Failed to malloc\n");
+		printf("failed to malloc\n");
 		goto done;
 	}
 
@@ -1172,7 +1327,7 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 	uint8_t z[EVP_MAX_MD_SIZE];
 	int mdlen = EVP_MD_size(md);
 
-	if (!smctx->id_set) {
+	if (!smctx->ctx.id_set) {
 		/*
 		 * An ID value must be set. The specifications are not clear whether a
 		 * NULL is allowed. We only allow it if set explicitly for maximum
@@ -1188,7 +1343,7 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 	}
 
 	/* get hashed prefix 'z' of tbs message */
-	if (!sm2_compute_z_digest(z, md, smctx->id, smctx->id_len, ec))
+	if (!sm2_compute_z_digest(z, md, smctx->ctx.id, smctx->ctx.id_len, ec))
 		return 0;
 
 	return EVP_DigestUpdate(mctx, z, (size_t)mdlen);
@@ -1202,27 +1357,27 @@ static int sm2_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
 		return 0;
 	sctx = EVP_PKEY_CTX_get_data(src);
 	dctx = EVP_PKEY_CTX_get_data(dst);
-	if (sctx->gen_group != NULL) {
-		dctx->gen_group = EC_GROUP_dup(sctx->gen_group);
-		if (dctx->gen_group == NULL) {
-			printf("Failed to EC GROUP dup\n");
+	if (sctx->ctx.gen_group != NULL) {
+		dctx->ctx.gen_group = EC_GROUP_dup(sctx->ctx.gen_group);
+		if (dctx->ctx.gen_group == NULL) {
+			printf("failed to EC GROUP dup\n");
 			sm2_cleanup(dst);
 			return 0;
 		}
 	}
 
-	if (sctx->id != NULL) {
-		dctx->id = OPENSSL_malloc(sctx->id_len);
-		if (dctx->id == NULL) {
-			printf("Failed to malloc\n");
+	if (sctx->ctx.id != NULL) {
+		dctx->ctx.id = OPENSSL_malloc(sctx->ctx.id_len);
+		if (dctx->ctx.id == NULL) {
+			printf("failed to malloc\n");
 			sm2_cleanup(dst);
 			return 0;
 		}
-		memcpy(dctx->id, sctx->id, sctx->id_len);
+		memcpy(dctx->ctx.id, sctx->ctx.id, sctx->ctx.id_len);
 	}
-	dctx->id_len = sctx->id_len;
-	dctx->id_set = sctx->id_set;
-	dctx->md = sctx->md;
+	dctx->ctx.id_len = sctx->ctx.id_len;
+	dctx->ctx.id_set = sctx->ctx.id_set;
+	dctx->ctx.md = sctx->ctx.md;
 
 	return 1;
 }
