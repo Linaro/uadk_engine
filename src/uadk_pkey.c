@@ -426,7 +426,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 static int uadk_ecc_bind_pmeth(ENGINE *e)
 {
-	int ret;
+	int ret = 0;
 
 	if (!uadk_sm2_create_pmeth(&pkey_meth)) {
 		printf("Failed to register sm2 pmeth");

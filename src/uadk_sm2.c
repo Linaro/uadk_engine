@@ -41,6 +41,7 @@ struct sm2_ctx {
 	 * not (0)
 	 */
 	int id_set;
+	BIGNUM *order;
 };
 
 struct ecc_sched {
@@ -83,6 +84,11 @@ ASN1_SEQUENCE(SM2_Ciphertext) = {
 } ASN1_SEQUENCE_END(SM2_Ciphertext)
 
 IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
+const unsigned char sm2_order[] = {
+	0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,\
+	0xff, 0xff, 0xff, 0xff, 0x72, 0x03, 0xdf, 0x6b, 0x21, 0xc6, 0x05, 0x2b,\
+	0x53, 0xbb, 0xf4, 0x09, 0x39, 0xd5, 0x41, 0x23
+};
 
 static int get_hash_type(int nid_hash)
 {
@@ -131,6 +137,7 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 {
 	int nid_hash = smctx->md ? EVP_MD_type(smctx->md) : NID_sm3;
 	struct wd_ecc_sess_setup setup;
+	BIGNUM *order;
 	int type;
 
 	if (smctx->sess)
@@ -151,12 +158,17 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 		setup.hash.type = type;
 	}
 
+	order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
+	setup.rand.cb = uadk_ecc_get_rand;
+	setup.rand.usr = (void *)order;
 	smctx->sess = wd_ecc_alloc_sess(&setup);
 	if (!smctx->sess) {
-		printf("Failed to alloc sess\n");
+		printf("failed to alloc sess\n");
+		BN_free(order);
 		return -EINVAL;
 	}
 
+	smctx->order = order;
 	return 0;
 
 }
@@ -897,6 +909,8 @@ static void sm2_cleanup(EVP_PKEY_CTX *ctx)
 
 	if (smctx->sess)
 		wd_ecc_free_sess(smctx->sess);
+
+	BN_free(smctx->order);
 	free(smctx);
 	EVP_PKEY_CTX_set_data(ctx, NULL);
 }
