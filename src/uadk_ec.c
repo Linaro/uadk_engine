@@ -732,6 +732,7 @@ static int sm2_generate_key(EC_KEY *eckey)
 	if (ret)
 		return ret;
 
+	ret = UADK_DO_SOFT;
 	sess = ecc_alloc_sess(eckey, "sm2");
 	if (!sess)
 		goto do_soft;
