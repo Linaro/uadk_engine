@@ -27,7 +27,6 @@
 static int pkey_nids[] = {
 	EVP_PKEY_EC,
 	EVP_PKEY_SM2,
-	0
 };
 
 struct ecc_sched {
@@ -208,6 +207,18 @@ err:
 	return 0;
 }
 
+bool uadk_is_all_zero(const unsigned char *data, size_t dlen)
+{
+	int i;
+
+	for (i = 0; i < dlen; i++) {
+		if (data[i])
+			return false;
+	}
+
+	return true;
+}
+
 int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
 {
 	unsigned char *point_bin = NULL;
@@ -226,7 +237,8 @@ int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
 
 	group = EC_KEY_get0_group(eckey);
 	key_bytes = (EC_GROUP_order_bits(group) + 7) / 8;
-	len = EC_POINT_point2buf(group, point, 4, &point_bin, NULL);
+	len = EC_POINT_point2buf(group, point, UADK_OCTET_STRING,
+				 &point_bin, NULL);
 	if (len != 2 * key_bytes + 1) {
 		printf("EC_POINT_point2buf err.\n");
 		return -EINVAL;
@@ -290,19 +302,20 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 		return -ENOMEM;
 
 	do {
-		ret = RAND_priv_bytes((void *)out, out_len);
-		if (ret != 1) {
-			printf("failed to BN_rand_range\n");
+		ret = BN_priv_rand_range(k, usr);
+		if (!ret) {
+			printf("failed to BN_priv_rand_range\n");
 			ret = -EINVAL;
 			goto err;
 		}
 
-		if (!BN_bin2bn((void *)out, out_len, k)) {
+		ret = BN_bn2binpad(k, (void *)out, (int)out_len);
+		if (ret < 0) {
 			ret = -EINVAL;
-			printf("failed to BN_rand_range\n");
+			printf("failed to BN_bn2binpad\n");
 			goto err;
 		}
-	} while (--count >= 0 && (BN_is_zero(k) || BN_ucmp(k, usr) >= 0));
+	} while (--count >= 0 && BN_is_zero(k));
 
 	ret = 0;
 	if (count < 0)
@@ -408,7 +421,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 	if (!pmeth) {
 		*nids = pkey_nids;
-		return 2;
+		return UADK_ARRAY_SIZE(pkey_nids);
 	}
 
 	switch (nid) {
@@ -465,4 +478,3 @@ void uadk_destroy_ecc(void)
 	uadk_ec_delete_meth();
 	uadk_uninit_ecc();
 }
-

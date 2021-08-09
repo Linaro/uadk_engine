@@ -53,14 +53,26 @@ static void init_dtb_param(void *dtb, char *start,
 	}
 }
 
+static bool hw_key_width_support(unsigned int key_bits)
+{
+	/* key bit width check */
+	if (key_bits != 128 && key_bits != 192 &&
+	    key_bits != 224 && key_bits != 256 &&
+	    key_bits != 320 && key_bits != 384 &&
+	    key_bits != 448 && key_bits != 521)
+		return false;
+
+	return true;
+}
+
 static int set_sess_setup_cv(const EC_GROUP *group,
 			     struct wd_ecc_curve_cfg *cv)
 {
 	struct wd_ecc_curve *pparam = cv->cfg.pparam;
 	BIGNUM *p, *a, *b, *xg, *yg, *order;
 	const EC_POINT *g;
-	int ret = -1;
 	BN_CTX *ctx;
+	int ret;
 
 	ctx = BN_CTX_new();
 	if (!ctx)
@@ -137,6 +149,7 @@ static int eckey_check(EC_KEY *eckey)
 	const EC_GROUP *group;
 	const BIGNUM *order;
 	const EC_POINT *g;
+	int bits;
 
 	if (!eckey) {
 		printf("eckey is NULL\n");
@@ -156,15 +169,20 @@ static int eckey_check(EC_KEY *eckey)
 		return -1;
 	}
 
+	/* field GF(2m) is not supported by uadk */
 	if (!uadk_prime_field(group))
+		return UADK_DO_SOFT;
+
+	bits = BN_num_bits(order);
+	if (!hw_key_width_support(bits))
 		return UADK_DO_SOFT;
 
 	return 0;
 }
 
 static int ecdsa_do_sign_check(EC_KEY *eckey,
-		const unsigned char *dgst, int dlen,
-		const BIGNUM *k, const BIGNUM *r)
+			       const unsigned char *dgst, int dlen,
+			       const BIGNUM *k, const BIGNUM *r)
 {
 	const BIGNUM *priv_key;
 	int ret;
@@ -191,7 +209,6 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 		printf("priv_key is NULL\n");
 		return -1;
 	}
-
 	return 0;
 }
 
@@ -227,6 +244,9 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 		e->dsize = dlen;
 	}
 
+	if (uadk_is_all_zero((void *)e->data, (size_t)e->dsize))
+		return UADK_DO_SOFT;
+
 	return 0;
 }
 
@@ -241,7 +261,7 @@ static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_out = wd_ecdsa_new_sign_out(sess);
 	if (!ecc_out) {
-		printf("Failed to new sign out\n");
+		printf("failed to new sign out\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -252,7 +272,7 @@ static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_in = wd_ecdsa_new_sign_in(sess, &e, NULL);
 	if (!ecc_in) {
-		printf("Failed to new ecdsa sign in\n");
+		printf("failed to new ecdsa sign in\n");
 		ret = UADK_DO_SOFT;
 		goto err;
 	}
@@ -283,8 +303,7 @@ static ECDSA_SIG *openssl_do_sign(const unsigned char *dgst, int dlen,
 	return (*sign_sig_pfunc)(dgst, dlen, in_kinv, in_r, eckey);
 }
 
-static ECDSA_SIG *create_ecdsa_sig(struct wd_ecc_req *req,
-				   int *do_soft)
+static ECDSA_SIG *create_ecdsa_sig(struct wd_ecc_req *req)
 {
 	struct wd_dtb *r = NULL;
 	struct wd_dtb *s = NULL;
@@ -315,7 +334,6 @@ static ECDSA_SIG *create_ecdsa_sig(struct wd_ecc_req *req,
 	if (!BN_bin2bn((void *)r->data, r->dsize, br) ||
 	    !BN_bin2bn((void *)s->data, s->dsize, bs)) {
 		printf("failed to BN_bin2bn r or s\n");
-		*do_soft = UADK_DO_SOFT;
 		goto err;
 	}
 
@@ -366,18 +384,17 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 		goto uninit_iot;
 	}
 
-	sig = create_ecdsa_sig(&req, &ret);
+	sig = create_ecdsa_sig(&req);
 uninit_iot:
 	wd_ecc_del_in(sess, req.src);
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (!sig && ret == UADK_DO_SOFT)
-		sig = openssl_do_sign(dgst, dlen, in_kinv,
-				      in_r, eckey);
+	if (ret != UADK_DO_SOFT)
+		return sig;
 
-	return sig;
+	return openssl_do_sign(dgst, dlen, in_kinv, in_r, eckey);
 }
 
 static int ecdsa_sign(int type, const unsigned char *dgst, int dlen,
@@ -538,7 +555,7 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto free_sess;
 
-	ret =  uadk_ecc_set_public_key(sess, eckey);
+	ret = uadk_ecc_set_public_key(sess, eckey);
 	if (ret)
 		goto free_sess;
 
@@ -558,10 +575,10 @@ uninit_iot:
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (ret == UADK_DO_SOFT)
-		return openssl_do_verify(dgst, dlen, sig, eckey);
+	if (ret != UADK_DO_SOFT)
+		return ret;
 
-	return ret;
+	return openssl_do_verify(dgst, dlen, sig, eckey);
 }
 
 static int ecdsa_verify(int type, const unsigned char *dgst, int dlen,
@@ -600,7 +617,7 @@ err:
 
 static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 {
-	unsigned char buff[SM2_KEY_BYTES * 2 + 1] = { 0x4 };
+	unsigned char buff[SM2_KEY_BYTES * 2 + 1] = {UADK_OCTET_STRING};
 	struct wd_ecc_point *pubkey = NULL;
 	struct wd_dtb *privkey = NULL;
 	const EC_GROUP *group;
@@ -630,7 +647,7 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
 	BN_free(tmp);
 	if (!ptr) {
-		printf("EC_POINT_bn2point failed\n");
+		printf("failed to EC_POINT_bn2point\n");
 		EC_POINT_free(point);
 		return -EINVAL;
 	}
@@ -638,7 +655,7 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	ret = EC_KEY_set_public_key(ec, point);
 	EC_POINT_free(point);
 	if (ret != 1) {
-		printf("EC_KEY_set_public_key failed\n");
+		printf("failed to EC_KEY_set_public_key\n");
 		return -EINVAL;
 	}
 
@@ -658,8 +675,8 @@ static int openssl_do_generate(EC_KEY *eckey)
 	}
 
 	return (*gen_key_pfunc)(eckey);
-
 }
+
 static int sm2_genkey_check(EC_KEY *eckey)
 {
 	BIGNUM *priv_key;
@@ -678,9 +695,8 @@ static int sm2_genkey_check(EC_KEY *eckey)
 
 static int sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 {
-	struct wd_ecc_out *ecc_out;
+	struct wd_ecc_out *ecc_out = wd_sm2_new_kg_out(sess);
 
-	ecc_out = wd_sm2_new_kg_out(sess);
 	if (!ecc_out) {
 		printf("failed to new sign out\n");
 		return UADK_DO_SOFT;
