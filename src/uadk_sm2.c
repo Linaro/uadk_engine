@@ -1398,10 +1398,11 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	EVP_PKEY_meth_copy(meth, openssl_meth);
-	pkey_meth->sm2 = meth;
 
-	if (!uadk_support_algorithm("sm2"))
+	if (!uadk_support_algorithm("sm2")) {
+		pkey_meth->sm2 = meth;
 		return 1;
+	}
 
 	EVP_PKEY_meth_set_init(meth, sm2_init);
 	EVP_PKEY_meth_set_copy(meth, sm2_copy);
@@ -1412,6 +1413,7 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	EVP_PKEY_meth_set_decrypt(meth, sm2_decrypt_init, sm2_decrypt);
 	EVP_PKEY_meth_set_sign(meth, sm2_sign_init, sm2_sign);
 	EVP_PKEY_meth_set_verify(meth, sm2_verify_init, sm2_verify);
+	pkey_meth->sm2 = meth;
 
 	return 1;
 }
