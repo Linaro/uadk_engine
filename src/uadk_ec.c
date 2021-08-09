@@ -228,17 +228,20 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 }
 
 static int set_digest(handle_t sess, struct wd_dtb *e,
-		      const unsigned char *dgst, int dlen)
+		      struct wd_dtb *sdgst, EC_KEY *eckey)
 {
-	int key_bits;
+	const unsigned char *dgst = (const unsigned char *)sdgst->data;
+	const EC_GROUP *group = EC_KEY_get0_group(eckey);
+	const BIGNUM *order = EC_GROUP_get0_order(group);
+	int order_bits = BN_num_bits(order);
+	int dlen = sdgst->dsize;
 	BIGNUM *m;
 
-	key_bits = wd_ecc_get_key_bits(sess);
-	if (dlen << UADK_BITS_2_BYTES_SHIFT > key_bits) {
+	if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits) {
 		m = BN_new();
 
 		/* Need to truncate digest if it is too long: first truncate whole bytes */
-		dlen = (key_bits + 7) >> UADK_BITS_2_BYTES_SHIFT;
+		dlen = (order_bits + 7) >> UADK_BITS_2_BYTES_SHIFT;
 		if (!BN_bin2bn(dgst, dlen, m)) {
 			printf("failed to BN_bin2bn digest\n");
 			BN_free(m);
@@ -246,8 +249,8 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 		}
 
 		/* If still too long, truncate remaining bits with a shift */
-		if (dlen << UADK_BITS_2_BYTES_SHIFT > key_bits &&
-		    !BN_rshift(m, m, 8 - (key_bits & 0x7))) {
+		if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits &&
+		    !BN_rshift(m, m, 8 - (order_bits & 0x7))) {
 			printf("failed to truncate input digest\n");
 			BN_free(m);
 			return -1;
@@ -266,7 +269,7 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 }
 
 static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
-			       const unsigned char *dgst, int dlen)
+			       struct wd_dtb *dgst, EC_KEY *eckey)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES];
 	struct wd_ecc_out *ecc_out;
@@ -281,7 +284,7 @@ static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 	}
 
 	e.data = buff;
-	ret = set_digest(sess, &e, dgst, dlen);
+	ret = set_digest(sess, &e, dgst, eckey);
 	if (ret)
 		goto err;
 
@@ -366,6 +369,7 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 {
 	struct wd_ecc_req req;
 	ECDSA_SIG *sig = NULL;
+	struct wd_dtb tdgst;
 	handle_t sess;
 	int ret;
 
@@ -379,7 +383,9 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 		goto do_soft;
 
 	memset(&req, 0, sizeof(req));
-	ret = ecdsa_sign_init_iot(sess, &req, (void *)dgst, dlen);
+	tdgst.data = (void *)dgst;
+	tdgst.dsize = dlen;
+	ret = ecdsa_sign_init_iot(sess, &req, &tdgst, eckey);
 	if (ret)
 		goto free_sess;
 
@@ -495,8 +501,9 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 }
 
 static int ecdsa_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
-				 const unsigned char *dgst, int dlen,
-				 const ECDSA_SIG *sig)
+				 struct wd_dtb *dgst,
+				 const ECDSA_SIG *sig,
+				 EC_KEY *eckey)
 {
 	char buf_r[UADK_ECC_MAX_KEY_BYTES] = { 0 };
 	char buf_s[UADK_ECC_MAX_KEY_BYTES] = { 0 };
@@ -510,7 +517,7 @@ static int ecdsa_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	int ret;
 
 	e.data = buf_e;
-	ret = set_digest(sess, &e, dgst, dlen);
+	ret = set_digest(sess, &e, dgst, eckey);
 	if (ret)
 		return ret;
 
@@ -553,6 +560,7 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 			   const ECDSA_SIG *sig, EC_KEY *eckey)
 {
 	struct wd_ecc_req req;
+	struct wd_dtb tdgst;
 	handle_t sess;
 	int ret;
 
@@ -566,7 +574,9 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 		goto do_soft;
 
 	memset(&req, 0, sizeof(req));
-	ret = ecdsa_verify_init_iot(sess, &req, dgst, dlen, sig);
+	tdgst.data = (void *)dgst;
+	tdgst.dsize = dlen;
+	ret = ecdsa_verify_init_iot(sess, &req, &tdgst, sig, eckey);
 	if (ret)
 		goto free_sess;
 
