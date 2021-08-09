@@ -224,7 +224,6 @@ int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
 	unsigned char *point_bin = NULL;
 	struct wd_ecc_point pubkey;
 	struct wd_ecc_key *ecc_key;
-	unsigned int key_bytes;
 	const EC_POINT *point;
 	const EC_GROUP *group;
 	int ret, len;
@@ -236,18 +235,18 @@ int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
 	}
 
 	group = EC_KEY_get0_group(eckey);
-	key_bytes = (EC_GROUP_order_bits(group) + 7) / 8;
 	len = EC_POINT_point2buf(group, point, UADK_OCTET_STRING,
 				 &point_bin, NULL);
-	if (len != 2 * key_bytes + 1) {
-		printf("EC_POINT_point2buf err.\n");
+	if (!len) {
+		printf("EC_POINT_point2buf error.\n");
 		return -EINVAL;
 	}
 
+	len /= UADK_ECC_PUBKEY_PARAM_NUM;
 	pubkey.x.data = (char *)point_bin + 1;
-	pubkey.x.dsize = key_bytes;
-	pubkey.y.data = pubkey.x.data + key_bytes;
-	pubkey.y.dsize = key_bytes;
+	pubkey.x.dsize = len;
+	pubkey.y.data = pubkey.x.data + len;
+	pubkey.y.dsize = len;
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_pubkey(ecc_key, &pubkey);
 	if (ret) {
