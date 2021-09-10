@@ -30,12 +30,15 @@
 #define CTX_SYNC	0
 #define CTX_ASYNC	1
 #define CTX_NUM		2
+#define DIGEST_DOING	1
+#define DIGEST_END	0
 
 /* The max BD data length is 16M-512B */
 #define BUF_LEN      0xFFFE00
 
 #define SM3_DIGEST_LENGTH	32
 #define SM3_CBLOCK		64
+#define MAX_DIGEST_LENGTH	64
 
 struct digest_engine {
 	struct wd_ctx_config ctx_cfg;
@@ -57,12 +60,16 @@ struct evp_md_ctx_st {
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 } /* EVP_MD_CTX */;
 
+#define DIGEST_BLOCK_SIZE 4096
+
 struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
 	unsigned char *data;
-	long tail;
+	unsigned char out[MAX_DIGEST_LENGTH];
+	size_t tail;
+	size_t last_update_bufflen;
 	bool copy;
 	uint32_t e_nid;
 	EVP_MD_CTX *soft_ctx;
@@ -334,25 +341,72 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 	}
 
+	priv->sess = wd_digest_alloc_sess(&priv->setup);
+	if (unlikely(!priv->sess))
+		return 0;
+
+	if (!priv->data) {
+		priv->data = OPENSSL_malloc(DIGEST_BLOCK_SIZE);
+		if (priv->data == NULL) {
+			wd_digest_free_sess(priv->sess);
+			return 0;
+		}
+	}
+
 	return 1;
 }
+
+static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_len)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+	const unsigned char *tmpdata = (const unsigned char *)data;
+	size_t left_len = data_len;
+	int copy_to_bufflen;
+	int ret;
+
+	priv->req.has_next = DIGEST_DOING;
+
+	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
+		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
+		memcpy(priv->data + priv->last_update_bufflen, tmpdata, copy_to_bufflen);
+
+		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
+		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
+		priv->req.in = priv->data;
+		priv->req.out = priv->out;
+		left_len -= copy_to_bufflen;
+		tmpdata += copy_to_bufflen;
+
+		ret = wd_do_digest_sync(priv->sess, &priv->req);
+		if (ret)
+			return 0;
+
+		priv->last_update_bufflen = 0;
+		memset(priv->data, 0, DIGEST_BLOCK_SIZE);
+		if (left_len <= DIGEST_BLOCK_SIZE) {
+			priv->last_update_bufflen = left_len;
+			memcpy(priv->data, tmpdata, priv->last_update_bufflen);
+			break;
+		}
+
+	}
+
+		return 1;
+	}
 
 static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 
-	if ((data_len < BUF_LEN - priv->tail) && (data_len > 0)) {
-		if (!priv->data)
-			priv->data = OPENSSL_malloc(BUF_LEN);
-
-		memcpy(priv->data + priv->tail, data, data_len);
-		priv->tail += data_len;
-
+	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
+		memcpy(priv->data + priv->last_update_bufflen, data, data_len);
+		priv->last_update_bufflen += data_len;
 		return 1;
 	}
 
-	return 0;
+	return digest_update_inner(ctx, data, data_len);
 }
 
 static void async_cb(struct wd_cipher_req *req, void *data)
@@ -366,13 +420,10 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	struct async_op op;
 	int ret;
 
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (!priv->sess)
-		return 0;
-
+	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
-	priv->req.out = digest;
-	priv->req.in_bytes = priv->tail;
+	priv->req.out = priv->out;
+	priv->req.in_bytes = priv->last_update_bufflen;
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	async_setup_async_event_notification(&op);
@@ -396,18 +447,19 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 		if (!ret)
 			goto err;
 	}
-
+	memcpy(digest, priv->req.out, priv->req.out_bytes);
 	if (priv->sess)
 		wd_digest_free_sess(priv->sess);
 
 	return 1;
 
 err:
+	if (priv->sess)
+		wd_digest_free_sess(priv->sess);
+
 	fprintf(stderr, "do sec digest failed, switch to soft digest.\n");
 	ret = uadk_digest_soft_work(priv, priv->tail, digest);
 
-	if (priv->sess)
-		wd_digest_free_sess(priv->sess);
 	async_clear_async_event_notification();
 	return ret;
 }
@@ -423,8 +475,10 @@ static int uadk_digest_cleanup(EVP_MD_CTX *ctx)
 	if (priv->copy)
 		return 1;
 
-	if (priv && priv->data)
+	if (priv && priv->data) {
 		OPENSSL_free(priv->data);
+		priv->data = NULL;
+	}
 
 	return 1;
 }
