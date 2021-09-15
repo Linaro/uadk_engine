@@ -60,10 +60,14 @@ if [[ $algs =~ "AES" ]]; then
 	openssl speed -engine $engine_id -async_jobs 1 -evp aes-256-xts
 fi
 
-if [[ $algs =~ "SM4" ]]; then
-	echo "testing SM4"
+if [[ $algs =~ "SM4-CBC" ]]; then
+	echo "testing SM4-CBC"
 	openssl speed -engine $engine_id -evp sm4-cbc
 	openssl speed -engine $engine_id -async_jobs 1 -evp sm4-cbc
+fi
+
+if [[ $algs =~ "SM4-ECB" ]]; then
+	echo "testing SM4-ECB"
 	openssl speed -engine $engine_id -evp sm4-ecb
 	openssl speed -engine $engine_id -async_jobs 1 -evp sm4-ecb
 fi
