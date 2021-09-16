@@ -614,15 +614,15 @@ int uadk_bind_cipher(ENGINE *e)
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
@@ -638,15 +638,15 @@ int uadk_bind_cipher(ENGINE *e)
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(sm4_ecb, 8, 24, 8, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
+	UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, EVP_CIPH_CBC_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
