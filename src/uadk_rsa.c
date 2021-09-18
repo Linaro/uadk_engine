@@ -76,6 +76,7 @@ struct rsa_res_config {
 struct rsa_res {
 	struct wd_ctx_config *ctx_res;
 	int pid;
+	pthread_spinlock_t lock;
 } rsa_res;
 
 enum {
@@ -576,8 +577,10 @@ static int uadk_wd_rsa_init(struct rsa_res_config *config,
 
 	for (i = 0; i < CTX_NUM; i++) {
 		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
-		if (!ctx_cfg->ctxs[i].ctx)
+		if (!ctx_cfg->ctxs[i].ctx) {
+			ret = -ENOMEM;
 			goto free_ctx;
+		}
 		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
 	}
 
@@ -612,6 +615,7 @@ static void uadk_wd_rsa_uninit(void)
 			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
 		free(ctx_cfg->ctxs);
 		free(ctx_cfg);
+		rsa_res.pid = 0;
 	}
 }
 
@@ -846,18 +850,42 @@ static int uadk_rsa_prepare_req(const BIGNUM *n, int flen,
 	return 1;
 }
 
-static void uadk_init_rsa(void)
+static int uadk_init_rsa(void)
 {
 	struct uacce_dev *dev;
+	int ret;
 
 	if (rsa_res.pid != getpid()) {
-		dev = wd_get_accel_dev("rsa");
-		if (dev) {
-			uadk_wd_rsa_init(&rsa_res_config, dev);
-			free(dev);
+		pthread_spin_lock(&rsa_res.lock);
+		if (rsa_res.pid == getpid()) {
+			pthread_spin_unlock(&rsa_res.lock);
+			return 1;
 		}
+
+		dev = wd_get_accel_dev("rsa");
+		if (!dev) {
+			pthread_spin_unlock(&rsa_res.lock);
+			fprintf(stderr, "failed to get device for rsa.\n");
+			return 0;
+		}
+
+		ret = uadk_wd_rsa_init(&rsa_res_config, dev);
+		if (ret)
+			goto err_unlock;
+
 		rsa_res.pid = getpid();
+		pthread_spin_unlock(&rsa_res.lock);
+		free(dev);
 	}
+
+	return 1;
+
+err_unlock:
+	pthread_spin_unlock(&rsa_res.lock);
+	free(dev);
+	fprintf(stderr, "failed to init rsa(%d).\n", ret);
+
+	return 0;
 }
 
 static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
@@ -871,11 +899,15 @@ static int uadk_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	BIGNUM *e_value = NULL;
 	BIGNUM *p = NULL;
 	BIGNUM *q = NULL;
-	int ret = 0;
 	int key_size = 0;
 	int is_crt = 1; /* default mode: crt*/
+	int ret;
 
-	uadk_init_rsa();
+	ret = uadk_init_rsa();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk rsa.\n");
+		return 0;
+	}
 
 	/* Check bits from two aspects: size and supports.*/
 	if (bits < RSA_MIN_MODULUS_BITS)
@@ -936,11 +968,16 @@ static int uadk_rsa_public_encrypt(int flen, const unsigned char *from,
 	uadk_rsa_sess_t *rsa_sess = NULL;
 	unsigned char *in_buf = NULL;
 	int num_bytes = 0;
-	int ret = 0;
 	BN_CTX *bn_ctx = NULL;
 	int key_bits = 0;
+	int ret;
 
-	uadk_init_rsa();
+	ret = uadk_init_rsa();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk rsa.\n");
+		return 0;
+	}
+
 	/* Check bits. */
 	key_bits = RSA_bits(rsa);
 	if (!check_bit_useful(key_bits))
@@ -998,12 +1035,16 @@ static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
 	unsigned char *in_buf = (unsigned char *)NULL;
 	uadk_rsa_sess_t *rsa_sess = NULL;
 	BN_CTX *bn_ctx = NULL;
-	int ret = 0;
 	int len = 0;
 	int key_bits = 0;
 	int num_bytes = 0;
+	int ret;
 
-	uadk_init_rsa();
+	ret = uadk_init_rsa();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk rsa.\n");
+		return 0;
+	}
 
 	hpre_rsa_check_para(flen, from, to, rsa);
 	RSA_get0_key(rsa, &n, &e, &d);
@@ -1067,7 +1108,6 @@ static int uadk_rsa_private_decrypt(int flen, const unsigned char *from,
 static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 				 unsigned char *to, RSA *rsa, int padding)
 {
-	int ret = 0;
 	uadk_rsa_sess_t *rsa_sess = NULL;
 	BIGNUM *f = (BIGNUM *)NULL;
 	BIGNUM *bn_ret = (BIGNUM *)NULL;
@@ -1084,8 +1124,13 @@ static int uadk_rsa_private_sign(int flen, const unsigned char *from,
 	int key_bits = 0;
 	int num_bytes = 0;
 	BN_CTX *bn_ctx = NULL;
+	int ret;
 
-	uadk_init_rsa();
+	ret = uadk_init_rsa();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk rsa.\n");
+		return 0;
+	}
 
 	hpre_rsa_check_para(flen, from, to, rsa);
 	key_bits = RSA_bits(rsa);
@@ -1204,6 +1249,8 @@ static int uadk_rsa_public_verify(int flen, const unsigned char *from,
 
 void uadk_destroy_rsa(void)
 {
+	pthread_spin_destroy(&rsa_res.lock);
+
 	return uadk_wd_rsa_uninit();
 }
 
@@ -1237,5 +1284,7 @@ static RSA_METHOD *uadk_get_rsa_methods(void)
  */
 int uadk_bind_rsa(ENGINE *e)
 {
+	pthread_spin_init(&rsa_res.lock, PTHREAD_PROCESS_PRIVATE);
+
 	return ENGINE_set_RSA(e, uadk_get_rsa_methods());
 }
