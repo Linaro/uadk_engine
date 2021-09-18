@@ -655,35 +655,35 @@ int uadk_bind_cipher(ENGINE *e)
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ctr, 16, 16, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ctr, 16, 24, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ctr, 16, 32, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_xts, 16, 32, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+	UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 0, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_xts, 16, 64, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+	UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 0, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
@@ -695,47 +695,47 @@ int uadk_bind_cipher(ENGINE *e)
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
+	UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, EVP_CIPH_CBC_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+	UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, EVP_CIPH_ECB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ofb128, 16, 16, 16, EVP_CIPH_OFB_MODE,
+	UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ofb128, 16, 24, 16, EVP_CIPH_OFB_MODE,
+	UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, EVP_CIPH_OFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ofb128, 16, 32, 16, EVP_CIPH_OFB_MODE,
+	UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, EVP_CIPH_OFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_cfb128, 16, 16, 16, EVP_CIPH_CFB_MODE,
+	UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, EVP_CIPH_CFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_cfb128, 16, 24, 16, EVP_CIPH_CFB_MODE,
+	UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, EVP_CIPH_CFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_cfb128, 16, 32, 16, EVP_CIPH_CFB_MODE,
+	UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, EVP_CIPH_CFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ofb128, 16, 16, 16, EVP_CIPH_OFB_MODE,
+	UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_cfb128, 16, 16, 16, EVP_CIPH_OFB_MODE,
+	UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ctr, 16, 16, 16, EVP_CIPH_CTR_MODE,
+	UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
 			  sizeof(struct cipher_priv_ctx), uadk_cipher_init,
 			  uadk_do_cipher, uadk_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
