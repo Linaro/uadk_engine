@@ -77,6 +77,7 @@ typedef struct uadk_dh_sess  uadk_dh_sess_t;
 struct alg_res {
 	struct wd_ctx_config *ctx_res;
 	int pid;
+	pthread_spinlock_t lock;
 };
 
 struct alg_res_per_dev {
@@ -188,7 +189,7 @@ struct dh_res_config dh_res_config = {
 	},
 };
 
-static int uadk_wd_dh_ctx_init(struct dh_res_config *config, struct uacce_dev *dev)
+static int uadk_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev)
 {
 	struct wd_sched *sched = &config->sched.wd_sched;
 	struct wd_ctx_config *ctx_cfg;
@@ -208,8 +209,10 @@ static int uadk_wd_dh_ctx_init(struct dh_res_config *config, struct uacce_dev *d
 
 	for (i = 0; i < CTX_NUM; i++) {
 		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
-		if (!ctx_cfg->ctxs[i].ctx)
+		if (!ctx_cfg->ctxs[i].ctx) {
+			ret = -ENOMEM;
 			goto free_ctx;
+		}
 		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
 	}
 
@@ -243,21 +246,46 @@ static void uadk_wd_dh_ctx_uninit(void)
 			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
 		free(ctx_cfg->ctxs);
 		free(ctx_cfg);
+		dh_res.pid = 0;
 	}
 }
 
-static void uadk_init_dh(void)
+static int uadk_init_dh(void)
 {
 	struct uacce_dev *dev;
+	int ret;
 
 	if (dh_res.pid != getpid()) {
-		dev = wd_get_accel_dev("dh");
-		if (dev) {
-			uadk_wd_dh_ctx_init(&dh_res_config, dev);
-			free(dev);
+		pthread_spin_lock(&dh_res.lock);
+		if (dh_res.pid == getpid()) {
+			pthread_spin_unlock(&dh_res.lock);
+			return 1;
 		}
+
+		dev = wd_get_accel_dev("dh");
+		if (!dev) {
+			pthread_spin_unlock(&dh_res.lock);
+			fprintf(stderr, "failed to get device for dh.\n");
+			return 0;
+		}
+
+		ret = uadk_wd_dh_init(&dh_res_config, dev);
+		if (ret)
+			goto err_unlock;
+
 		dh_res.pid = getpid();
+		pthread_spin_unlock(&dh_res.lock);
+		free(dev);
 	}
+
+	return 1;
+
+err_unlock:
+	pthread_spin_unlock(&dh_res.lock);
+	free(dev);
+	fprintf(stderr, "failed to init dh(%d).\n", ret);
+
+	return 0;
 }
 
 static uadk_dh_sess_t *uadk_dh_new_eng_session(DH *dh_alg)
@@ -532,9 +560,13 @@ static int uadk_dh_generate_key(DH *dh)
 	BIGNUM *pub_key = NULL;
 	BIGNUM *priv_key = NULL;
 	uadk_dh_sess_t *dh_sess = NULL;
-	int ret = DH_FAIL;
+	int ret;
 
-	uadk_init_dh();
+	ret = uadk_init_dh();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk dh.\n");
+		return 0;
+	}
 
 	if (dh == NULL)
 		return DH_FAIL;
@@ -607,7 +639,11 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh
 	int ret;
 	int ret_size = 0;
 
-	uadk_init_dh();
+	ret = uadk_init_dh();
+	if (!ret) {
+		fprintf(stderr, "failed to initialize uadk dh.\n");
+		return 0;
+	}
 
 	if (dh == NULL || key == NULL || pub_key == NULL || DH_get0_priv_key(dh) == NULL)
 		return DH_FAIL;
@@ -679,10 +715,14 @@ DH_METHOD *uadk_get_dh_methods(void)
 
 int uadk_bind_dh(ENGINE *e)
 {
+	pthread_spin_init(&dh_res.lock, PTHREAD_PROCESS_PRIVATE);
+
 	return ENGINE_set_DH(e, uadk_get_dh_methods());
 }
 
 void uadk_destroy_dh(void)
 {
+	pthread_spin_destroy(&dh_res.lock);
+
 	return uadk_wd_dh_ctx_uninit();
 }

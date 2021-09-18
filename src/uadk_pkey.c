@@ -52,6 +52,8 @@ typedef struct uadk_ecc_sess {
 /* ecc global hardware resource is saved here */
 struct ecc_res {
 	struct wd_ctx_config *ctx_res;
+	int pid;
+	pthread_spinlock_t lock;
 } ecc_res;
 
 static struct uadk_pkey_meth pkey_meth;
@@ -129,22 +131,24 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 		goto free_cfg;
 	}
 
-	ret = -EINVAL;
 	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
 	dev = wd_get_accel_dev("ecdsa");
 	for (i = 0; i < CTX_NUM; i++) {
 		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
-		if (!ctx_cfg->ctxs[i].ctx)
+		if (!ctx_cfg->ctxs[i].ctx) {
+			ret = -EINVAL;
 			goto free_ctx;
+		}
 		ctx_cfg->ctxs[i].ctx_mode = (i == 0) ? CTX_SYNC : CTX_ASYNC;
 	}
-	free(dev);
 
 	ret = wd_ecc_init(ctx_cfg, sched);
 	if (ret)
 		goto free_ctx;
 
 	async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
+	free(dev);
+
 	return 0;
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
@@ -154,6 +158,7 @@ free_ctx:
 		}
 	}
 	free(ctx_cfg->ctxs);
+	free(dev);
 free_cfg:
 	free(ctx_cfg);
 	ecc_res.ctx_res = NULL;
@@ -174,6 +179,7 @@ static void uadk_wd_ecc_uninit(void)
 	free(ctx_cfg->ctxs);
 	free(ctx_cfg);
 	ecc_res.ctx_res = NULL;
+	ecc_res.pid = 0;
 }
 
 int uadk_ecc_crypto(handle_t sess,
@@ -382,14 +388,37 @@ bool uadk_support_algorithm(char *alg)
 
 int uadk_init_ecc(void)
 {
-	if (uadk_support_algorithm("sm2") ||
-	    uadk_support_algorithm("ecdsa") ||
-	    uadk_support_algorithm("ecdh") ||
-	    uadk_support_algorithm("x25519") ||
-	    uadk_support_algorithm("x448"))
-		return uadk_wd_ecc_init(&ecc_res_config);
+	int ret;
 
-	return -EINVAL;
+	if (!uadk_support_algorithm("sm2") &&
+	    !uadk_support_algorithm("ecdsa") &&
+	    !uadk_support_algorithm("ecdh") &&
+	    !uadk_support_algorithm("x25519") &&
+	    !uadk_support_algorithm("x448"))
+		return -EINVAL;
+
+	if (ecc_res.pid != getpid()){
+		pthread_spin_lock(&ecc_res.lock);
+		if (ecc_res.pid == getpid()) {
+			pthread_spin_unlock(&ecc_res.lock);
+			return 0;
+		}
+
+		ret = uadk_wd_ecc_init(&ecc_res_config);
+		if (ret)
+			goto err_unlock;
+
+		ecc_res.pid = getpid();
+		pthread_spin_unlock(&ecc_res.lock);
+	}
+
+	return 0;
+
+err_unlock:
+	pthread_spin_unlock(&ecc_res.lock);
+	fprintf(stderr, "failed to init ec(%d).\n", ret);
+
+	return ret;
 }
 
 static void uadk_uninit_ecc(void)
@@ -471,11 +500,14 @@ int uadk_bind_ecc(ENGINE *e)
 		return ret;
 	}
 
+	pthread_spin_init(&ecc_res.lock, PTHREAD_PROCESS_PRIVATE);
+
 	return ret;
 }
 
 void uadk_destroy_ecc(void)
 {
+	pthread_spin_destroy(&ecc_res.lock);
 	uadk_ec_delete_meth();
 	uadk_uninit_ecc();
 }
