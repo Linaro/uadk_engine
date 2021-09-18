@@ -539,13 +539,21 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 
 static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 {
-	if (priv->setup.mode == WD_CIPHER_CBC) {
-		int iv_bytes = priv->req.iv_bytes;
+	__u16 iv_bytes;
+
+	switch (priv->setup.mode) {
+	case WD_CIPHER_CBC:
+	case WD_CIPHER_OFB:
+	case WD_CIPHER_CFB:
+		iv_bytes = priv->req.iv_bytes;
 
 		if (priv->req.op_type == WD_CIPHER_ENCRYPTION) {
 			priv->req.dst += priv->req.in_bytes;
 			memcpy(priv->iv, priv->req.dst - iv_bytes, iv_bytes);
 		}
+		return;
+	default:
+		return;
 	}
 }
 
