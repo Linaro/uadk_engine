@@ -27,18 +27,21 @@
 
 #define UADK_DO_SOFT		(-0xE0)
 
-#define UADK_ECC_MAX_KEY_BITS	521
-#define UADK_ECC_MAX_KEY_BYTES	66
-#define UADK_ECC_CV_PARAM_NUM	6
-#define UADK_BITS_2_BYTES_SHIFT	3
-#define SM2_KEY_BYTES		32
-#define UADK_OCTET_STRING	4
+#define UADK_ECC_MAX_KEY_BITS		521
+#define UADK_ECC_MAX_KEY_BYTES		66
+#define UADK_ECC_CV_PARAM_NUM		6
+#define UADK_BITS_2_BYTES_SHIFT		3
+#define SM2_KEY_BYTES			32
+#define UADK_OCTET_STRING		4
 #define UADK_ECC_PUBKEY_PARAM_NUM	2
-
+#define UADK_ECC_PADDING		7
+#define UADK_ECDH_CV_NUM		8
 
 struct uadk_pkey_meth {
 	EVP_PKEY_METHOD *sm2;
 	EVP_PKEY_METHOD *ec;
+	EVP_PKEY_METHOD *x448;
+	EVP_PKEY_METHOD *x25519;
 };
 
 bool uadk_is_all_zero(const unsigned char *data, size_t dlen);
@@ -61,6 +64,8 @@ int uadk_init_ecc(void);
 const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid);
 int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_ec_delete_meth(void);
 int uadk_bind_ec(ENGINE *e);
 

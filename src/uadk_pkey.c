@@ -29,6 +29,8 @@
 static int pkey_nids[] = {
 	EVP_PKEY_EC,
 	EVP_PKEY_SM2,
+	EVP_PKEY_X25519,
+	EVP_PKEY_X448
 };
 
 struct ecc_sched {
@@ -470,6 +472,22 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 			return 0;
 		}
 		*pmeth = pkey_meth.ec;
+		break;
+	case EVP_PKEY_X448:
+		ret = uadk_x448_create_pmeth(&pkey_meth);
+		if (!ret) {
+			printf("failed to register x448 pmeth");
+			return 0;
+		}
+		*pmeth = pkey_meth.x448;
+		break;
+	case EVP_PKEY_X25519:
+		ret = uadk_x25519_create_pmeth(&pkey_meth);
+		if (!ret) {
+			printf("failed to register x25519 pmeth");
+			return 0;
+		}
+		*pmeth = pkey_meth.x25519;
 		break;
 	default:
 		printf("not find nid %d\n", nid);
