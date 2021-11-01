@@ -19,6 +19,9 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 
+#define UADK_E_SUCCESS	1
+#define UADK_E_FAIL	0
+
 enum {
 	KUNPENG920,
 	KUNPENG930,
