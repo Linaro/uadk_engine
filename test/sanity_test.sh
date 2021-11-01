@@ -103,3 +103,17 @@ if [[ $algs =~ "id-ecPublicKey" ]]; then
 	openssl speed -elapsed -engine $engine_id ecdsap521
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap521
 fi
+
+#X25519 only supported in Kunpeng930 or later
+if [[ $algs =~ "X25519" ]]; then
+	echo "testing X25519"
+	openssl speed -elapsed -engine $engine_id ecdhx25519
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhx25519
+fi
+
+#X448 only supported in Kunpeng930 or later
+if [[ $algs =~ "X448" ]]; then
+	echo "testing X448"
+	openssl speed -elapsed -engine $engine_id ecdhx448
+	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhx448
+fi
