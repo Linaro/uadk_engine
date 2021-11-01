@@ -134,7 +134,7 @@ static int uadk_digest_soft_work(struct digest_priv_ctx *md_ctx, int len, unsign
 	digest_md = uadk_digests_soft_md(md_ctx->e_nid);
 	if (unlikely(digest_md == NULL)) {
 		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ctx_len = EVP_MD_meth_get_app_datasize(digest_md);
@@ -155,12 +155,12 @@ static int uadk_digest_soft_work(struct digest_priv_ctx *md_ctx, int len, unsign
 		md_ctx->soft_ctx = NULL;
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 			       const int **nids, int nid)
 {
-	int ok = 1;
+	int ok = UADK_E_SUCCESS;
 
 	if (!digest) {
 		*nids = digest_nids;
@@ -187,7 +187,7 @@ static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 		*digest = uadk_sha512;
 		break;
 	default:
-		ok = 0;
+		ok = UADK_E_FAIL;
 		*digest = NULL;
 		break;
 	}
@@ -282,14 +282,14 @@ static int uadk_init_digest(void)
 		pthread_spin_lock(&engine.lock);
 		if (engine.pid == getpid()) {
 			pthread_spin_unlock(&engine.lock);
-			return 1;
+			return UADK_E_SUCCESS;
 		}
 
 		dev = wd_get_accel_dev("digest");
 		if (!dev) {
 			pthread_spin_unlock(&engine.lock);
 			fprintf(stderr, "failed to get device for digest.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		ret = uadk_wd_digest_init(dev);
@@ -301,14 +301,14 @@ static int uadk_init_digest(void)
 		free(dev);
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 
 err_unlock:
 	pthread_spin_unlock(&engine.lock);
 	free(dev);
 	fprintf(stderr, "failed to init digest(%d).\n", ret);
 
-	return 0;
+	return UADK_E_FAIL;
 }
 
 static int uadk_digest_init(EVP_MD_CTX *ctx)
@@ -321,7 +321,7 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 	ret = uadk_init_digest();
 	if (!ret) {
 		fprintf(stderr, "failed to initialize uadk digest.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	switch (nid) {
@@ -368,10 +368,10 @@ static int uadk_digest_init(EVP_MD_CTX *ctx)
 		priv->req.out_bytes = 64;
 		break;
 	default:
-		return 0;
+		return UADK_E_FAIL;
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
@@ -386,10 +386,10 @@ static int uadk_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len
 		memcpy(priv->data + priv->tail, data, data_len);
 		priv->tail += data_len;
 
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
-	return 0;
+	return UADK_E_FAIL;
 }
 
 static void async_cb(struct wd_cipher_req *req, void *data)
@@ -405,7 +405,7 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 
 	priv->sess = wd_digest_alloc_sess(&priv->setup);
 	if (!priv->sess)
-		return 0;
+		return UADK_E_FAIL;
 
 	priv->req.in = priv->data;
 	priv->req.out = digest;
@@ -437,7 +437,7 @@ static int uadk_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	if (priv->sess)
 		wd_digest_free_sess(priv->sess);
 
-	return 1;
+	return UADK_E_SUCCESS;
 
 err:
 	fprintf(stderr, "do sec digest failed, switch to soft digest.\n");
@@ -455,15 +455,15 @@ static int uadk_digest_cleanup(EVP_MD_CTX *ctx)
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 
 	if (!priv)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	if (priv->copy)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	if (priv && priv->data)
 		OPENSSL_free(priv->data);
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
@@ -482,7 +482,7 @@ static int uadk_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	if (f && f->data)
 		t->copy = true;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 

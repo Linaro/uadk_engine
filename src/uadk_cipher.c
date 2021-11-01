@@ -123,7 +123,7 @@ static EVP_CIPHER *uadk_sm4_ctr;
 static int uadk_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 			       const int **nids, int nid)
 {
-	int ok = 1;
+	int ok = UADK_E_SUCCESS;
 	int size = 0;
 	int *cipher_nids;
 	int i;
@@ -148,7 +148,7 @@ static int uadk_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 
 	if (i == size) {
 		*cipher = NULL;
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	switch (nid) {
@@ -225,7 +225,7 @@ static int uadk_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 		*cipher = uadk_sm4_ctr;
 		break;
 	default:
-		ok = 0;
+		ok = UADK_E_FAIL;
 		*cipher = NULL;
 		break;
 	}
@@ -341,7 +341,7 @@ static int uadk_init_cipher(void)
 		pthread_spin_lock(&engine.lock);
 		if (engine.pid == getpid()) {
 			pthread_spin_unlock(&engine.lock);
-			return 1;
+			return UADK_E_SUCCESS;
 		}
 
 		dev = wd_get_accel_dev("cipher");
@@ -379,7 +379,7 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	if (unlikely(key == NULL)) {
 		fprintf(stderr, "set key is NULL");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	nid = EVP_CIPHER_CTX_nid(ctx);
@@ -504,12 +504,12 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		priv->req.out_bytes = 16;
 		break;
 	default:
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	priv->sess = wd_cipher_alloc_sess(&priv->setup);
 	if (!priv->sess)
-		return 0;
+		return UADK_E_FAIL;
 
 	if (key) {
 		ret = wd_cipher_set_key(priv->sess, key, EVP_CIPHER_CTX_key_length(ctx));
@@ -519,7 +519,7 @@ static int uadk_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		}
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_cipher_cleanup(EVP_CIPHER_CTX *ctx)
@@ -530,7 +530,7 @@ static int uadk_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 	if (priv->sess)
 		wd_cipher_free_sess(priv->sess);
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static void async_cb(struct wd_cipher_req *req, void *data)
@@ -567,13 +567,13 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 	if (unlikely(inlen == 0)) {
 		fprintf(stderr, "input length is zero.");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_init_cipher();
 	if (!ret) {
 		fprintf(stderr, "failed to initialize uadk cipher.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
@@ -606,11 +606,11 @@ static int uadk_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 	uadk_cipher_update_priv_ctx(priv);
 
-	return 1;
+	return UADK_E_SUCCESS;
 
 out_notify:
 	async_clear_async_event_notification();
-	return 0;
+	return UADK_E_FAIL;
 }
 
 #define UADK_CIPHER_DESCR(name, block_size, key_size, iv_len, flags, ctx_size,\
@@ -635,7 +635,7 @@ int uadk_bind_cipher(ENGINE *e)
 
 	dev = wd_get_accel_dev("cipher");
 	if (dev == NULL)
-		return 0;
+		return UADK_E_FAIL;
 
 	if (!strcmp(dev->api, "hisi_qm_v2"))
 		platform = KUNPENG920;
