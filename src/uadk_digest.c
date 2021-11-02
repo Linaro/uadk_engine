@@ -183,6 +183,8 @@ static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 	case NID_sha256:
 		*digest = uadk_sha256;
 		break;
+	case NID_sha384:
+		*digest = uadk_sha384;
 	case NID_sha512:
 		*digest = uadk_sha512;
 		break;
