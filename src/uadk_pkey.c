@@ -229,7 +229,7 @@ bool uadk_is_all_zero(const unsigned char *data, size_t dlen)
 	return true;
 }
 
-int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
+int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 {
 	unsigned char *point_bin = NULL;
 	struct wd_ecc_point pubkey;
@@ -269,7 +269,7 @@ int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey)
 	return ret;
 }
 
-int uadk_ecc_set_private_key(handle_t sess, EC_KEY *eckey)
+int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 {
 	unsigned char bin[UADK_ECC_MAX_KEY_BYTES];
 	struct wd_ecc_key *ecc_key;

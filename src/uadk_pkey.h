@@ -50,8 +50,8 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr);
 void uadk_ecc_cb(void);
 void uadk_ecc_fill_req(struct wd_ecc_req *req,
 			      unsigned int op, void *in, void *out);
-int uadk_ecc_set_private_key(handle_t sess, EC_KEY *eckey);
-int uadk_ecc_set_public_key(handle_t sess, EC_KEY *eckey);
+int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey);
+int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey);
 int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req,
 		    void *usr);
 bool uadk_prime_field(const EC_GROUP *group);
