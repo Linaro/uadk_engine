@@ -185,6 +185,7 @@ static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 		break;
 	case NID_sha384:
 		*digest = uadk_sha384;
+		break;
 	case NID_sha512:
 		*digest = uadk_sha512;
 		break;
