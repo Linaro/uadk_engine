@@ -19,6 +19,7 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 
+#define ARRAY_SIZE(x)	(sizeof(x) / sizeof((x)[0]))
 enum {
 	KUNPENG920,
 	KUNPENG930,
@@ -27,8 +28,8 @@ enum {
 extern const char *engine_uadk_id;
 extern int uadk_e_bind_cipher(ENGINE *e);
 extern void uadk_e_destroy_cipher(void);
-extern int uadk_bind_digest(ENGINE *e);
-extern void uadk_destroy_digest(void);
+extern int uadk_e_bind_digest(ENGINE *e);
+extern void uadk_e_destroy_digest(void);
 extern void uadk_destroy_ecc(void);
 extern int uadk_e_bind_rsa(ENGINE *e);
 extern void uadk_e_destroy_rsa(void);
