@@ -68,7 +68,7 @@ static int uadk_destroy(ENGINE *e)
 #endif
 
 	if (uadk_cipher)
-		uadk_destroy_cipher();
+		uadk_e_destroy_cipher();
 	if (uadk_digest)
 		uadk_destroy_digest();
 	if (uadk_rsa)
@@ -186,7 +186,7 @@ static int bind_fn(ENGINE *e, const char *id)
 
 	dev = wd_get_accel_dev("cipher");
 	if (dev) {
-		if (!uadk_bind_cipher(e))
+		if (!uadk_e_bind_cipher(e))
 			fprintf(stderr, "uadk bind cipher failed\n");
 		else
 			uadk_cipher = 1;
