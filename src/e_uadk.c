@@ -70,7 +70,7 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_cipher)
 		uadk_e_destroy_cipher();
 	if (uadk_digest)
-		uadk_destroy_digest();
+		uadk_e_destroy_digest();
 	if (uadk_rsa)
 		uadk_destroy_rsa();
 	if (uadk_ecc)
@@ -193,10 +193,14 @@ static int bind_fn(ENGINE *e, const char *id)
 		free(dev);
 	}
 
-	if (!uadk_bind_digest(e))
-		fprintf(stderr, "uadk bind digest failed\n");
-	else
-		uadk_digest = 1;
+	dev = wd_get_accel_dev("digest");
+	if (dev) {
+		if (!uadk_e_bind_digest(e))
+			fprintf(stderr, "uadk bind digest failed\n");
+		else
+			uadk_digest = 1;
+		free(dev);
+	}
 
 	dev = wd_get_accel_dev("rsa");
 	if (dev) {
