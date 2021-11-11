@@ -54,11 +54,6 @@ struct ecc_res_config {
 	struct ecc_sched sched;
 };
 
-/* ecc global hardware resource is saved here */
-struct ecc_res {
-	struct wd_ctx_config *ctx_res;
-} ecc_res;
-
 typedef struct uadk_ecc_sess {
 	handle_t sess;
 	struct wd_ecc_sess_setup setup;
