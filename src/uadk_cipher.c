@@ -61,6 +61,13 @@ struct cipher_priv_ctx {
 	int update_iv;
 };
 
+struct cipher_info {
+	int nid;
+	enum wd_cipher_alg alg;
+	enum wd_cipher_mode mode;
+	__u32 out_bytes;
+};
+
 static int platform;
 
 #define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
@@ -159,6 +166,34 @@ static struct sw_cipher_t sec_ciphers_sw_table[] = {
 	{ NID_sm4_ecb, EVP_sm4_ecb },
 	{ NID_sm4_ctr, EVP_sm4_ctr },
 };
+
+static struct cipher_info cipher_info_table[] = {
+	{ NID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ NID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ NID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ NID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 16},
+	{ NID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
+	{ NID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
+	{ NID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 32},
+	{ NID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 512},
+	{ NID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC, 16},
+	{ NID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC, 16},
+	{ NID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB, 16},
+	{ NID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ NID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ NID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ NID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ NID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ NID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ NID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ NID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ NID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ NID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB, 16},
+	{ NID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB, 16},
+	{ NID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB, 16},
+	{ NID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR, 16},
+};
+
 static const EVP_CIPHER *sec_ciphers_get_cipher_sw_impl(int n_id)
 {
 	int sec_cipher_sw_table_size = ARRAY_SIZE(sec_ciphers_sw_table);
@@ -571,7 +606,8 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
-	int nid, ret;
+	int cipher_counts = ARRAY_SIZE(cipher_info_table);
+	int nid, ret, i;
 
 	if (unlikely(key == NULL)) {
 		fprintf(stderr, "uadk engine init parameter key is NULL.\n");
@@ -584,80 +620,18 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	if (iv)
 		memcpy(priv->iv, iv, EVP_CIPHER_CTX_iv_length(ctx));
 
-	switch (nid) {
-	case NID_aes_128_cbc:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CBC, 16);
-		break;
-	case NID_aes_192_cbc:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CBC, 64);
-		break;
-	case NID_aes_256_cbc:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CBC, 64);
-		break;
-	case NID_aes_128_ctr:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CTR, 64);
-		break;
-	case NID_aes_192_ctr:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CTR, 64);
-		break;
-	case NID_aes_256_ctr:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CTR, 64);
-		break;
-	case NID_aes_128_ecb:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_ECB, 16);
-		break;
-	case NID_aes_192_ecb:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_ECB, 16);
-		break;
-	case NID_aes_256_ecb:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_ECB, 16);
-		break;
-	case NID_aes_128_xts:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_XTS, 32);
-		break;
-	case NID_aes_256_xts:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_XTS, 512);
-		break;
-	case NID_sm4_cbc:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_SM4, WD_CIPHER_CBC, 16);
-		break;
-	case NID_sm4_ecb:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_SM4, WD_CIPHER_ECB, 16);
-		break;
-	case NID_des_ede3_cbc:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_3DES, WD_CIPHER_CBC, 16);
-		break;
-	case NID_des_ede3_ecb:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_3DES, WD_CIPHER_ECB, 16);
-		break;
-	case NID_aes_128_ofb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_OFB, 16);
-		break;
-	case NID_aes_192_ofb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_OFB, 16);
-		break;
-	case NID_aes_256_ofb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_OFB, 16);
-		break;
-	case NID_aes_128_cfb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CFB, 16);
-		break;
-	case NID_aes_192_cfb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CFB, 16);
-		break;
-	case NID_aes_256_cfb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_AES, WD_CIPHER_CFB, 16);
-		break;
-	case NID_sm4_ofb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_SM4, WD_CIPHER_OFB, 16);
-		break;
-	case NID_sm4_cfb128:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_SM4, WD_CIPHER_CFB, 16);
-		break;
-	case NID_sm4_ctr:
-		cipher_priv_ctx_setup(priv, WD_CIPHER_SM4, WD_CIPHER_CTR, 16);
-		break;
-	default:
+	for (i = 0; i < cipher_counts; i++) {
+		if (nid == cipher_info_table[i].nid) {
+			cipher_priv_ctx_setup(priv,
+					cipher_info_table[i].alg,
+					cipher_info_table[i].mode,
+					cipher_info_table[i].out_bytes);
+			break;
+		}
+	}
+
+	if (i == cipher_counts) {
+		fprintf(stderr, "failed to setup the private ctx.\n");
 		return 0;
 	}
 
