@@ -76,7 +76,7 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_ecc)
 		uadk_destroy_ecc();
 	if (uadk_dh)
-		uadk_destroy_dh();
+		uadk_e_destroy_dh();
 	return 1;
 }
 
@@ -213,7 +213,7 @@ static int bind_fn(ENGINE *e, const char *id)
 
 	dev = wd_get_accel_dev("dh");
 	if (dev) {
-		if (!uadk_bind_dh(e))
+		if (!uadk_e_bind_dh(e))
 			fprintf(stderr, "uadk bind dh failed\n");
 		else
 			uadk_dh = 1;
