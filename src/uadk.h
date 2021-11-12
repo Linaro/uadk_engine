@@ -33,7 +33,7 @@ extern void uadk_e_destroy_digest(void);
 extern int uadk_e_bind_rsa(ENGINE *e);
 extern void uadk_e_destroy_rsa(void);
 extern void uadk_destroy_ecc(void);
-extern void uadk_destroy_dh(void);
-extern int uadk_bind_dh(ENGINE *e);
+extern int uadk_e_bind_dh(ENGINE *e);
+extern void uadk_e_destroy_dh(void);
 extern int uadk_bind_ecc(ENGINE *e);
 #endif
