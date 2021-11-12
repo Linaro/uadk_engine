@@ -26,6 +26,13 @@
 #include "v1/uadk_v1.h"
 #endif
 
+#define UADK_CMD_ENABLE_CIPHER_ENV	ENGINE_CMD_BASE
+#define UADK_CMD_ENABLE_DIGEST_ENV	(ENGINE_CMD_BASE + 1)
+#define UADK_CMD_ENABLE_RSA_ENV		(ENGINE_CMD_BASE + 2)
+#define UADK_CMD_ENABLE_DH_ENV		(ENGINE_CMD_BASE + 3)
+#define UADK_CMD_ENABLE_ECC_ENV		(ENGINE_CMD_BASE + 4)
+#define ARRAY_SIZE(x)			(sizeof(x) / sizeof((x)[0]))
+
 /* Constants used when creating the ENGINE */
 const char *engine_uadk_id = "uadk";
 static const char *engine_uadk_name = "uadk hardware engine support";
@@ -44,6 +51,18 @@ static int uadk_pkey_nosva;
 static int uadk_dh_nosva;
 #endif
 
+static const ENGINE_CMD_DEFN g_uadk_cmd_defns[] = {
+	{
+		UADK_CMD_ENABLE_CIPHER_ENV,
+		"UADK_CMD_ENABLE_CIPHER_ENV",
+		"Enable or Disable cipher engine environment variable.",
+		ENGINE_CMD_FLAG_NUMERIC
+	},
+	{
+		0, NULL, NULL, 0
+	}
+};
+
 __attribute__((constructor))
 static void uadk_constructor(void)
 {
@@ -52,6 +71,69 @@ static void uadk_constructor(void)
 __attribute__((destructor))
 static void uadk_destructor(void)
 {
+}
+
+struct uadk_alg_env_enabled {
+	const char *alg_name;
+	__u8 env_enabled;
+};
+
+static struct uadk_alg_env_enabled uadk_env_enabled[] = {
+	{ "cipher", 0 },
+	{ "digest", 0 }
+};
+
+int uadk_is_env_enabled(char *alg_name)
+{
+	int len = ARRAY_SIZE(uadk_env_enabled);
+	int i = 0;
+
+	while (i < len) {
+		if (uadk_env_enabled[i].alg_name == alg_name)
+			return uadk_env_enabled[i].env_enabled;
+		i++;
+	}
+
+	return 0;
+}
+
+static void uadk_set_env_enabled(char *alg_name, __u8 value)
+{
+	int len = ARRAY_SIZE(uadk_env_enabled);
+	int i = 0;
+
+	while (i < len) {
+		if (uadk_env_enabled[i].alg_name == alg_name) {
+			uadk_env_enabled[i].env_enabled = value;
+			return;
+		}
+
+		i++;
+	}
+}
+
+static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
+			    void *p, void (*f) (void))
+{
+	int ret = 1;
+	(void)p;
+	(void)f;
+
+	if (e == NULL) {
+		fprintf(stderr, "Null Engine\n");
+		return 0;
+	}
+
+	switch (cmd) {
+	case UADK_CMD_ENABLE_CIPHER_ENV:
+		uadk_set_env_enabled("cipher", i);
+		break;
+	default:
+		ret = 0;
+		break;
+	}
+
+	return ret;
 }
 
 static int uadk_destroy(ENGINE *e)
@@ -103,6 +185,7 @@ static void engine_init_child_at_fork_handler(void)
 static int bind_fn(ENGINE *e, const char *id)
 {
 	struct uacce_dev *dev;
+	int ret;
 
 	if (!ENGINE_set_id(e, engine_uadk_id) ||
 	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
@@ -224,6 +307,13 @@ static int bind_fn(ENGINE *e, const char *id)
 		fprintf(stderr, "uadk bind ecc failed\n");
 	else
 		uadk_ecc = 1;
+
+	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
+	ret &= ENGINE_set_cmd_defns(e, g_uadk_cmd_defns);
+	if (ret != 1) {
+		fprintf(stderr, "Engine set ctrl function or defines failed\n");
+		return 0;
+	}
 
 	return 1;
 }
