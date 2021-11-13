@@ -59,6 +59,30 @@ static const ENGINE_CMD_DEFN g_uadk_cmd_defns[] = {
 		ENGINE_CMD_FLAG_NUMERIC
 	},
 	{
+		UADK_CMD_ENABLE_DIGEST_ENV,
+		"UADK_CMD_ENABLE_DIGEST_ENV",
+		"Enable or Disable digest engine environment variable.",
+		ENGINE_CMD_FLAG_NUMERIC
+	},
+	{
+		UADK_CMD_ENABLE_RSA_ENV,
+		"UADK_CMD_ENABLE_RSA_ENV",
+		"Enable or Disable rsa engine environment variable.",
+		ENGINE_CMD_FLAG_NUMERIC
+	},
+	{
+		UADK_CMD_ENABLE_DH_ENV,
+		"UADK_CMD_ENABLE_DH_ENV",
+		"Enable or Disable dh engine environment variable.",
+		ENGINE_CMD_FLAG_NUMERIC
+	},
+	{
+		UADK_CMD_ENABLE_ECC_ENV,
+		"UADK_CMD_ENABLE_ECC_ENV",
+		"Enable or Disable ecc engine environment variable.",
+		ENGINE_CMD_FLAG_NUMERIC
+	},
+	{
 		0, NULL, NULL, 0
 	}
 };
@@ -80,7 +104,10 @@ struct uadk_alg_env_enabled {
 
 static struct uadk_alg_env_enabled uadk_env_enabled[] = {
 	{ "cipher", 0 },
-	{ "digest", 0 }
+	{ "digest", 0 },
+	{ "rsa", 0 },
+	{ "dh", 0 },
+	{ "ecc", 0 }
 };
 
 int uadk_is_env_enabled(char *alg_name)
@@ -119,7 +146,7 @@ static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
 	(void)p;
 	(void)f;
 
-	if (e == NULL) {
+	if (!e) {
 		fprintf(stderr, "Null Engine\n");
 		return 0;
 	}
@@ -127,6 +154,18 @@ static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
 	switch (cmd) {
 	case UADK_CMD_ENABLE_CIPHER_ENV:
 		uadk_set_env_enabled("cipher", i);
+		break;
+	case UADK_CMD_ENABLE_DIGEST_ENV:
+		uadk_set_env_enabled("digest", i);
+		break;
+	case UADK_CMD_ENABLE_RSA_ENV:
+		uadk_set_env_enabled("rsa", i);
+		break;
+	case UADK_CMD_ENABLE_DH_ENV:
+		uadk_set_env_enabled("dh", i);
+		break;
+	case UADK_CMD_ENABLE_ECC_ENV:
+		uadk_set_env_enabled("ecc", i);
 		break;
 	default:
 		ret = 0;
