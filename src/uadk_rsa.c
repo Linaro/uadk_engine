@@ -119,6 +119,7 @@ struct rsa_res_config {
 struct rsa_res {
 	struct wd_ctx_config *ctx_res;
 	int pid;
+	int numa_id;
 	pthread_spinlock_t lock;
 } g_rsa_res;
 
@@ -666,6 +667,45 @@ struct rsa_res_config rsa_res_config = {
 	},
 };
 
+static int uadk_e_rsa_env_poll(void *ctx)
+{
+	__u32 recv = 0;
+	/* Poll one packet currently */
+	int expt = 1;
+	int ret;
+
+	do {
+		ret = wd_rsa_poll(expt, &recv);
+		if (ret < 0)
+			return ret;
+	} while (recv < expt);
+
+	return ret;
+}
+
+static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
+{
+	const char *var_name = "WD_RSA_CTX_NUM";
+	char env_string[ENV_STRING_LEN] = {0};
+	char *var_s;
+	int ret;
+
+	var_s = getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		(void)snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
+		(void)setenv(var_name, env_string, 1);
+	}
+
+	ret = wd_rsa_env_init();
+	if (ret)
+		return ret;
+
+	async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_env_poll);
+
+	return 0;
+}
+
 static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
 			      struct uacce_dev *dev)
 {
@@ -673,6 +713,10 @@ static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
 	struct wd_ctx_config *ctx_cfg;
 	int ret;
 	int i;
+
+	ret = uadk_is_env_enabled("rsa");
+	if (ret)
+		return uadk_e_wd_rsa_env_init(dev);
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
@@ -738,6 +782,7 @@ static int uadk_e_rsa_init(void)
 		if (ret)
 			goto err_unlock;
 
+		g_rsa_res.numa_id = dev->numa_id;
 		g_rsa_res.pid = getpid();
 		pthread_spin_unlock(&g_rsa_res.lock);
 		free(dev);
@@ -756,14 +801,20 @@ err_unlock:
 static void uadk_e_rsa_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = g_rsa_res.ctx_res;
-	int i;
+	int i, ret;
 
 	if (g_rsa_res.pid == getpid()) {
-		wd_rsa_uninit();
-		for (i = 0; i < ctx_cfg->ctx_num; i++)
-			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-		free(ctx_cfg->ctxs);
-		free(ctx_cfg);
+		ret = uadk_is_env_enabled("rsa");
+		if (ret) {
+			wd_rsa_env_uninit();
+		} else {
+			wd_rsa_uninit();
+			for (i = 0; i < ctx_cfg->ctx_num; i++)
+				wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+			free(ctx_cfg->ctxs);
+			free(ctx_cfg);
+		}
+
 		g_rsa_res.pid = 0;
 	}
 }
@@ -808,6 +859,7 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 
 	rsa_sess->key_size = key_size;
 	rsa_sess->setup.key_bits = key_size << BIT_BYTES_SHIFT;
+	rsa_sess->setup.numa = g_rsa_res.numa_id;
 
 	if (is_crt)
 		rsa_sess->setup.is_crt = IS_SET;
