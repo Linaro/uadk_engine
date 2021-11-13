@@ -73,6 +73,7 @@ typedef struct uadk_dh_sess  uadk_dh_sess_t;
 struct dh_res {
 	struct wd_ctx_config *ctx_res;
 	int pid;
+	int numa_id;
 	pthread_spinlock_t lock;
 } g_dh_res;
 
@@ -225,12 +226,55 @@ struct dh_res_config dh_res_config = {
 	},
 };
 
+static int uadk_e_dh_env_poll(void *ctx)
+{
+	__u32 recv = 0;
+	/* Poll one packet currently */
+	int expt = 1;
+	int ret;
+
+	do {
+		ret = wd_dh_poll(expt, &recv);
+		if (ret < 0)
+			return ret;
+	} while (recv < expt);
+
+	return ret;
+}
+
+static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)
+{
+	const char *var_name = "WD_DH_CTX_NUM";
+	char env_string[ENV_STRING_LEN] = {0};
+	const char *var_s;
+	int ret;
+
+	var_s = getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		(void)snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+		"sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
+		(void)setenv(var_name, env_string, 1);
+	}
+
+	ret = wd_dh_env_init();
+	if (ret)
+		return ret;
+
+	async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_env_poll);
+
+	return 0;
+}
+
 static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev)
 {
 	struct wd_sched *sched = &config->sched.wd_sched;
 	struct wd_ctx_config *ctx_cfg;
 	int ret = 0;
 	int i;
+
+	ret = uadk_is_env_enabled("dh");
+	if (ret)
+		return uadk_e_wd_dh_env_init(dev);
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
@@ -297,6 +341,7 @@ static int uadk_e_dh_init(void)
 		if (ret)
 			goto err_unlock;
 
+		g_dh_res.numa_id = dev->numa_id;
 		g_dh_res.pid = getpid();
 		pthread_spin_unlock(&g_dh_res.lock);
 		free(dev);
@@ -315,14 +360,21 @@ err_unlock:
 static void uadk_e_wd_dh_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = g_dh_res.ctx_res;
-	int i;
+	int i, ret;
 
 	if (g_dh_res.pid == getpid()) {
-		for (i = 0; i < ctx_cfg->ctx_num; i++)
-			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+		ret = uadk_is_env_enabled("dh");
+		if (ret) {
+			wd_dh_env_uninit();
+		} else {
+			wd_dh_uninit();
+			for (i = 0; i < ctx_cfg->ctx_num; i++)
+				wd_release_ctx(ctx_cfg->ctxs[i].ctx);
 
-		free(ctx_cfg->ctxs);
-		free(ctx_cfg);
+			free(ctx_cfg->ctxs);
+			free(ctx_cfg);
+		}
+		g_dh_res.pid = 0;
 	}
 }
 
@@ -355,6 +407,7 @@ static int dh_init_eng_session(uadk_dh_sess_t *dh_sess, int bits, bool is_g2)
 		dh_sess->key_size = key_size;
 		dh_sess->setup.key_bits = dh_sess->key_size << CHAR_BIT_SIZE;
 		dh_sess->setup.is_g2 = is_g2;
+		dh_sess->setup.numa = g_dh_res.numa_id;
 		dh_sess->sess = wd_dh_alloc_sess(&dh_sess->setup);
 		if (!dh_sess->sess)
 			return UADK_E_FAIL;
