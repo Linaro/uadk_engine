@@ -19,6 +19,7 @@
 #include <uadk/wd_ecc.h>
 #include "uadk_pkey.h"
 #include "uadk_async.h"
+#include "uadk.h"
 
 #define ECC_MAX_DEV_NUM			16
 #define CTX_ASYNC	1
@@ -40,6 +41,7 @@ struct ecc_sched {
 
 struct ecc_res_config {
 	struct ecc_sched sched;
+	int numa_id;
 };
 
 typedef struct uadk_ecc_sess {
@@ -109,7 +111,46 @@ struct ecc_res_config ecc_res_config = {
 			.h_sched_ctx = 0,
 		},
 	},
+	.numa_id = 0,
 };
+
+int uadk_e_ecc_get_numa_id(void)
+{
+	return ecc_res_config.numa_id;
+}
+
+static int uadk_e_ecc_env_poll(void *ctx)
+{
+	__u32 recv = 0;
+	/* poll one packet currently */
+	int expt = 1;
+	int ret;
+
+	do {
+		ret = wd_ecc_poll(expt, &recv);
+		if (ret < 0)
+			return ret;
+	} while (recv < expt);
+
+	return ret;
+}
+
+static int uadk_e_wd_ecc_env_init(struct uacce_dev *dev)
+{
+	int ret;
+
+	ret = uadk_e_set_env("WD_ECC_CTX_NUM", dev->numa_id);
+	if (ret)
+		return ret;
+
+	ret = wd_ecc_env_init();
+	if (ret)
+		return ret;
+
+	async_register_poll_fn(ASYNC_TASK_ECC, uadk_e_ecc_env_poll);
+
+	return 0;
+}
 
 static int uadk_wd_ecc_init(struct ecc_res_config *config)
 {
@@ -118,12 +159,26 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 	struct uacce_dev *dev;
 	int ret, i;
 
-	if (ecc_res.ctx_res)
-		return 0;
+	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
+	dev = wd_get_accel_dev("ecdsa");
+	config->numa_id = dev->numa_id;
+
+	ret = uadk_e_is_env_enabled("ecc");
+	if (ret == ENV_ENABLED) {
+		ret = uadk_e_wd_ecc_env_init(dev);
+		goto free_dev;
+	}
+
+	if (ecc_res.ctx_res) {
+		ret = 0;
+		goto free_dev;
+	}
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
-	if (!ctx_cfg)
-		return -ENOMEM;
+	if (!ctx_cfg) {
+		ret = -ENOMEM;
+		goto free_dev;
+	}
 	ecc_res.ctx_res = ctx_cfg;
 
 	ctx_cfg->ctx_num = CTX_NUM;
@@ -133,8 +188,6 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 		goto free_cfg;
 	}
 
-	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
-	dev = wd_get_accel_dev("ecdsa");
 	for (i = 0; i < CTX_NUM; i++) {
 		ctx_cfg->ctxs[i].ctx = wd_request_ctx(dev);
 		if (!ctx_cfg->ctxs[i].ctx) {
@@ -152,6 +205,7 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 	free(dev);
 
 	return 0;
+
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
 		if (ctx_cfg->ctxs[i].ctx) {
@@ -160,27 +214,33 @@ free_ctx:
 		}
 	}
 	free(ctx_cfg->ctxs);
-	free(dev);
 free_cfg:
 	free(ctx_cfg);
 	ecc_res.ctx_res = NULL;
+free_dev:
+	free(dev);
 	return ret;
 }
 
 static void uadk_wd_ecc_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
-	int i;
+	int i, ret;
 
 	if (!ctx_cfg)
 		return;
 
-	wd_ecc_uninit();
-	for (i = 0; i < ctx_cfg->ctx_num; i++)
-		wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-	free(ctx_cfg->ctxs);
-	free(ctx_cfg);
-	ecc_res.ctx_res = NULL;
+	ret = uadk_e_is_env_enabled("ecc");
+	if (ret == ENV_ENABLED) {
+		wd_ecc_env_uninit();
+	} else {
+		wd_ecc_uninit();
+		for (i = 0; i < ctx_cfg->ctx_num; i++)
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+		free(ctx_cfg->ctxs);
+		free(ctx_cfg);
+		ecc_res.ctx_res = NULL;
+	}
 	ecc_res.pid = 0;
 }
 
@@ -399,7 +459,7 @@ int uadk_init_ecc(void)
 	    !uadk_support_algorithm("x448"))
 		return -EINVAL;
 
-	if (ecc_res.pid != getpid()){
+	if (ecc_res.pid != getpid()) {
 		pthread_spin_lock(&ecc_res.lock);
 		if (ecc_res.pid == getpid()) {
 			pthread_spin_unlock(&ecc_res.lock);
@@ -419,7 +479,6 @@ int uadk_init_ecc(void)
 err_unlock:
 	pthread_spin_unlock(&ecc_res.lock);
 	fprintf(stderr, "failed to init ec(%d).\n", ret);
-
 	return ret;
 }
 

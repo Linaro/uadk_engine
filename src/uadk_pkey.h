@@ -36,6 +36,7 @@
 #define UADK_ECC_PUBKEY_PARAM_NUM	2
 #define UADK_ECC_PADDING		7
 #define UADK_ECDH_CV_NUM		8
+#define ENV_ENABLED			1
 
 struct uadk_pkey_meth {
 	EVP_PKEY_METHOD *sm2;
@@ -68,6 +69,7 @@ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_ec_delete_meth(void);
 int uadk_bind_ec(ENGINE *e);
+int uadk_e_ecc_get_numa_id(void);
 
 
 #endif
