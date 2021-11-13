@@ -38,6 +38,7 @@
 struct cipher_engine {
 	struct wd_ctx_config ctx_cfg;
 	struct wd_sched sched;
+	int numa_id;
 	int pid;
 	pthread_spinlock_t lock;
 };
@@ -507,9 +508,54 @@ static int uadk_e_cipher_poll(void *ctx)
 	return ret;
 }
 
+static int uadk_e_cipher_env_poll(void *ctx)
+{
+	__u32 recv = 0;
+	/* poll one packet currently */
+	int expt = 1;
+	int ret;
+
+	do {
+		ret = wd_cipher_poll(expt, &recv);
+		if (ret < 0)
+			return ret;
+	} while (recv < expt);
+
+	return ret;
+}
+
+static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
+{
+	const char *var_name = "WD_CIPHER_CTX_NUM";
+	char env_string[ENV_STRING_LEN] = {0};
+	const char *var_s;
+	int ret;
+
+	var_s = getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
+		setenv(var_name, env_string, 1);
+	}
+
+	ret = wd_cipher_env_init();
+	if (ret)
+		return ret;
+
+	async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_e_cipher_env_poll);
+
+	return 0;
+}
+
 static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 {
 	int ret, i, j;
+
+	engine.numa_id = dev->numa_id;
+
+	ret = uadk_is_env_enabled("cipher");
+	if (ret)
+		return uadk_e_wd_cipher_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
 	engine.ctx_cfg.ctx_num = CTX_NUM;
@@ -638,6 +684,8 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	ret = uadk_e_cipher_sw_init(ctx, key, iv, enc);
 	if (unlikely(ret != 1))
 		return 0;
+
+	priv->setup.numa = engine.numa_id;
 	if (!priv->sess) {
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
 		if (!priv->sess)
@@ -1024,13 +1072,18 @@ static void destroy_v3_cipher(void)
 
 void uadk_e_destroy_cipher(void)
 {
-	int i;
+	int i, ret;
 
 	if (engine.pid == getpid()) {
-		wd_cipher_uninit();
-		for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-		free(engine.ctx_cfg.ctxs);
+		ret = uadk_is_env_enabled("cipher");
+		if (ret) {
+			wd_cipher_env_uninit();
+		} else {
+			wd_cipher_uninit();
+			for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
+				wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+			free(engine.ctx_cfg.ctxs);
+		}
 		engine.pid = 0;
 	}
 
