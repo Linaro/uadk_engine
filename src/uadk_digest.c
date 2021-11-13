@@ -49,6 +49,7 @@ struct digest_threshold_table {
 struct digest_engine {
 	struct wd_ctx_config ctx_cfg;
 	struct wd_sched sched;
+	int numa_id;
 	int pid;
 	pthread_spinlock_t lock;
 };
@@ -311,9 +312,54 @@ static int uadk_e_digest_poll(void *ctx)
 	return ret;
 }
 
+static int uadk_e_digest_env_poll(void *ctx)
+{
+	__u32 recv = 0;
+	/* Poll one packet currently */
+	int expt = 1;
+	int ret;
+
+	do {
+		ret = wd_digest_poll(expt, &recv);
+		if (ret < 0)
+			return ret;
+	} while (recv < expt);
+
+	return ret;
+}
+
+static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
+{
+	const char *var_name = "WD_DIGEST_CTX_NUM";
+	char env_string[ENV_STRING_LEN] = {0};
+	char *var_s;
+	int ret;
+
+	var_s = getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
+		setenv(var_name, env_string, 1);
+	}
+
+	ret = wd_digest_env_init();
+	if (ret)
+		return ret;
+
+	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_env_poll);
+
+	return 0;
+}
+
 static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 {
 	int ret, i, j;
+
+	engine.numa_id = dev->numa_id;
+
+	ret = uadk_is_env_enabled("digest");
+	if (ret)
+		return uadk_e_wd_digest_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
 	engine.ctx_cfg.ctx_num = CTX_NUM;
@@ -444,6 +490,11 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	default:
 		return 0;
 	}
+
+	priv->setup.numa = engine.numa_id;
+	priv->sess = wd_digest_alloc_sess(&priv->setup);
+	if (unlikely(!priv->sess))
+		return 0;
 
 	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
 
@@ -679,14 +730,19 @@ int uadk_e_bind_digest(ENGINE *e)
 
 void uadk_e_destroy_digest(void)
 {
-	int i;
+	int i, ret;
 
 	if (engine.pid == getpid()) {
-		wd_digest_uninit();
-		for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-			wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-		free(engine.ctx_cfg.ctxs);
-		engine.pid = 0;
+		ret = uadk_is_env_enabled("digest");
+		if (ret) {
+			wd_digest_env_uninit();
+		} else {
+			wd_digest_uninit();
+			for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
+				wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+			free(engine.ctx_cfg.ctxs);
+			engine.pid = 0;
+		}
 	}
 
 	pthread_spin_destroy(&engine.lock);
