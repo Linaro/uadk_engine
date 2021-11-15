@@ -92,6 +92,7 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 
 	setup.alg = "x25519";
 	setup.key_bits = X25519_KEYBITS;
+	setup.numa = uadk_e_ecc_get_numa_id();
 	x25519_ctx->sess = wd_ecc_alloc_sess(&setup);
 	if (!x25519_ctx->sess) {
 		fprintf(stderr, "failed to alloc sess\n");
@@ -140,6 +141,7 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 	memset(x448_ctx, 0, sizeof(struct ecx_ctx));
 	setup.alg = "x448";
 	setup.key_bits = X448_KEYBITS;
+	setup.numa = uadk_e_ecc_get_numa_id();
 	x448_ctx->sess = wd_ecc_alloc_sess(&setup);
 	if (!x448_ctx->sess) {
 		fprintf(stderr, "failed to alloc sess\n");
