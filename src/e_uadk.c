@@ -110,7 +110,7 @@ static struct uadk_alg_env_enabled uadk_env_enabled[] = {
 	{ "ecc", 0 }
 };
 
-int uadk_is_env_enabled(char *alg_name)
+int uadk_e_is_env_enabled(char *alg_name)
 {
 	int len = ARRAY_SIZE(uadk_env_enabled);
 	int i = 0;
@@ -124,7 +124,7 @@ int uadk_is_env_enabled(char *alg_name)
 	return 0;
 }
 
-static void uadk_set_env_enabled(char *alg_name, __u8 value)
+static void uadk_e_set_env_enabled(char *alg_name, __u8 value)
 {
 	int len = ARRAY_SIZE(uadk_env_enabled);
 	int i = 0;
@@ -137,6 +137,27 @@ static void uadk_set_env_enabled(char *alg_name, __u8 value)
 
 		i++;
 	}
+}
+
+int uadk_e_set_env(const char *var_name, int numa_id)
+{
+	char env_string[ENV_STRING_LEN] = {0};
+	char *var_s;
+	int ret;
+
+	var_s = getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		ret = snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+			       "sync:2@", numa_id, ",async:2@", numa_id);
+		if (ret < 0)
+			return ret;
+
+		ret = setenv(var_name, env_string, 1);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
 }
 
 static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
@@ -153,19 +174,19 @@ static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
 
 	switch (cmd) {
 	case UADK_CMD_ENABLE_CIPHER_ENV:
-		uadk_set_env_enabled("cipher", i);
+		uadk_e_set_env_enabled("cipher", i);
 		break;
 	case UADK_CMD_ENABLE_DIGEST_ENV:
-		uadk_set_env_enabled("digest", i);
+		uadk_e_set_env_enabled("digest", i);
 		break;
 	case UADK_CMD_ENABLE_RSA_ENV:
-		uadk_set_env_enabled("rsa", i);
+		uadk_e_set_env_enabled("rsa", i);
 		break;
 	case UADK_CMD_ENABLE_DH_ENV:
-		uadk_set_env_enabled("dh", i);
+		uadk_e_set_env_enabled("dh", i);
 		break;
 	case UADK_CMD_ENABLE_ECC_ENV:
-		uadk_set_env_enabled("ecc", i);
+		uadk_e_set_env_enabled("ecc", i);
 		break;
 	default:
 		ret = 0;

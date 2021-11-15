@@ -31,6 +31,7 @@
 #define CTX_SYNC	0
 #define CTX_ASYNC	1
 #define CTX_NUM		2
+#define ENV_ENABLED	1
 
 /* The max BD data length is 16M-512B */
 #define BUF_LEN      0xFFFE00
@@ -331,16 +332,11 @@ static int uadk_e_digest_env_poll(void *ctx)
 static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
 {
 	const char *var_name = "WD_DIGEST_CTX_NUM";
-	char env_string[ENV_STRING_LEN] = {0};
-	char *var_s;
 	int ret;
 
-	var_s = getenv(var_name);
-	if (!var_s || !strlen(var_s)) {
-		snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
-			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
-		setenv(var_name, env_string, 1);
-	}
+	ret = uadk_e_set_env(var_name, dev->numa_id);
+	if (ret)
+		return ret;
 
 	ret = wd_digest_env_init();
 	if (ret)
@@ -357,8 +353,8 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 
 	engine.numa_id = dev->numa_id;
 
-	ret = uadk_is_env_enabled("digest");
-	if (ret)
+	ret = uadk_e_is_env_enabled("digest");
+	if (ret == ENV_ENABLED)
 		return uadk_e_wd_digest_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
@@ -733,8 +729,8 @@ void uadk_e_destroy_digest(void)
 	int i, ret;
 
 	if (engine.pid == getpid()) {
-		ret = uadk_is_env_enabled("digest");
-		if (ret) {
+		ret = uadk_e_is_env_enabled("digest");
+		if (ret == ENV_ENABLED) {
 			wd_digest_env_uninit();
 		} else {
 			wd_digest_uninit();

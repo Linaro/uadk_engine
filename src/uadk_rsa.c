@@ -50,6 +50,7 @@
 #define UADK_E_POLL_SUCCESS		0
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		-1
+#define ENV_ENABLED			1
 
 static RSA_METHOD *rsa_hw_meth;
 static RSA_METHOD *rsa_sw_meth;
@@ -686,16 +687,11 @@ static int uadk_e_rsa_env_poll(void *ctx)
 static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
 {
 	const char *var_name = "WD_RSA_CTX_NUM";
-	char env_string[ENV_STRING_LEN] = {0};
-	char *var_s;
 	int ret;
 
-	var_s = getenv(var_name);
-	if (!var_s || !strlen(var_s)) {
-		(void)snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
-			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
-		(void)setenv(var_name, env_string, 1);
-	}
+	ret = uadk_e_set_env(var_name, dev->numa_id);
+	if (ret)
+		return ret;
 
 	ret = wd_rsa_env_init();
 	if (ret)
@@ -714,8 +710,8 @@ static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
 	int ret;
 	int i;
 
-	ret = uadk_is_env_enabled("rsa");
-	if (ret)
+	ret = uadk_e_is_env_enabled("rsa");
+	if (ret == ENV_ENABLED)
 		return uadk_e_wd_rsa_env_init(dev);
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
@@ -804,8 +800,8 @@ static void uadk_e_rsa_uninit(void)
 	int i, ret;
 
 	if (g_rsa_res.pid == getpid()) {
-		ret = uadk_is_env_enabled("rsa");
-		if (ret) {
+		ret = uadk_e_is_env_enabled("rsa");
+		if (ret == ENV_ENABLED) {
 			wd_rsa_env_uninit();
 		} else {
 			wd_rsa_uninit();
