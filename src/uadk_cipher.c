@@ -40,6 +40,7 @@ struct cipher_engine {
 	struct wd_sched sched;
 	int pid;
 	pthread_spinlock_t lock;
+	int init;
 };
 
 static struct cipher_engine engine;
@@ -560,6 +561,9 @@ static int uadk_e_init_cipher(void)
 	struct uacce_dev *dev;
 	int ret;
 
+	if (engine.init == 1)
+		return 1;
+
 	if (engine.pid != getpid()) {
 		pthread_spin_lock(&engine.lock);
 		if (engine.pid == getpid()) {
@@ -582,6 +586,7 @@ static int uadk_e_init_cipher(void)
 		pthread_spin_unlock(&engine.lock);
 		free(dev);
 	}
+	engine.init = 1;
 
 	return 1;
 
