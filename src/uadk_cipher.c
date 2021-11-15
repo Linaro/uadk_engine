@@ -34,6 +34,7 @@
 #define CTR_MODE_LEN_SHIFT	4
 #define BYTE_BITS		8
 #define IV_LEN			16
+#define ENV_ENABLED		1
 
 struct cipher_engine {
 	struct wd_ctx_config ctx_cfg;
@@ -527,16 +528,11 @@ static int uadk_e_cipher_env_poll(void *ctx)
 static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
 {
 	const char *var_name = "WD_CIPHER_CTX_NUM";
-	char env_string[ENV_STRING_LEN] = {0};
-	const char *var_s;
 	int ret;
 
-	var_s = getenv(var_name);
-	if (!var_s || !strlen(var_s)) {
-		snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
-			 "sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
-		setenv(var_name, env_string, 1);
-	}
+	ret = uadk_e_set_env(var_name, dev->numa_id);
+	if (ret)
+		return ret;
 
 	ret = wd_cipher_env_init();
 	if (ret)
@@ -553,8 +549,8 @@ static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 
 	engine.numa_id = dev->numa_id;
 
-	ret = uadk_is_env_enabled("cipher");
-	if (ret)
+	ret = uadk_e_is_env_enabled("cipher");
+	if (ret == ENV_ENABLED)
 		return uadk_e_wd_cipher_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
@@ -1075,8 +1071,8 @@ void uadk_e_destroy_cipher(void)
 	int i, ret;
 
 	if (engine.pid == getpid()) {
-		ret = uadk_is_env_enabled("cipher");
-		if (ret) {
+		ret = uadk_e_is_env_enabled("cipher");
+		if (ret == ENV_ENABLED) {
 			wd_cipher_env_uninit();
 		} else {
 			wd_cipher_uninit();

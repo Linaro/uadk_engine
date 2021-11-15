@@ -49,6 +49,7 @@
 #define UADK_E_FAIL		0
 #define UADK_E_POLL_SUCCESS	0
 #define UADK_E_INIT_SUCCESS	0
+#define ENV_ENABLED		1
 
 static DH_METHOD *uadk_dh_method;
 
@@ -245,16 +246,11 @@ static int uadk_e_dh_env_poll(void *ctx)
 static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)
 {
 	const char *var_name = "WD_DH_CTX_NUM";
-	char env_string[ENV_STRING_LEN] = {0};
-	const char *var_s;
 	int ret;
 
-	var_s = getenv(var_name);
-	if (!var_s || !strlen(var_s)) {
-		(void)snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
-		"sync:2@", dev->numa_id, ",async:2@", dev->numa_id);
-		(void)setenv(var_name, env_string, 1);
-	}
+	ret = uadk_e_set_env(var_name, dev->numa_id);
+	if (ret)
+		return ret;
 
 	ret = wd_dh_env_init();
 	if (ret)
@@ -272,8 +268,8 @@ static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev
 	int ret = 0;
 	int i;
 
-	ret = uadk_is_env_enabled("dh");
-	if (ret)
+	ret = uadk_e_is_env_enabled("dh");
+	if (ret == ENV_ENABLED)
 		return uadk_e_wd_dh_env_init(dev);
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
@@ -363,8 +359,8 @@ static void uadk_e_wd_dh_uninit(void)
 	int i, ret;
 
 	if (g_dh_res.pid == getpid()) {
-		ret = uadk_is_env_enabled("dh");
-		if (ret) {
+		ret = uadk_e_is_env_enabled("dh");
+		if (ret == ENV_ENABLED) {
 			wd_dh_env_uninit();
 		} else {
 			wd_dh_uninit();
