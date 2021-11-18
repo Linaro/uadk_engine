@@ -188,12 +188,15 @@ err:
 	return UADK_E_FAIL;
 }
 
-static __u32 dh_pick_next_ctx(handle_t sched_ctx, const void *req,
-			      const struct sched_key *key)
+static handle_t dh_sched_init(handle_t h_sched_ctx, void *sched_param)
 {
-	const struct wd_dh_req *dh_req = req;
+	return (handle_t)0;
+}
 
-	if (dh_req->cb)
+static __u32 dh_pick_next_ctx(handle_t sched_ctx,
+		void *sched_key, const int sched_mode)
+{
+	if (sched_mode)
 		return CTX_ASYNC;
 	else
 		return CTX_SYNC;
@@ -257,6 +260,7 @@ static struct dh_res_config dh_res_config = {
 		.sched_type = -1,
 		.wd_sched = {
 			.name = "dh-sched-0",
+			.sched_init = dh_sched_init,
 			.pick_next_ctx = dh_pick_next_ctx,
 			.poll_policy = dh_poll_policy,
 			.h_sched_ctx = 2,
@@ -288,7 +292,7 @@ static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	ret = wd_dh_env_init();
+	ret = wd_dh_env_init(NULL);
 	if (ret)
 		return ret;
 
@@ -425,6 +429,7 @@ static int dh_init_eng_session(struct uadk_dh_sess *dh_sess,
 			       int bits, bool is_g2)
 {
 	uint32_t key_size = (uint32_t)bits >> CHAR_BIT_SIZE;
+	struct sched_params params = {0};
 
 	if (dh_sess->sess && dh_sess->req.x_p) {
 		memset(dh_sess->req.x_p, 0, dh_sess->req.pbytes +
@@ -436,7 +441,8 @@ static int dh_init_eng_session(struct uadk_dh_sess *dh_sess,
 		dh_sess->key_size = key_size;
 		dh_sess->setup.key_bits = dh_sess->key_size << CHAR_BIT_SIZE;
 		dh_sess->setup.is_g2 = is_g2;
-		dh_sess->setup.numa = g_dh_res.numa_id;
+		params.numa_id = g_dh_res.numa_id;
+		dh_sess->setup.sched_param = &params;
 		dh_sess->sess = wd_dh_alloc_sess(&dh_sess->setup);
 		if (!dh_sess->sess)
 			return UADK_E_FAIL;

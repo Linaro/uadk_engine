@@ -146,6 +146,7 @@ static int get_smallest_hw_keybits(int bits)
 static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES * UADK_ECC_CV_PARAM_NUM];
+	struct sched_params sch_p = {0};
 	struct wd_ecc_sess_setup sp;
 	struct wd_ecc_curve param;
 	struct uacce_dev *dev;
@@ -176,7 +177,8 @@ static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	sp.key_bits = get_smallest_hw_keybits(key_bits);
 	sp.rand.cb = uadk_ecc_get_rand;
 	sp.rand.usr = (void *)order;
-	sp.numa = dev->numa_id;
+	sch_p.numa_id = dev->numa_id;
+	sp.sched_param = &sch_p;
 	sess = wd_ecc_alloc_sess(&sp);
 	if (!sess)
 		fprintf(stderr, "failed to alloc ecc sess\n");

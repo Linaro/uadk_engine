@@ -279,12 +279,15 @@ static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
 	return ok;
 }
 
-static __u32 sched_single_pick_next_ctx(handle_t h_sched_ctx, const void *req,
-					const struct sched_key *key)
+static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 {
-	const struct wd_digest_req *digest_req = req;
+	return (handle_t)0;
+}
 
-	if (digest_req->cb)
+static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
+		void *sched_key, const int sched_mode)
+{
+	if (sched_mode)
 		return CTX_ASYNC;
 	else
 		return CTX_SYNC;
@@ -337,7 +340,7 @@ static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	ret = wd_digest_env_init();
+	ret = wd_digest_env_init(NULL);
 	if (ret)
 		return ret;
 
@@ -376,6 +379,7 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 	engine.sched.name = "sched_single";
 	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
 	engine.sched.poll_policy = sched_single_poll_policy;
+	engine.sched.sched_init = sched_single_init;
 
 	ret = wd_digest_init(&engine.ctx_cfg, &engine.sched);
 	if (ret)
@@ -445,6 +449,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
+	struct sched_params params = {0};
 	int ret;
 
 	/* Allocate a soft ctx for hardware engine */
@@ -485,7 +490,8 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 	}
 
-	priv->setup.numa = engine.numa_id;
+	params.numa_id = engine.numa_id;
+	priv->setup.sched_param = &params;
 	priv->sess = wd_digest_alloc_sess(&priv->setup);
 	if (unlikely(!priv->sess))
 		return 0;
