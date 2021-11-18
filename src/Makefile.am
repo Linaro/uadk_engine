@@ -1,17 +1,17 @@
 ACLOCAL_AMFLAGS = -I m4
 
-lib_LTLIBRARIES=uadk.la
+lib_LTLIBRARIES=uadk_engine.la
 
-uadk_la_SOURCES=e_uadk.c uadk_cipher.c uadk_digest.c uadk_async.c uadk_rsa.c \
+uadk_engine_la_SOURCES=e_uadk.c uadk_cipher.c uadk_digest.c uadk_async.c uadk_rsa.c \
 		uadk_sm2.c uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
-uadk_la_LIBADD=-ldl -lwd -lwd_crypto -lpthread
-uadk_la_LDFLAGS=-module
+uadk_engine_la_LIBADD=-ldl -lwd -lwd_crypto -lpthread
+uadk_engine_la_LDFLAGS=-module
 
 AUTOMAKE_OPTIONS = subdir-objects
 
 if WD_KAE
 AM_CFLAGS = -DKAE
-uadk_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
+uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/alg/ciphers/sec_ciphers_soft.c \
 		 v1/alg/ciphers/sec_ciphers_utils.c \
 		 v1/alg/ciphers/sec_ciphers_wd.c \

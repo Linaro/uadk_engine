@@ -27,7 +27,7 @@
 #endif
 
 /* Constants used when creating the ENGINE */
-const char *engine_uadk_id = "uadk";
+const char *engine_uadk_id = "uadk_engine";
 static const char *engine_uadk_name = "uadk hardware engine support";
 
 static int uadk_cipher;
