@@ -460,20 +460,37 @@ static int uadk_e_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 	return ret;
 }
 
-static __u32 sched_single_pick_next_ctx(handle_t h_sched_ctx, const void *req,
-					const struct sched_key *key)
+static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 {
-	const struct wd_cipher_req *cipher_req = req;
+	struct sched_params *param = (struct sched_params *)sched_param;
+	struct sched_params *skey;
 
-	if (cipher_req->cb) {
+	skey = malloc(sizeof(struct sched_params));
+	if (!skey) {
+		fprintf(stderr, "fail to alloc cipher sched key!\n");
+		return (handle_t)0;
+	}
+
+	skey->numa_id = param->numa_id;
+	skey->type = param->type;
+
+	return (handle_t)skey;
+}
+
+static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
+		void *sched_key, const int sched_mode)
+{
+	struct sched_params *key = (struct sched_params *)sched_key;
+
+	if (sched_mode) {
 		/* async */
-		if (cipher_req->op_type == WD_CIPHER_ENCRYPTION)
+		if (key->type == WD_CIPHER_ENCRYPTION)
 			return CTX_ASYNC_ENC;
 		else
 			return CTX_ASYNC_DEC;
 	} else {
 		/* sync */
-		if (cipher_req->op_type == WD_CIPHER_ENCRYPTION)
+		if (key->type == WD_CIPHER_ENCRYPTION)
 			return CTX_SYNC_ENC;
 		else
 			return CTX_SYNC_DEC;
@@ -534,7 +551,7 @@ static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	ret = wd_cipher_env_init();
+	ret = wd_cipher_env_init(NULL);
 	if (ret)
 		return ret;
 
@@ -578,6 +595,7 @@ static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 	engine.sched.name = "sched_single";
 	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
 	engine.sched.poll_policy = sched_single_poll_policy;
+	engine.sched.sched_init = sched_single_init;
 
 	ret = wd_cipher_init(&engine.ctx_cfg, &engine.sched);
 	if (ret)
@@ -648,7 +666,7 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	int cipher_counts = ARRAY_SIZE(cipher_info_table);
 	int nid, ret, i;
 
-	if (unlikely(key == NULL)) {
+	if (unlikely(!key)) {
 		fprintf(stderr, "ctx init parameter key is NULL.\n");
 		return 0;
 	}
@@ -661,10 +679,8 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	for (i = 0; i < cipher_counts; i++) {
 		if (nid == cipher_info_table[i].nid) {
-			cipher_priv_ctx_setup(priv,
-					cipher_info_table[i].alg,
-					cipher_info_table[i].mode,
-					cipher_info_table[i].out_bytes);
+			cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
+					cipher_info_table[i].mode, cipher_info_table[i].out_bytes);
 			break;
 		}
 	}
@@ -829,6 +845,7 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 
 static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 {
+	struct sched_params params = {0};
 	int ret;
 
 	ret = uadk_e_init_cipher();
@@ -839,13 +856,23 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
-	priv->setup.numa = engine.numa_id;
 
+	/*
+	 * The internal RR scheduler used by environment variables,
+	 * the cipher algorithm does not distinguish between
+	 * encryption and decryption queues
+	 */
+	params.type = priv->req.op_type;
+	ret = uadk_e_is_env_enabled("cipher");
+	if (ret)
+		params.type = 0;
+
+	params.numa_id = engine.numa_id;
+	priv->setup.sched_param = &params;
 	if (!priv->sess) {
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
 		if (!priv->sess)
 			fprintf(stderr, "uadk failed to alloc session!\n");
-
 	}
 
 	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));

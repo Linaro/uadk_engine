@@ -73,6 +73,7 @@ static int reverse_bytes(unsigned char *to_buf, unsigned int size)
 static int x25519_init(EVP_PKEY_CTX *ctx)
 {
 	struct wd_ecc_sess_setup setup = {0};
+	struct sched_params params = {0};
 	struct ecx_ctx *x25519_ctx;
 	int ret;
 
@@ -91,7 +92,8 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 
 	setup.alg = "x25519";
 	setup.key_bits = X25519_KEYBITS;
-	setup.numa = uadk_e_ecc_get_numa_id();
+	params.numa_id = uadk_e_ecc_get_numa_id();
+	setup.sched_param = &params;
 	x25519_ctx->sess = wd_ecc_alloc_sess(&setup);
 	if (!x25519_ctx->sess) {
 		fprintf(stderr, "failed to alloc sess\n");
@@ -122,6 +124,7 @@ static void x25519_uninit(EVP_PKEY_CTX *ctx)
 static int x448_init(EVP_PKEY_CTX *ctx)
 {
 	struct wd_ecc_sess_setup setup = {0};
+	struct sched_params params = {0};
 	struct ecx_ctx *x448_ctx;
 	int ret;
 
@@ -140,7 +143,8 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 	memset(x448_ctx, 0, sizeof(struct ecx_ctx));
 	setup.alg = "x448";
 	setup.key_bits = X448_KEYBITS;
-	setup.numa = uadk_e_ecc_get_numa_id();
+	params.numa_id = uadk_e_ecc_get_numa_id();
+	setup.sched_param = &params;
 	x448_ctx->sess = wd_ecc_alloc_sess(&setup);
 	if (!x448_ctx->sess) {
 		fprintf(stderr, "failed to alloc sess\n");

@@ -46,11 +46,6 @@ struct sm2_ctx {
 	bool is_init;
 };
 
-struct ecc_sched {
-	int sched_type;
-	struct wd_sched wd_sched;
-};
-
 typedef struct uadk_ecc_sess {
 	handle_t sess;
 	struct wd_ecc_sess_setup setup;

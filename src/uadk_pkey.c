@@ -62,12 +62,15 @@ struct ecc_res {
 
 static struct uadk_pkey_meth pkey_meth;
 
-static __u32 ecc_pick_next_ctx(handle_t sched_ctx, const void *req,
-			       const struct sched_key *key)
+static handle_t ecc_sched_init(handle_t h_sched_ctx, void *sched_param)
 {
-	const struct wd_ecc_req *ecc_req = req;
+	return (handle_t)0;
+}
 
-	if (ecc_req->cb)
+static __u32 ecc_pick_next_ctx(handle_t sched_ctx,
+		void *sched_key, const int sched_mode)
+{
+	if (sched_mode)
 		return CTX_ASYNC;
 	else
 		return CTX_SYNC;
@@ -130,6 +133,7 @@ struct ecc_res_config ecc_res_config = {
 		.sched_type = -1,
 		.wd_sched = {
 			.name = "ECC RR",
+			.sched_init = ecc_sched_init,
 			.pick_next_ctx = ecc_pick_next_ctx,
 			.poll_policy = ecc_poll_policy,
 			.h_sched_ctx = 0,
@@ -167,7 +171,7 @@ static int uadk_e_wd_ecc_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	ret = wd_ecc_env_init();
+	ret = wd_ecc_env_init(NULL);
 	if (ret)
 		return ret;
 

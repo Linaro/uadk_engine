@@ -599,12 +599,15 @@ static int rsa_get_verify_res(int padding, BIGNUM *to_bn, const BIGNUM *n,
 	return UADK_E_SUCCESS;
 }
 
-static __u32 rsa_pick_next_ctx(handle_t sched_ctx, const void *req,
-			       const struct sched_key *key)
+static handle_t rsa_sched_init(handle_t h_sched_ctx, void *sched_param)
 {
-	const struct wd_rsa_req *rsa_req = req;
+	return (handle_t)0;
+}
 
-	if (rsa_req->cb)
+static __u32 rsa_pick_next_ctx(handle_t sched_ctx,
+		void *sched_key, const int sched_mode)
+{
+	if (sched_mode)
 		return CTX_ASYNC;
 	else
 		return CTX_SYNC;
@@ -637,6 +640,7 @@ static struct rsa_res_config rsa_res_config = {
 		.sched_type = -1,
 		.wd_sched = {
 			.name = "RSA RR",
+			.sched_init = rsa_sched_init,
 			.pick_next_ctx = rsa_pick_next_ctx,
 			.poll_policy = rsa_poll_policy,
 			.h_sched_ctx = 0,
@@ -668,7 +672,7 @@ static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	ret = wd_rsa_env_init();
+	ret = wd_rsa_env_init(NULL);
 	if (ret)
 		return ret;
 
@@ -821,6 +825,7 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 {
 	unsigned int key_size =  bits >> BIT_BYTES_SHIFT;
 	struct uadk_rsa_sess *rsa_sess;
+	struct sched_params params = {0};
 
 	rsa_sess =  rsa_new_eng_session(rsa);
 	if (!rsa_sess)
@@ -828,7 +833,8 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 
 	rsa_sess->key_size = key_size;
 	rsa_sess->setup.key_bits = key_size << BIT_BYTES_SHIFT;
-	rsa_sess->setup.numa = g_rsa_res.numa_id;
+	params.numa_id = g_rsa_res.numa_id;
+	rsa_sess->setup.sched_param = &params;
 
 	if (is_crt)
 		rsa_sess->setup.is_crt = IS_SET;
