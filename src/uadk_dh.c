@@ -256,9 +256,7 @@ static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_env_poll);
-
-	return 0;
+	return async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_env_poll);
 }
 
 static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev)
