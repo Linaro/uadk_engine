@@ -697,9 +697,7 @@ static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_env_poll);
-
-	return 0;
+	return async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_env_poll);
 }
 
 static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
@@ -1038,12 +1036,10 @@ int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	UNUSED(cb);
 	RSA_set_method(rsa, default_meth);
 	ret = RSA_generate_key_ex(rsa, bits, e, NULL);
-	if (ret != 1) {
-		fprintf(stderr, "failed to do rsa soft key generation\n");
-		return UADK_E_FAIL;
-	}
 
-	return UADK_E_SUCCESS;
+	RSA_set_method(rsa, rsa_hw_meth);
+
+	return ret;
 }
 
 static int uadk_e_soft_rsa_pub_enc(int flen, const unsigned char *from,
