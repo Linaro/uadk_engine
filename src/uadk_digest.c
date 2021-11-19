@@ -342,9 +342,8 @@ static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_env_poll);
-
-	return 0;
+	return async_register_poll_fn(ASYNC_TASK_DIGEST,
+				      uadk_e_digest_env_poll);
 }
 
 static int uadk_e_wd_digest_init(struct uacce_dev *dev)

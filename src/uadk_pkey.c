@@ -147,9 +147,7 @@ static int uadk_e_wd_ecc_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	async_register_poll_fn(ASYNC_TASK_ECC, uadk_e_ecc_env_poll);
-
-	return 0;
+	return async_register_poll_fn(ASYNC_TASK_ECC, uadk_e_ecc_env_poll);
 }
 
 static int uadk_wd_ecc_init(struct ecc_res_config *config)
@@ -201,10 +199,9 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 	if (ret)
 		goto free_ctx;
 
-	async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
 	free(dev);
 
-	return 0;
+	return async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
 
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
