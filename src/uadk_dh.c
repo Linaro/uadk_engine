@@ -295,9 +295,7 @@ static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev
 	if (ret)
 		goto free_ctx;
 
-	async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_poll);
-
-	return ret;
+	return async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_poll);
 
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
