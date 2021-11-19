@@ -527,10 +527,9 @@ static int uadk_e_cipher_env_poll(void *ctx)
 
 static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
 {
-	const char *var_name = "WD_CIPHER_CTX_NUM";
 	int ret;
 
-	ret = uadk_e_set_env(var_name, dev->numa_id);
+	ret = uadk_e_set_env("WD_CIPHER_CTX_NUM", dev->numa_id);
 	if (ret)
 		return ret;
 
