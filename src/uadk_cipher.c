@@ -677,6 +677,12 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		return 0;
 	}
 
+	ret = uadk_e_init_cipher();
+	if (unlikely(!ret)) {
+		priv->switch_flag = UADK_DO_SOFT;
+		fprintf(stderr, "uadk failed to initialize cipher.\n");
+	}
+
 	ret = uadk_e_cipher_sw_init(ctx, key, iv, enc);
 	if (unlikely(ret != 1))
 		return 0;
@@ -829,12 +835,6 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	struct async_op op;
 	int ret;
-
-	ret = uadk_e_init_cipher();
-	if (unlikely(!ret)) {
-		priv->switch_flag = UADK_DO_SOFT;
-		fprintf(stderr, "uadk failed to initialize cipher.\n");
-	}
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
