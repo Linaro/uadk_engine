@@ -56,6 +56,7 @@ struct cipher_priv_ctx {
 	struct wd_cipher_sess_setup setup;
 	struct wd_cipher_req req;
 	unsigned char iv[IV_LEN];
+	const unsigned char *key;
 	int switch_flag;
 	void *sw_ctx_data;
 	/* Crypto small packet offload threshold */
@@ -648,7 +649,7 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	int nid, ret, i;
 
 	if (unlikely(key == NULL)) {
-		fprintf(stderr, "uadk engine init parameter key is NULL.\n");
+		fprintf(stderr, "ctx init parameter key is NULL.\n");
 		return 0;
 	}
 
@@ -677,26 +678,10 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	if (unlikely(ret != 1))
 		return 0;
 
-	priv->setup.numa = engine.numa_id;
-	if (!priv->sess) {
-		priv->sess = wd_cipher_alloc_sess(&priv->setup);
-		if (!priv->sess)
-			goto sw_uninit;
-	}
-
-	if (key) {
-		ret = wd_cipher_set_key(priv->sess, key, EVP_CIPHER_CTX_key_length(ctx));
-		if (ret) {
-			wd_cipher_free_sess(priv->sess);
-			goto sw_uninit;
-		}
-	}
+	priv->key = key;
 	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
 
 	return 1;
-sw_uninit:
-	uadk_e_cipher_sw_cleanup(ctx);
-	return 0;
 }
 
 static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
@@ -842,6 +827,34 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	return 1;
 }
 
+static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
+{
+	int ret;
+
+	ret = uadk_e_init_cipher();
+	if (unlikely(!ret)) {
+		priv->switch_flag = UADK_DO_SOFT;
+		fprintf(stderr, "uadk failed to init cipher HW!\n");
+	}
+
+	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
+	priv->req.iv = priv->iv;
+	priv->setup.numa = engine.numa_id;
+
+	if (!priv->sess) {
+		priv->sess = wd_cipher_alloc_sess(&priv->setup);
+		if (!priv->sess)
+			fprintf(stderr, "uadk failed to alloc session!\n");
+
+	}
+
+	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));
+	if (ret) {
+		wd_cipher_free_sess(priv->sess);
+		fprintf(stderr, "uadk failed to set key!\n");
+	}
+}
+
 static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			    const unsigned char *in, size_t inlen)
 {
@@ -850,19 +863,13 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	struct async_op op;
 	int ret;
 
-	ret = uadk_e_init_cipher();
-	if (unlikely(!ret)) {
-		priv->switch_flag = UADK_DO_SOFT;
-		fprintf(stderr, "uadk failed to initialize cipher.\n");
-	}
 
-	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
-	priv->req.iv = priv->iv;
 	priv->req.src = (unsigned char *)in;
 	priv->req.in_bytes = inlen;
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
+	uadk_e_ctx_init(ctx, priv);
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
 		fprintf(stderr, "failed to setup async event notification.\n");
@@ -882,7 +889,6 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	uadk_cipher_update_priv_ctx(priv);
 
 	return 1;
-
 sync_err:
 	ret = uadk_e_cipher_soft_work(ctx, out, in, inlen);
 	if (ret != 1)
