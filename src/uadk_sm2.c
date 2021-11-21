@@ -43,6 +43,7 @@ struct sm2_ctx {
 	const BIGNUM *prikey;
 	const EC_POINT *pubkey;
 	BIGNUM *order;
+	bool is_init;
 };
 
 struct ecc_sched {
@@ -660,6 +661,11 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	if (ret)
 		goto do_soft;
 
+	if (!smctx->is_init) {
+		ret = UADK_DO_SOFT;
+		goto do_soft;
+	}
+
 	memset(&req, 0, sizeof(req));
 	ret = sm2_sign_init_iot(smctx->sess, &req, (void *)tbs, tbslen);
 	if (ret)
@@ -751,6 +757,11 @@ static int sm2_verify(EVP_PKEY_CTX *ctx,
 	ret = sm2_verify_check(ctx, sig, siglen, tbs, tbslen);
 	if (ret)
 		goto do_soft;
+
+	if (!smctx->is_init) {
+		ret = UADK_DO_SOFT;
+		goto do_soft;
+	}
 
 	r.data = (void *)buf_r;
 	s.data = (void *)buf_s;
@@ -869,6 +880,11 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	ret = sm2_encrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
 		goto do_soft;
+
+	if (!smctx->is_init) {
+		ret = UADK_DO_SOFT;
+		goto do_soft;
+	}
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_encrypt_init_iot(smctx->sess, &req, (void *)in, inlen);
@@ -1005,7 +1021,12 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 
 	ret = sm2_decrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
-		return ret;
+		goto do_soft;
+
+	if (!smctx->is_init) {
+		ret = UADK_DO_SOFT;
+		goto do_soft;
+	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	ret = cipher_ber_to_bin((void *)md, (void *)in, inlen, &c1, &c2, &c3);
@@ -1015,13 +1036,13 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	if (c3.dsize != EVP_MD_size(md)) {
 		printf("c3 dsize != hash_size\n");
 		ret = -EINVAL;
-		goto do_soft;
+		goto free_c1;
 	}
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_decrypt_init_iot(smctx->sess, &req, &c1, &c2, &c3);
 	if (ret)
-		goto do_soft;
+		goto free_c1;
 
 	ret = update_private_key(ctx);
 	if (ret) {
@@ -1043,8 +1064,9 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	ret = 1;
 uninit_iot:
 	sm2_decrypt_uninit_iot(smctx->sess, &req);
-do_soft:
+free_c1:
 	free(c1.x.data);
+do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
 
@@ -1075,12 +1097,6 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	struct sm2_ctx *smctx;
 	int ret;
 
-	ret = uadk_init_ecc();
-	if (ret) {
-		printf("failed to uadk_init_ecc, ret = %d\n", ret);
-		return 0;
-	}
-
 	smctx = malloc(sizeof(*smctx));
 	if (!smctx) {
 		printf("failed to alloc sm2 ctx\n");
@@ -1089,13 +1105,22 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 
 	memset(smctx, 0, sizeof(*smctx));
 
+	ret = uadk_init_ecc();
+	if (ret) {
+		printf("failed to uadk_init_ecc, ret = %d\n", ret);
+		smctx->is_init = false;
+		goto end;
+	}
+
 	ret = sm2_update_sess(smctx);
 	if (ret) {
 		printf("failed to update sess\n");
-		free(smctx);
-		return 0;
+		smctx->is_init = false;
+		goto end;
 	}
 
+	smctx->is_init = true;
+end:
 	EVP_PKEY_CTX_set_data(ctx, smctx);
 	EVP_PKEY_CTX_set0_keygen_info(ctx, NULL, 0);
 
