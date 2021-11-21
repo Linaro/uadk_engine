@@ -22,7 +22,6 @@
 #include "uadk.h"
 #include "uadk_async.h"
 
-#define ASYNC_POLL_TASK_NUM 1024
 #define MAX_ALG_SIZE 6
 
 static struct async_poll_queue poll_queue;
@@ -121,37 +120,83 @@ static void async_poll_task_free(void)
 	pthread_mutex_destroy(&poll_queue.async_task_mutex);
 }
 
+static int async_get_poll_task(int *id)
+{
+	int idx = poll_queue.rid;
+	int cnt = 0;
+
+	while (!poll_queue.status[idx]) {
+		idx = (idx + 1) % ASYNC_QUEUE_TASK_NUM;
+		if (cnt++ == ASYNC_QUEUE_TASK_NUM)
+			return 0;
+	}
+
+	*id = idx;
+	poll_queue.rid = (idx + 1) % ASYNC_QUEUE_TASK_NUM;
+
+	return 1;
+}
+
 static struct async_poll_task *async_get_queue_task(void)
 {
+	struct async_poll_task *cur_task = NULL;
 	struct async_poll_task *task_queue;
-	struct async_poll_task *cur_task;
-	int tail_pos;
+	int idx, ret;
 
 	if (pthread_mutex_lock(&poll_queue.async_task_mutex) != 0)
 		return NULL;
 
-	tail_pos = poll_queue.tail_pos;
+	ret = async_get_poll_task(&idx);
+	if (!ret)
+		goto err;
+
 	task_queue = poll_queue.head;
-	cur_task = &task_queue[tail_pos];
+	cur_task = &task_queue[idx];
+	poll_queue.is_recv = 0;
 
-	poll_queue.tail_pos = (tail_pos + 1) % ASYNC_POLL_TASK_NUM;
-	poll_queue.cur_task--;
-	poll_queue.left_task++;
-
+err:
 	if (pthread_mutex_unlock(&poll_queue.async_task_mutex) != 0)
-		return NULL;
-
-	if (sem_post(&poll_queue.empty_sem) != 0)
 		return NULL;
 
 	return cur_task;
 }
 
-static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type)
+void async_free_poll_task(int id)
+{
+	if (pthread_mutex_lock(&poll_queue.async_task_mutex) != 0)
+		return;
+
+	poll_queue.status[id] = 0;
+	poll_queue.is_recv = 1;
+
+	if (pthread_mutex_unlock(&poll_queue.async_task_mutex) != 0)
+		return;
+
+	(void)sem_post(&poll_queue.empty_sem);
+}
+
+static int async_get_free_task(int *id)
+{
+	int idx = poll_queue.sid;
+	int cnt = 0;
+
+	while (poll_queue.status[idx]) {
+		idx = (idx + 1) % ASYNC_QUEUE_TASK_NUM;
+		if (cnt++ == ASYNC_QUEUE_TASK_NUM)
+			return 0;
+	}
+
+	*id = idx;
+	poll_queue.sid = (idx + 1) % ASYNC_QUEUE_TASK_NUM;
+	poll_queue.status[idx] = 1;
+	return 1;
+}
+
+int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type)
 {
 	struct async_poll_task *task_queue;
 	struct async_poll_task *task;
-	int head_pos;
+	int idx, ret;
 
 	if (sem_wait(&poll_queue.empty_sem) != 0)
 		return 0;
@@ -159,28 +204,26 @@ static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type ty
 	if (pthread_mutex_lock(&poll_queue.async_task_mutex) != 0)
 		return 0;
 
-	head_pos = poll_queue.head_pos;
+	ret = async_get_free_task(&idx);
+	if (!ret) {
+		(void)pthread_mutex_unlock(&poll_queue.async_task_mutex);
+		return 0;
+	}
+
+	op->idx = idx;
 	task_queue = poll_queue.head;
-	task = &task_queue[head_pos];
+	task = &task_queue[idx];
 	task->ctx = ctx;
 	task->op = op;
 	task->type = type;
 
-	head_pos = (head_pos + 1) % ASYNC_POLL_TASK_NUM;
-	poll_queue.head_pos = head_pos;
-	poll_queue.cur_task++;
-	poll_queue.left_task--;
-
 	if (pthread_mutex_unlock(&poll_queue.async_task_mutex) != 0)
-		return 0;
-
-	if (sem_post(&poll_queue.full_sem) != 0)
 		return 0;
 
 	return 1;
 }
 
-int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
+int async_pause_job(struct async_op *op)
 {
 	ASYNC_WAIT_CTX *waitctx;
 	OSSL_ASYNC_FD efd;
@@ -188,9 +231,9 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 	uint64_t buf;
 	int ret;
 
-	ret = async_add_poll_task(ctx, op, type);
-	if (ret == 0)
-		return ret;
+	ret = sem_post(&poll_queue.full_sem);
+	if (ret)
+		return 0;
 
 	waitctx = ASYNC_get_wait_ctx((ASYNC_JOB *)op->job);
 	if (waitctx == NULL)
@@ -214,7 +257,7 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 	return ret;
 }
 
-static int async_wake_job(ASYNC_JOB *job)
+int async_wake_job(ASYNC_JOB *job)
 {
 	ASYNC_WAIT_CTX *waitctx;
 	OSSL_ASYNC_FD efd;
@@ -248,6 +291,7 @@ static void *async_poll_process_func(void *args)
 {
 	struct async_poll_task *task;
 	struct async_op *op;
+	int ret, idx;
 
 	while (1) {
 		if (sem_wait(&poll_queue.full_sem) != 0) {
@@ -264,10 +308,16 @@ static void *async_poll_process_func(void *args)
 		}
 
 		op = task->op;
-		op->ret = async_recv_func[task->type](task->ctx);
-		op->done = 1;
-		if (op->job)
+		idx = op->idx;
+		ret = async_recv_func[task->type](task->ctx);
+		if (!poll_queue.is_recv && op->job) {
+			op->done = 1;
+			op->ret = ret;
 			async_wake_job(op->job);
+			async_free_poll_task(idx);
+		}
+
+		(void)sem_post(&poll_queue.empty_sem);
 	}
 
 	return NULL;
@@ -283,16 +333,15 @@ void async_module_init(void)
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
 		return;
 
-	poll_queue.head = malloc(sizeof(struct async_poll_task) * ASYNC_POLL_TASK_NUM);
+	poll_queue.head = malloc(sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
 	if (poll_queue.head == NULL)
 		return;
 
 	memset(poll_queue.head, 0,
-	       sizeof(struct async_poll_task) * ASYNC_POLL_TASK_NUM);
-	poll_queue.left_task = ASYNC_POLL_TASK_NUM;
+	       sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
 
 	if (sem_init(&poll_queue.empty_sem, 0,
-		     (unsigned int)poll_queue.left_task) != 0)
+		     ASYNC_QUEUE_TASK_NUM) != 0)
 		goto err;
 
 	if (sem_init(&poll_queue.full_sem, 0, 0) != 0)

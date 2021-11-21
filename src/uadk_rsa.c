@@ -991,12 +991,30 @@ bn_free:
 	return UADK_E_FAIL;
 }
 
-static void uadk_e_rsa_cb(void)
+static void uadk_e_rsa_cb(void *req_t)
 {
+	struct wd_rsa_req *req_new = (struct wd_rsa_req *)req_t;
+	struct uadk_e_cb_info *cb_param;
+	struct async_op *op;
+
+	if (!req_new)
+		return;
+
+	cb_param = req_new->cb_param;
+	if (!cb_param)
+		return;
+
+	op = cb_param->op;
+	if (op && op->job && !op->done) {
+		op->done = 1;
+		async_free_poll_task(op->idx);
+		async_wake_job(op->job);
+	}
 }
 
 static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 {
+	struct uadk_e_cb_info cb_param;
 	struct async_op op;
 	int ret;
 
@@ -1009,14 +1027,23 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 		else
 			return UADK_E_SUCCESS;
 	}
+	cb_param.op = &op;
+	cb_param.priv = &(rsa_sess->req);
 	rsa_sess->req.cb = (void *)uadk_e_rsa_cb;
-	rsa_sess->req.cb_param = &(rsa_sess->req);
+	rsa_sess->req.cb_param = &cb_param;
+
+	 ret = async_add_poll_task(rsa_sess, &op, ASYNC_TASK_RSA);
+	if (ret == 0)
+		return UADK_E_FAIL;
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
-		if (ret < 0 && ret != -EBUSY)
+		if (ret < 0 && ret != -EBUSY) {
+			async_free_poll_task(op.idx);
 			goto err;
+		}
 	} while (ret == -EBUSY);
-	ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA);
+
+	ret = async_pause_job(&op);
 	if (!ret)
 		goto err;
 

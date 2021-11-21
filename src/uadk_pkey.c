@@ -78,9 +78,26 @@ static int ecc_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return 0;
 }
 
-void uadk_ecc_cb(void)
+void uadk_ecc_cb(void *req_t)
 {
-	;
+	struct wd_ecc_req *req_new = (struct wd_ecc_req *)req_t;
+	struct uadk_e_cb_info *cb_param;
+	struct async_op *op;
+
+	if (!req_new)
+		return;
+
+	cb_param = req_new->cb_param;
+	if (!cb_param)
+		return;
+
+	op = cb_param->op;
+	if (op && op->job && !op->done) {
+		op->done = 1;
+		op->ret = 0;
+		async_free_poll_task(op->idx);
+		async_wake_job(op->job);
+	}
 }
 
 int uadk_ecc_poll(void *ctx)
@@ -244,20 +261,30 @@ static void uadk_wd_ecc_uninit(void)
 int uadk_ecc_crypto(handle_t sess,
 		    struct wd_ecc_req *req, void *usr)
 {
+	struct uadk_e_cb_info cb_param;
 	struct async_op op;
 	int ret;
 
 	async_setup_async_event_notification(&op);
 	if (op.job != NULL) {
+		cb_param.op = &op;
+		cb_param.priv = req;
+		req->cb_param = &cb_param;
 		req->cb = (void *)uadk_ecc_cb;
-		req->cb_param = req;
+
+		ret = async_add_poll_task((void *)usr, &op, ASYNC_TASK_ECC);
+		if (ret == 0)
+			return 0;
+
 		do {
 			ret = wd_do_ecc_async(sess, req);
-			if (ret < 0 && ret != -EBUSY)
+			if (ret < 0 && ret != -EBUSY) {
+				async_free_poll_task(op.idx);
 				goto err;
+			}
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job((void *)usr, &op, ASYNC_TASK_ECC);
+		ret = async_pause_job(&op);
 		if (!ret)
 			goto err;
 		if (op.ret)

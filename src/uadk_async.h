@@ -17,13 +17,22 @@
 #ifndef UADK_ASYNC_H
 #define UADK_ASYNC_H
 
+#include <stdbool.h>
 #include <openssl/async.h>
 #include <semaphore.h>
+
+#define ASYNC_QUEUE_TASK_NUM 1024
 
 struct async_op {
 	ASYNC_JOB *job;
 	int done;
+	int idx;
 	int ret;
+};
+
+struct uadk_e_cb_info {
+	void *priv;
+	struct async_op *op;
 };
 
 typedef int (*async_recv_t)(void *ctx);
@@ -44,10 +53,10 @@ struct async_poll_task {
 
 struct async_poll_queue {
 	struct async_poll_task *head;
-	int head_pos;
-	int tail_pos;
-	int cur_task;
-	int left_task;
+	int status[ASYNC_QUEUE_TASK_NUM];
+	int sid;
+	int rid;
+	bool is_recv;
 	sem_t empty_sem;
 	sem_t full_sem;
 	pthread_mutex_t async_task_mutex;
@@ -56,7 +65,10 @@ struct async_poll_queue {
 
 extern int async_setup_async_event_notification(struct async_op *op);
 extern int async_clear_async_event_notification(void);
-extern int async_pause_job(void *ctx, struct async_op *op, enum task_type type);
+extern int async_pause_job(struct async_op *op);
 extern int async_register_poll_fn(int type, async_recv_t func);
 extern void async_module_init(void);
+extern int async_wake_job(ASYNC_JOB *job);
+extern void async_free_poll_task(int id);
+extern int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type);
 #endif

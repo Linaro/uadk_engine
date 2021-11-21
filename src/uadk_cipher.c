@@ -716,6 +716,22 @@ static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 
 static void async_cb(struct wd_cipher_req *req, void *data)
 {
+	struct uadk_e_cb_info *cb_param;
+	struct async_op *op;
+
+	if (!req)
+		return;
+
+	cb_param = req->cb_param;
+	if (!cb_param)
+		return;
+
+	op = cb_param->op;
+	if (op && op->job && !op->done) {
+		op->done = 1;
+		async_free_poll_task(op->idx);
+		async_wake_job(op->job);
+	}
 }
 
 /* increment counter (128-bit int) by c */
@@ -794,6 +810,7 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 
 static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 {
+	struct uadk_e_cb_info cb_param;
 	int ret;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
@@ -801,22 +818,27 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 		return 0;
 	}
 
+	cb_param.op = op;
+	cb_param.priv = priv;
 	priv->req.cb = (void *)async_cb;
-	priv->req.cb_param = priv;
+	priv->req.cb_param = &cb_param;
+	ret = async_add_poll_task(priv, op, ASYNC_TASK_CIPHER);
+	if (ret == 0)
+		return 0;
 	do {
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec cipher failed, switch to soft cipher.\n");
+			async_free_poll_task(op->idx);
 			return 0;
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
+	ret = async_pause_job(op);
 	if (!ret)
 		return 0;
 	return 1;
 }
-
 
 static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			    const unsigned char *in, size_t inlen)

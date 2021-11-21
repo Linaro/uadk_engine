@@ -527,6 +527,21 @@ soft_update:
 
 static void async_cb(struct wd_digest_req *req, void *data)
 {
+	struct uadk_e_cb_info *cb_param;
+	struct async_op *op;
+
+	if (!req)
+		return;
+
+	cb_param = req->cb_param;
+	if (!cb_param)
+		return;
+	op = cb_param->op;
+	if (op && op->job && !op->done) {
+		op->done = 1;
+		async_free_poll_task(op->idx);
+		async_wake_job(op->job);
+	}
 }
 
 static int do_digest_sync(struct digest_priv_ctx *priv)
@@ -545,6 +560,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 
 static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 {
+	struct uadk_e_cb_info cb_param;
 	int ret;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
@@ -552,17 +568,22 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 		return 0;
 	}
 
+	cb_param.op = op;
+	cb_param.priv = priv;
 	priv->req.cb = (void *)async_cb;
-	priv->req.cb_param = priv;
+	priv->req.cb_param = &cb_param;
+
+	ret = async_add_poll_task(priv, op, ASYNC_TASK_DIGEST);
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec digest async failed.\n");
+			async_free_poll_task(op->idx);
 			return 0;
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
+	ret = async_pause_job(op);
 	if (!ret)
 		return 0;
 	return 1;
