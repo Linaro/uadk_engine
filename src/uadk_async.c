@@ -161,13 +161,15 @@ err:
 	return cur_task;
 }
 
-void async_free_poll_task(int id)
+void async_free_poll_task(int id, bool is_cb)
 {
 	if (pthread_mutex_lock(&poll_queue.async_task_mutex) != 0)
 		return;
 
 	poll_queue.status[id] = 0;
-	poll_queue.is_recv = 1;
+
+	if (is_cb)
+		poll_queue.is_recv = 1;
 
 	if (pthread_mutex_unlock(&poll_queue.async_task_mutex) != 0)
 		return;
@@ -314,10 +316,8 @@ static void *async_poll_process_func(void *args)
 			op->done = 1;
 			op->ret = ret;
 			async_wake_job(op->job);
-			async_free_poll_task(idx);
+			async_free_poll_task(idx, 0);
 		}
-
-		(void)sem_post(&poll_queue.empty_sem);
 	}
 
 	return NULL;

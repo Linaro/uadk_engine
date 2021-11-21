@@ -95,7 +95,7 @@ void uadk_ecc_cb(void *req_t)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		op->ret = 0;
-		async_free_poll_task(op->idx);
+		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
 }
@@ -279,7 +279,7 @@ int uadk_ecc_crypto(handle_t sess,
 		do {
 			ret = wd_do_ecc_async(sess, req);
 			if (ret < 0 && ret != -EBUSY) {
-				async_free_poll_task(op.idx);
+				async_free_poll_task(op.idx, 0);
 				goto err;
 			}
 		} while (ret == -EBUSY);

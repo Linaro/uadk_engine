@@ -225,7 +225,7 @@ static void uadk_e_dh_cb(void *req_t)
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
-		async_free_poll_task(op->idx);
+		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
 }
@@ -684,7 +684,7 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 	return UADK_E_SUCCESS;
 
 free_idx:
-	async_free_poll_task(op.idx);
+	async_free_poll_task(op.idx, 0);
 err:
 	(void)async_clear_async_event_notification();
 	return UADK_E_FAIL;

@@ -539,7 +539,7 @@ static void async_cb(struct wd_digest_req *req, void *data)
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
-		async_free_poll_task(op->idx);
+		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
 }
@@ -578,7 +578,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec digest async failed.\n");
-			async_free_poll_task(op->idx);
+			async_free_poll_task(op->idx, 0);
 			return 0;
 		}
 	} while (ret == -EBUSY);
