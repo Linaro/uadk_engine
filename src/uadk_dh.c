@@ -649,9 +649,13 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int ret;
+	int idx, ret;
 
-	async_setup_async_event_notification(&op);
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		printf("failed to setup async event notification.\n");
+		return UADK_E_FAIL;
+	}
 
 	if (!op.job) {
 		ret = wd_do_dh_sync(dh_sess->sess, &dh_sess->req);
@@ -662,17 +666,22 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		cb_param.priv = &dh_sess->req;
 		dh_sess->req.cb = (void *)uadk_e_dh_cb;
 		dh_sess->req.cb_param = &cb_param;
-		ret = async_add_poll_task(dh_sess, &op, ASYNC_TASK_DH);
-		if (ret == 0)
-			return UADK_E_FAIL;
+		dh_sess->req.status = -1;
+		ret = async_get_free_task(&idx);
+		if (!ret)
+			goto err;
+
+		op.idx = idx;
 
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
-			if (ret < 0 && ret != -EBUSY)
-				goto free_idx;
+			if (ret < 0 && ret != -EBUSY) {
+				async_free_poll_task(idx, 0);
+				goto err;
+			}
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job(&op);
+		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH, idx);
 		if (!ret)
 			goto err;
 
@@ -683,8 +692,6 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 
 	return UADK_E_SUCCESS;
 
-free_idx:
-	async_free_poll_task(op.idx, 0);
 err:
 	(void)async_clear_async_event_notification();
 	return UADK_E_FAIL;

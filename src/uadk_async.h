@@ -65,10 +65,10 @@ struct async_poll_queue {
 
 extern int async_setup_async_event_notification(struct async_op *op);
 extern int async_clear_async_event_notification(void);
-extern int async_pause_job(struct async_op *op);
+extern int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id);
 extern int async_register_poll_fn(int type, async_recv_t func);
 extern void async_module_init(void);
 extern int async_wake_job(ASYNC_JOB *job);
 extern void async_free_poll_task(int id, bool is_cb);
-extern int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type);
+extern int async_get_free_task(int *id);
 #endif
