@@ -811,7 +811,7 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 {
 	struct uadk_e_cb_info cb_param;
-	int ret;
+	int idx, ret;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "async cipher init failed.\n");
@@ -822,9 +822,11 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	cb_param.priv = priv;
 	priv->req.cb = (void *)async_cb;
 	priv->req.cb_param = &cb_param;
-	ret = async_add_poll_task(priv, op, ASYNC_TASK_CIPHER);
-	if (ret == 0)
+	ret = async_get_free_task(&idx);
+	if (!ret)
 		return 0;
+
+	op->idx = idx;
 	do {
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
@@ -834,7 +836,7 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(op);
+	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER, idx);
 	if (!ret)
 		return 0;
 	return 1;
@@ -861,7 +863,11 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
-	async_setup_async_event_notification(&op);
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return 0;
+	}
 
 	if (op.job == NULL) {
 		/* Synchronous, only the synchronous mode supports soft computing */

@@ -995,6 +995,7 @@ static void uadk_e_rsa_cb(void *req_t)
 {
 	struct wd_rsa_req *req_new = (struct wd_rsa_req *)req_t;
 	struct uadk_e_cb_info *cb_param;
+	struct wd_rsa_req *req_origin;
 	struct async_op *op;
 
 	if (!req_new)
@@ -1003,6 +1004,12 @@ static void uadk_e_rsa_cb(void *req_t)
 	cb_param = req_new->cb_param;
 	if (!cb_param)
 		return;
+
+	req_origin = cb_param->priv;
+	if (!req_origin)
+		return;
+
+	req_origin->status = req_new->status;
 
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
@@ -1016,9 +1023,13 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int ret;
+	int idx, ret;
 
-	async_setup_async_event_notification(&op);
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		printf("failed to setup async event notification.\n");
+		return UADK_E_FAIL;
+	}
 
 	if (!op.job) {
 		ret = wd_do_rsa_sync(rsa_sess->sess, &(rsa_sess->req));
@@ -1031,10 +1042,13 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	cb_param.priv = &(rsa_sess->req);
 	rsa_sess->req.cb = (void *)uadk_e_rsa_cb;
 	rsa_sess->req.cb_param = &cb_param;
+	rsa_sess->req.status = -1;
 
-	 ret = async_add_poll_task(rsa_sess, &op, ASYNC_TASK_RSA);
+	ret = async_get_free_task(&idx);
 	if (ret == 0)
-		return UADK_E_FAIL;
+		goto err;
+
+	op.idx = idx;
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
 		if (ret < 0 && ret != -EBUSY) {
@@ -1043,9 +1057,12 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(&op);
+	ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA, idx);
 	if (!ret)
 		goto err;
+
+	if (rsa_sess->req.status)
+		return UADK_E_FAIL;
 
 	return UADK_E_SUCCESS;
 

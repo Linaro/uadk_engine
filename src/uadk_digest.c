@@ -561,7 +561,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 {
 	struct uadk_e_cb_info cb_param;
-	int ret;
+	int idx, ret;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "async cipher init failed.\n");
@@ -573,7 +573,12 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	priv->req.cb = (void *)async_cb;
 	priv->req.cb_param = &cb_param;
 
-	ret = async_add_poll_task(priv, op, ASYNC_TASK_DIGEST);
+	ret = async_get_free_task(&idx);
+	if (!ret)
+		return 0;
+
+	op->idx = idx;
+
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
@@ -583,7 +588,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(op);
+	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST, idx);
 	if (!ret)
 		return 0;
 	return 1;
@@ -605,7 +610,11 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.in_bytes = priv->tail;
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
-	async_setup_async_event_notification(&op);
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return 0;
+	}
 
 	if (op.job == NULL) {
 		/* Synchronous, only the synchronous mode supports soft computing */
