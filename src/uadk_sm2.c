@@ -691,7 +691,7 @@ uninit_iot:
 do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
-
+	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_sign(ctx, sig, siglen, tbs, tbslen);
 }
 
@@ -786,6 +786,7 @@ do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
 
+	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_verify(ctx, sig, siglen, tbs, tbslen);
 }
 
@@ -901,6 +902,7 @@ do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
 
+	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_encrypt(ctx, out, outlen, in, inlen);
 }
 
@@ -1046,6 +1048,7 @@ do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
 
+	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_decrypt(ctx, out, outlen, in, inlen);
 }
 
