@@ -914,10 +914,10 @@ uninit_iot:
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (ret == UADK_DO_SOFT)
-		return openssl_do_generate(eckey);
-
-	return ret;
+	if (ret != UADK_DO_SOFT)
+		return ret;
+	fprintf(stderr, "switch to execute openssl software calculation.\n");
+	return openssl_do_generate(eckey);
 }
 
 
