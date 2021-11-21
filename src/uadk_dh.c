@@ -203,11 +203,31 @@ static int uadk_e_dh_poll(void *ctx)
 static void uadk_e_dh_cb(void *req_t)
 {
 	struct wd_dh_req *req_new = (struct wd_dh_req *)req_t;
-	struct wd_dh_req *req_origin = req_new->cb_param;
+	struct uadk_e_cb_info *cb_param;
+	struct wd_dh_req *req_origin;
+	struct async_op *op;
+
+	if (!req_new)
+		return;
+
+	cb_param = req_new->cb_param;
+	if (!cb_param)
+		return;
+
+	req_origin = cb_param->priv;
+	if (!req_origin)
+		return;
 
 	req_origin->status = req_new->status;
 	if (!req_origin->status)
 		req_origin->pri_bytes = req_new->pri_bytes;
+
+	op = cb_param->op;
+	if (op && op->job && !op->done) {
+		op->done = 1;
+		async_free_poll_task(op->idx);
+		async_wake_job(op->job);
+	}
 }
 
 static int dh_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
@@ -627,6 +647,7 @@ free_ag:
 
 static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 {
+	struct uadk_e_cb_info cb_param;
 	struct async_op op;
 	int ret;
 
@@ -637,15 +658,21 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		if (ret)
 			return UADK_E_FAIL;
 	} else {
+		cb_param.op = &op;
+		cb_param.priv = &dh_sess->req;
 		dh_sess->req.cb = (void *)uadk_e_dh_cb;
-		dh_sess->req.cb_param = &dh_sess->req;
+		dh_sess->req.cb_param = &cb_param;
+		ret = async_add_poll_task(dh_sess, &op, ASYNC_TASK_DH);
+		if (ret == 0)
+			return UADK_E_FAIL;
+
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
 			if (ret < 0 && ret != -EBUSY)
-				goto err;
+				goto free_idx;
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
+		ret = async_pause_job(&op);
 		if (!ret)
 			goto err;
 
@@ -656,6 +683,8 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 
 	return UADK_E_SUCCESS;
 
+free_idx:
+	async_free_poll_task(op.idx);
 err:
 	(void)async_clear_async_event_notification();
 	return UADK_E_FAIL;
