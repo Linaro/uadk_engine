@@ -1007,7 +1007,7 @@ static void uadk_e_rsa_cb(void *req_t)
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
-		async_free_poll_task(op->idx);
+		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
 }
@@ -1038,7 +1038,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
 		if (ret < 0 && ret != -EBUSY) {
-			async_free_poll_task(op.idx);
+			async_free_poll_task(op.idx, 0);
 			goto err;
 		}
 	} while (ret == -EBUSY);

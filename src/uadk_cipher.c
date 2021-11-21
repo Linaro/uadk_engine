@@ -729,7 +729,7 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
-		async_free_poll_task(op->idx);
+		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
 }
@@ -829,7 +829,7 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec cipher failed, switch to soft cipher.\n");
-			async_free_poll_task(op->idx);
+			async_free_poll_task(op->idx, 0);
 			return 0;
 		}
 	} while (ret == -EBUSY);
