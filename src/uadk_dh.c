@@ -93,6 +93,11 @@ static int uadk_e_dh_soft_generate_key(DH *dh)
 	int (*dh_soft_generate_key)(DH *dh);
 	int ret;
 
+	if (!uadk_dh_gen_soft) {
+		printf("failed to get soft method\n");
+		return UADK_E_FAIL;
+	}
+
 	dh_soft_generate_key = DH_meth_get_generate_key(uadk_dh_gen_soft);
 	ret = dh_soft_generate_key(dh);
 	if (ret < 0) {
@@ -112,7 +117,17 @@ static int uadk_e_dh_soft_compute_key(unsigned char *key,
 	const DH_METHOD *uadk_dh_comp_soft = DH_OpenSSL();
 	int ret;
 
+	if (!uadk_dh_comp_soft) {
+		fprintf(stderr, "failed to get soft method.\n");
+		return UADK_E_FAIL;
+	}
+
 	dh_soft_compute_key = DH_meth_get_compute_key(uadk_dh_comp_soft);
+	if (!dh_soft_compute_key) {
+		fprintf(stderr, "failed to get soft function.\n");
+		return UADK_E_FAIL;
+	}
+
 	ret = dh_soft_compute_key(key, pub_key, dh);
 	if (ret < 0) {
 		fprintf(stderr, "failed to do dh soft compute key\n");
@@ -435,9 +450,17 @@ static void dh_free_eng_session(uadk_dh_sess_t *dh_sess)
 		wd_dh_free_sess(dh_sess->sess);
 
 	dh_sess->alg = NULL;
-	dh_sess->req.pri = NULL;
-	dh_sess->req.x_p = NULL;
-	dh_sess->req.pv = NULL;
+	if (dh_sess->req.x_p) {
+		OPENSSL_free(dh_sess->req.x_p);
+		dh_sess->req.pri = NULL;
+		dh_sess->req.x_p = NULL;
+	}
+
+	if (dh_sess->req.pv) {
+		OPENSSL_free(dh_sess->req.pv);
+		dh_sess->req.pv = NULL;
+	}
+
 	OPENSSL_free(dh_sess);
 	dh_sess = NULL;
 }
@@ -504,8 +527,10 @@ static int dh_prepare_data(const int bits, const BIGNUM *g, DH *dh,
 	}
 
 	ret = dh_try_get_priv_key(dh, priv_key);
-	if (!ret || !priv_key)
+	if (!ret || !(*priv_key)) {
+		dh_free_eng_session(*dh_sess);
 		return UADK_E_FAIL;
+	}
 
 	return ret;
 }
@@ -585,6 +610,8 @@ static int dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p,
 	dh_sess->req.pri = out_pri;
 	dh_sess->req.pri_bytes = key_size;
 	dh_sess->req.op_type = WD_DH_PHASE1;
+
+	OPENSSL_free(ag_bin);
 
 	return ret;
 

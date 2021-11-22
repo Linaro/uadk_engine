@@ -133,7 +133,7 @@ enum {
 	MAX_CODE,
 };
 
-static int rsa_check_bit_useful(const int bits, int flen)
+static int rsa_check_bit_useful(const unsigned int bits, int flen)
 {
 	if (!flen && flen > bits)
 		return SOFT;
@@ -462,11 +462,6 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 						 NULL, 0);
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
-		break;
-	case RSA_NO_PADDING:
-		ret = RSA_padding_add_none(buf, num, from, flen);
-		if (!ret)
-			fprintf(stderr, "RSA_NO_PADDING err\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -1074,6 +1069,11 @@ static int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	const RSA_METHOD *default_meth = RSA_PKCS1_OpenSSL();
 	int ret;
+
+	if (!default_meth) {
+		printf("failed to get soft method.\n");
+		return UADK_E_FAIL;
+	}
 
 	UNUSED(cb);
 	RSA_set_method(rsa, default_meth);

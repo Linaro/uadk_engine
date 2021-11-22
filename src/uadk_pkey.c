@@ -183,6 +183,9 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 
 	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
 	dev = wd_get_accel_dev("ecdsa");
+	if (!dev)
+		return -ENOMEM;
+
 	config->numa_id = dev->numa_id;
 
 	ret = uadk_e_is_env_enabled("ecc");
@@ -474,7 +477,7 @@ void uadk_ecc_fill_req(struct wd_ecc_req *req, unsigned int op,
 	req->dst = out;
 }
 
-bool uadk_support_algorithm(char *alg)
+bool uadk_support_algorithm(const char *alg)
 {
 	struct uacce_dev_list *list = wd_get_accel_list(alg);
 
