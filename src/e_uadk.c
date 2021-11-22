@@ -371,10 +371,10 @@ static int bind_fn(ENGINE *e, const char *id)
 	bind_fn_kae_alg(e);
 
 	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
-	    uadk_pkey_nosva || uadk_pkey_nosva) {
+	    uadk_dh_nosva || uadk_pkey_nosva) {
 		async_module_init_v1();
 		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
-		return 1;
+		goto set_ctrl_cmd;
 	}
 #endif
 	async_module_init();
@@ -382,6 +382,9 @@ static int bind_fn(ENGINE *e, const char *id)
 
 	bind_fn_uadk_alg(e);
 
+#ifdef KAE
+set_ctrl_cmd:
+#endif
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
 	ret &= ENGINE_set_cmd_defns(e, g_uadk_cmd_defns);
 	if (ret != 1) {
