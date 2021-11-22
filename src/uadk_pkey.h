@@ -37,6 +37,7 @@
 #define UADK_ECC_PADDING		7
 #define UADK_ECDH_CV_NUM		8
 #define ENV_ENABLED			1
+#define UADK_E_INVALID			(-2)
 
 struct uadk_pkey_meth {
 	EVP_PKEY_METHOD *sm2;

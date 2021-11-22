@@ -27,14 +27,13 @@
 #include "uadk_pkey.h"
 #include "uadk.h"
 
-#define X25519_KEYLEN	32
-#define X448_KEYLEN	56
-#define X25519_KEYBITS	256
-#define X448_KEYBITS	448
-#define MAX_KEYLEN	57
-#define UADK_E_SUCCESS	1
-#define UADK_E_FAIL	0
-#define UADK_E_INVALID -2
+#define X25519_KEYLEN		32
+#define X448_KEYLEN		56
+#define X25519_KEYBITS		256
+#define X448_KEYBITS		448
+#define MAX_KEYLEN		57
+#define UADK_E_SUCCESS		1
+#define UADK_E_FAIL		0
 
 typedef struct {
 	unsigned char pubkey[MAX_KEYLEN];
