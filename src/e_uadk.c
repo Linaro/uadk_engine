@@ -238,25 +238,11 @@ static void engine_init_child_at_fork_handler(void)
 	async_module_init();
 }
 
-/*
- * This stuff is needed if this ENGINE is being
- * compiled into a self-contained shared-library.
- */
-static int bind_fn(ENGINE *e, const char *id)
+#ifdef KAE
+static void bind_fn_kae_alg(ENGINE *e)
 {
 	struct uacce_dev *dev;
-	int ret;
 
-	if (!ENGINE_set_id(e, engine_uadk_id) ||
-	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
-	    !ENGINE_set_init_function(e, uadk_init) ||
-	    !ENGINE_set_finish_function(e, uadk_finish) ||
-	    !ENGINE_set_name(e, engine_uadk_name)) {
-		fprintf(stderr, "bind failed\n");
-		return 0;
-	}
-
-#ifdef KAE
 	dev = wd_get_accel_dev("cipher");
 	if (dev) {
 		if (!(dev->flags & UACCE_DEV_SVA)) {
@@ -315,17 +301,12 @@ static int bind_fn(ENGINE *e, const char *id)
 		}
 		free(dev);
 	}
-
-	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
-	   uadk_pkey_nosva || uadk_pkey_nosva) {
-		async_module_init_v1();
-		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
-		return 1;
-	}
+}
 #endif
 
-	async_module_init();
-	pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
+static void bind_fn_uadk_alg(ENGINE *e)
+{
+	struct uacce_dev *dev;
 
 	dev = wd_get_accel_dev("cipher");
 	if (dev) {
@@ -367,6 +348,39 @@ static int bind_fn(ENGINE *e, const char *id)
 		fprintf(stderr, "uadk bind ecc failed\n");
 	else
 		uadk_ecc = 1;
+}
+
+/*
+ * This stuff is needed if this ENGINE is being
+ * compiled into a self-contained shared-library.
+ */
+static int bind_fn(ENGINE *e, const char *id)
+{
+	int ret;
+
+	if (!ENGINE_set_id(e, engine_uadk_id) ||
+	    !ENGINE_set_destroy_function(e, uadk_destroy) ||
+	    !ENGINE_set_init_function(e, uadk_init) ||
+	    !ENGINE_set_finish_function(e, uadk_finish) ||
+	    !ENGINE_set_name(e, engine_uadk_name)) {
+		fprintf(stderr, "bind failed\n");
+		return 0;
+	}
+
+#ifdef KAE
+	bind_fn_kae_alg(e);
+
+	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
+	    uadk_pkey_nosva || uadk_pkey_nosva) {
+		async_module_init_v1();
+		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
+		return 1;
+	}
+#endif
+	async_module_init();
+	pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
+
+	bind_fn_uadk_alg(e);
 
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
 	ret &= ENGINE_set_cmd_defns(e, g_uadk_cmd_defns);
