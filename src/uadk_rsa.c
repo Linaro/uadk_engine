@@ -655,8 +655,7 @@ static int uadk_e_rsa_poll(void *ctx)
 	return ret;
 }
 
-/* make resource configure static */
-struct rsa_res_config rsa_res_config = {
+static struct rsa_res_config rsa_res_config = {
 	.sched = {
 		.sched_type = -1,
 		.wd_sched = {
@@ -786,7 +785,7 @@ static int uadk_e_rsa_init(void)
 err_unlock:
 	pthread_spin_unlock(&g_rsa_res.lock);
 	free(dev);
-	fprintf(stderr, "failed to init rsa(%d)\n", ret);
+	(void)fprintf(stderr, "failed to init rsa(%d)\n", ret);
 
 	return ret;
 }
@@ -1027,7 +1026,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
-		printf("failed to setup async event notification.\n");
+		fprintf(stderr, "failed to setup async event notification.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1071,7 +1070,7 @@ err:
 	return UADK_E_FAIL;
 }
 
-int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
+static int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	const RSA_METHOD *default_meth = RSA_PKCS1_OpenSSL();
 	int ret;

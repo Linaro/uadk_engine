@@ -492,10 +492,9 @@ free_x1:
 	BN_free(x1);
 
 	return ret;
-
 }
 
-static int cipher_ber_to_bin(EVP_MD *md, unsigned char *ber, size_t ber_len,
+static int cipher_ber_to_bin(unsigned char *ber, size_t ber_len,
 			     struct wd_ecc_point *c1,
 			     struct wd_dtb *c2,
 			     struct wd_dtb *c3)
@@ -995,7 +994,6 @@ static void sm2_decrypt_uninit_iot(handle_t sess, struct wd_ecc_req *req)
 static int sm2_get_plaintext(struct wd_ecc_req *req,
 			     unsigned char *out, size_t *outlen)
 {
-
 	struct wd_dtb *ptext = NULL;
 
 	wd_sm2_get_dec_out_params(req->dst, &ptext);
@@ -1003,8 +1001,10 @@ static int sm2_get_plaintext(struct wd_ecc_req *req,
 		printf("outlen(%lu) < (%u)\n", *outlen, ptext->dsize);
 		return -EINVAL;
 	}
+
 	memcpy(out, ptext->data, ptext->dsize);
 	*outlen = ptext->dsize;
+
 	return 0;
 }
 
@@ -1029,7 +1029,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
-	ret = cipher_ber_to_bin((void *)md, (void *)in, inlen, &c1, &c2, &c3);
+	ret = cipher_ber_to_bin((void *)in, inlen, &c1, &c2, &c3);
 	if (ret)
 		goto do_soft;
 
@@ -1127,11 +1127,34 @@ end:
 	return 1;
 }
 
+static int sm2_set_ctx_id(struct sm2_ctx *smctx, int p1, void *p2)
+{
+	uint8_t *tmp_id;
+
+	if (p1 > 0) {
+		tmp_id = OPENSSL_malloc(p1);
+		if (tmp_id == NULL) {
+			printf("failed to malloc\n");
+			return 0;
+		}
+		memcpy(tmp_id, p2, p1);
+		OPENSSL_free(smctx->ctx.id);
+		smctx->ctx.id = tmp_id;
+	} else {
+		/* set null-ID */
+		OPENSSL_free(smctx->ctx.id);
+		smctx->ctx.id = NULL;
+	}
+	smctx->ctx.id_len = (size_t)p1;
+	smctx->ctx.id_set = 1;
+
+	return 1;
+}
+
 static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EC_GROUP *group;
-	uint8_t *tmp_id;
 
 	switch (type) {
 	case EVP_PKEY_CTRL_EC_PARAMGEN_CURVE_NID:
@@ -1159,23 +1182,7 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		*(const EVP_MD **)p2 = smctx->ctx.md;
 		return 1;
 	case EVP_PKEY_CTRL_SET1_ID:
-		if (p1 > 0) {
-			tmp_id = OPENSSL_malloc(p1);
-			if (tmp_id == NULL) {
-				printf("failed to malloc\n");
-				return 0;
-			}
-			memcpy(tmp_id, p2, p1);
-			OPENSSL_free(smctx->ctx.id);
-			smctx->ctx.id = tmp_id;
-		} else {
-			/* set null-ID */
-			OPENSSL_free(smctx->ctx.id);
-			smctx->ctx.id = NULL;
-		}
-		smctx->ctx.id_len = (size_t)p1;
-		smctx->ctx.id_set = 1;
-		return 1;
+		return sm2_set_ctx_id(smctx, p1, p2);
 	case EVP_PKEY_CTRL_GET1_ID:
 		memcpy(p2, smctx->ctx.id, smctx->ctx.id_len);
 		return 1;
@@ -1187,7 +1194,7 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		return 1;
 	default:
 		printf("sm2 ctrl type = %d error\n", type);
-		return -2;
+		return UADK_E_INVALID;
 	}
 }
 
@@ -1219,11 +1226,11 @@ static int sm2_ctrl_str(EVP_PKEY_CTX *ctx,
 		else if (strcmp(value, "named_curve") == 0)
 			param_enc = OPENSSL_EC_NAMED_CURVE;
 		else
-			return -2;
+			return UADK_E_INVALID;
 		return EVP_PKEY_CTX_set_ec_param_enc(ctx, param_enc);
 	}
 
-	return -2;
+	return UADK_E_INVALID;
 }
 
 static int sm2_compute_z_digest(uint8_t *out,
@@ -1262,7 +1269,6 @@ static int sm2_compute_z_digest(uint8_t *out,
 	yG = BN_CTX_get(ctx);
 	xA = BN_CTX_get(ctx);
 	yA = BN_CTX_get(ctx);
-
 	if (yA == NULL) {
 		printf("failed to malloc\n");
 		goto done;
@@ -1274,7 +1280,6 @@ static int sm2_compute_z_digest(uint8_t *out,
 	}
 
 	/* Z = h(ENTL || ID || a || b || xG || yG || xA || yA) */
-
 	if (id_len >= (UINT16_MAX / 8)) {
 		/* too large */
 		printf("id too large\n");

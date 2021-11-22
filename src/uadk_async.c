@@ -262,7 +262,7 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id)
 
 		if (read(efd, &buf, sizeof(uint64_t)) == -1) {
 			if (errno != EAGAIN)
-				printf("Failed to read from fd: %d - error: %d\n",
+				fprintf(stderr, "failed to read from fd: %d - error: %d\n",
 				       efd, errno);
 			/* Not resumed by the expected async_wake_job() */
 		}
@@ -286,7 +286,7 @@ int async_wake_job(ASYNC_JOB *job)
 	ret = ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom);
 	if (ret > 0) {
 		if (write(efd, &buf, sizeof(uint64_t)) == -1)
-			printf("Failed to write to fd: %d - error: %d\n", efd, errno);
+			fprintf(stderr, "failed to write to fd: %d - error: %d\n", efd, errno);
 	}
 
 	return ret;

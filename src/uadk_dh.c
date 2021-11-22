@@ -135,7 +135,6 @@ static int dh_generate_new_priv_key(const DH *dh, BIGNUM *new_priv_key)
 	} else {
 		bits = DH_get_length(dh) ?
 		       DH_get_length(dh) : BN_num_bits(DH_get0_p(dh)) - 1;
-
 		if (!BN_priv_rand(new_priv_key, bits, BN_RAND_TOP_ONE,
 				  BN_RAND_BOTTOM_ANY))
 			return UADK_E_FAIL;
@@ -235,7 +234,7 @@ static int dh_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return UADK_E_POLL_SUCCESS;
 }
 
-struct dh_res_config dh_res_config = {
+static struct dh_res_config dh_res_config = {
 	.sched = {
 		.sched_type = -1,
 		.wd_sched = {
@@ -837,7 +836,7 @@ static int uadk_e_dh_bn_mod_exp(const DH *dh, BIGNUM *r, const BIGNUM *a,
 	return BN_mod_exp_mont(r, a, p, m, ctx, m_ctx);
 }
 
-DH_METHOD *uadk_e_get_dh_methods(void)
+static DH_METHOD *uadk_e_get_dh_methods(void)
 {
 	if (uadk_dh_method)
 		return uadk_dh_method;
@@ -855,7 +854,7 @@ DH_METHOD *uadk_e_get_dh_methods(void)
 	return uadk_dh_method;
 }
 
-void uadk_e_delete_dh_meth(void)
+static void uadk_e_delete_dh_meth(void)
 {
 	if (!uadk_dh_method)
 		return;
