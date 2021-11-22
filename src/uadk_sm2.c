@@ -833,14 +833,16 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
-	const EVP_MD *md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
-	int c3_size = EVP_MD_size(md);
+	const EVP_MD *md;
+	int c3_size;
 
 	if (!smctx || !smctx->sess) {
 		printf("smctx or sess NULL\n");
 		return 0;
 	}
 
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
+	c3_size = EVP_MD_size(md);
 	if (c3_size <= 0) {
 		printf("c3 size error\n");
 		return 0;
@@ -1127,7 +1129,7 @@ end:
 	return 1;
 }
 
-static int sm2_set_ctx_id(struct sm2_ctx *smctx, int p1, void *p2)
+static int sm2_set_ctx_id(struct sm2_ctx *smctx, int p1, const void *p2)
 {
 	uint8_t *tmp_id;
 
@@ -1155,6 +1157,11 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EC_GROUP *group;
+
+	if (!smctx) {
+		printf("smctx not set.\n");
+		return 0;
+	}
 
 	switch (type) {
 	case EVP_PKEY_CTRL_EC_PARAMGEN_CURVE_NID:

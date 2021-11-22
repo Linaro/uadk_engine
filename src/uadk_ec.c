@@ -278,8 +278,8 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 	const unsigned char *dgst = (const unsigned char *)sdgst->data;
 	const EC_GROUP *group = EC_KEY_get0_group(eckey);
 	const BIGNUM *order = EC_GROUP_get0_order(group);
-	int order_bits = BN_num_bits(order);
-	int dlen = sdgst->dsize;
+	unsigned int order_bits = BN_num_bits(order);
+	unsigned int dlen = sdgst->dsize;
 	BIGNUM *m;
 
 	if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits) {
@@ -436,12 +436,12 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 
 	ret =  uadk_ecc_set_private_key(sess, eckey);
 	if (ret)
-		goto free_sess;
+		goto uninit_iot;
 
 	ret = uadk_init_ecc();
 	if (ret) {
 		ret = UADK_DO_SOFT;
-		goto free_sess;
+		goto uninit_iot;
 	}
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
@@ -587,7 +587,6 @@ static int ecdsa_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 static int openssl_do_verify(const unsigned char *dgst, int dlen,
 			     const ECDSA_SIG *sig, EC_KEY *eckey)
 {
-
 	PFUNC_VERIFY_SIG verify_sig_pfunc = NULL;
 	EC_KEY_METHOD *openssl_meth;
 
@@ -629,12 +628,12 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 
 	ret = uadk_ecc_set_public_key(sess, eckey);
 	if (ret)
-		goto free_sess;
+		goto uninit_iot;
 
 	ret = uadk_init_ecc();
 	if (ret) {
 		ret = UADK_DO_SOFT;
-		goto free_sess;
+		goto uninit_iot;
 	}
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
@@ -1013,8 +1012,8 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 		return ret;
 	}
 
-	key_size_std = (EC_GROUP_get_degree(group) + UADK_ECC_PADDING) >>
-			UADK_BITS_2_BYTES_SHIFT;
+	key_size_std = (unsigned int)(EC_GROUP_get_degree(group) +
+			UADK_ECC_PADDING) >> UADK_BITS_2_BYTES_SHIFT;
 	key_size_x = pubkey->x.dsize;
 	key_size_y = pubkey->y.dsize;
 	if ((key_size_x > key_size_std) || (key_size_y > key_size_std)) {
@@ -1232,7 +1231,7 @@ static int ecdh_compute_key(unsigned char **out,
 		goto uninit_iot;
 
 	ret = ecdh_get_shared_key(ecdh, out, outlen, &req);
-	if (!outlen || !ret)
+	if (!(*outlen) || !ret)
 		goto uninit_iot;
 
 	wd_ecc_del_in(sess, req.src);

@@ -410,10 +410,8 @@ static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 uninit_iot:
 	wd_ecc_del_out(keygen_ctx->sess, req.dst);
 free_key:
-	if (ecx_key->privkey)
-		OPENSSL_secure_free(ecx_key->privkey);
-	if (ecx_key)
-		OPENSSL_free(ecx_key);
+	OPENSSL_secure_free(ecx_key->privkey);
+	OPENSSL_free(ecx_key);
 uninit_ctx:
 	x25519_uninit(ctx);
 do_soft:
@@ -470,10 +468,8 @@ static int x448_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 uninit_iot:
 	wd_ecc_del_out(keygen_ctx->sess, req.dst);
 free_key:
-	if (ecx_key->privkey)
-		OPENSSL_secure_free(ecx_key->privkey);
-	if (ecx_key)
-		OPENSSL_free(ecx_key);
+	OPENSSL_secure_free(ecx_key->privkey);
+	OPENSSL_free(ecx_key);
 uninit_ctx:
 	x448_uninit(ctx);
 do_soft:
@@ -662,11 +658,13 @@ static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	memcpy(key, pad_key, *keylen);
 
 	wd_ecc_del_out(derive_ctx->sess, req.dst);
+	wd_ecc_del_in(derive_ctx->sess, req.src);
 	x25519_uninit(ctx);
 
 	return ret;
 
 uninit_iot:
+	wd_ecc_del_in(derive_ctx->sess, req.src);
 	wd_ecc_del_out(derive_ctx->sess, req.dst);
 uninit_ctx:
 	x25519_uninit(ctx);
@@ -741,12 +739,14 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	memcpy(key, pad_key, *keylen);
 
 	wd_ecc_del_out(derive_ctx->sess, req.dst);
+	wd_ecc_del_in(derive_ctx->sess, req.src);
 	x448_uninit(ctx);
 
 	return ret;
 
 uninit_iot:
 	wd_ecc_del_out(derive_ctx->sess, req.dst);
+	wd_ecc_del_in(derive_ctx->sess, req.src);
 uninit_ctx:
 	x448_uninit(ctx);
 do_soft:
