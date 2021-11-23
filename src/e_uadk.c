@@ -215,7 +215,7 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_rsa)
 		uadk_e_destroy_rsa();
 	if (uadk_ecc)
-		uadk_destroy_ecc();
+		uadk_e_destroy_ecc();
 	if (uadk_dh)
 		uadk_e_destroy_dh();
 	return 1;
@@ -320,7 +320,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
-	if (!uadk_bind_ecc(e))
+	if (!uadk_e_bind_ecc(e))
 		fprintf(stderr, "uadk bind ecc failed\n");
 	else
 		uadk_ecc = 1;
