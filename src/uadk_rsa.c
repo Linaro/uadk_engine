@@ -133,7 +133,7 @@ enum {
 	MAX_CODE,
 };
 
-static int rsa_check_bit_useful(const unsigned int bits, int flen)
+static int rsa_check_bit_useful(const int bits, int flen)
 {
 	if (!flen && flen > bits)
 		return SOFT;
@@ -154,8 +154,6 @@ static int rsa_check_bit_useful(const unsigned int bits, int flen)
 	default:
 		return SOFT;
 	}
-
-	return UADK_E_FAIL;
 }
 
 static int prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
@@ -1485,6 +1483,7 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
+	ret_bn = NULL;
 	ret_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
 			   rsa_sess->req.dst_bytes, ret_bn);
 	if (!ret_bn) {
@@ -1569,6 +1568,7 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
+	ret_bn = NULL;
 	ret_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
 			   rsa_sess->req.dst_bytes, ret_bn);
 	if (!ret_bn) {
