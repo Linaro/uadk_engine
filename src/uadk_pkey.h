@@ -17,6 +17,7 @@
 #ifndef UADK_PKEY_H
 #define UADK_PKEY_H
 #include <stdbool.h>
+#include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <uadk/wd.h>
 #include <uadk/wd_ecc.h>
@@ -25,8 +26,7 @@
 
 #define UADK_ARRAY_SIZE(array)	(sizeof(array) / sizeof(array[0]))
 
-#define UADK_DO_SOFT		(-0xE0)
-
+#define UADK_DO_SOFT			(-0xE0)
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
@@ -65,10 +65,13 @@ int uadk_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 int uadk_init_ecc(void);
 const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid);
 int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
-int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
-int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_ec_delete_meth(void);
+int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+void uadk_x448_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+void uadk_x25519_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_bind_ec(ENGINE *e);
 int uadk_e_ecc_get_numa_id(void);
 

@@ -534,6 +534,12 @@ del_in:
 	return ret;
 }
 
+static void ecx_compkey_uninit_iot(handle_t sess, struct wd_ecc_req *req)
+{
+	wd_ecc_del_out(sess, req->dst);
+	wd_ecc_del_in(sess, req->src);
+}
+
 static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx, ECX_KEY *ecx_key)
 {
 	int key_size = ecx_ctx->key_size;
@@ -643,10 +649,8 @@ static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 		goto uninit_iot;
 
 	wd_ecxdh_get_out_params(req.dst, &shared_key);
-	if (!shared_key) {
-		fprintf(stderr, "failed to get shared key\n");
+	if (!shared_key)
 		goto uninit_iot;
-	}
 
 	ret = reverse_bytes((unsigned char *)shared_key->x.data,
 			     shared_key->x.dsize);
@@ -657,15 +661,13 @@ static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	*keylen = X25519_KEYLEN;
 	memcpy(key, pad_key, *keylen);
 
-	wd_ecc_del_out(derive_ctx->sess, req.dst);
-	wd_ecc_del_in(derive_ctx->sess, req.src);
+	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 	x25519_uninit(ctx);
 
 	return ret;
 
 uninit_iot:
-	wd_ecc_del_in(derive_ctx->sess, req.src);
-	wd_ecc_del_out(derive_ctx->sess, req.dst);
+	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 uninit_ctx:
 	x25519_uninit(ctx);
 do_soft:
@@ -724,10 +726,8 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 		goto uninit_iot;
 
 	wd_ecxdh_get_out_params(req.dst, &shared_key);
-	if (!shared_key) {
-		fprintf(stderr, "failed to get shared key\n");
+	if (!shared_key)
 		goto uninit_iot;
-	}
 
 	ret = reverse_bytes((unsigned char *)shared_key->x.data,
 			     shared_key->x.dsize);
@@ -738,15 +738,13 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	*keylen = X448_KEYLEN;
 	memcpy(key, pad_key, *keylen);
 
-	wd_ecc_del_out(derive_ctx->sess, req.dst);
-	wd_ecc_del_in(derive_ctx->sess, req.src);
+	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 	x448_uninit(ctx);
 
 	return ret;
 
 uninit_iot:
-	wd_ecc_del_out(derive_ctx->sess, req.dst);
-	wd_ecc_del_in(derive_ctx->sess, req.src);
+	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 uninit_ctx:
 	x448_uninit(ctx);
 do_soft:

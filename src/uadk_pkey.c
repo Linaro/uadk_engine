@@ -17,15 +17,15 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 #include <uadk/wd_ecc.h>
-#include "uadk_pkey.h"
 #include "uadk_async.h"
 #include "uadk.h"
+#include "uadk_pkey.h"
 
-#define ECC_MAX_DEV_NUM			16
-#define CTX_ASYNC	1
-#define CTX_SYNC	0
-#define CTX_NUM		2
-#define GET_RAND_MAX_CNT		100
+#define ECC_MAX_DEV_NUM		16
+#define CTX_ASYNC		1
+#define CTX_SYNC		0
+#define CTX_NUM			2
+#define GET_RAND_MAX_CNT	100
 
 static int pkey_nids[] = {
 	EVP_PKEY_EC,
@@ -107,7 +107,7 @@ void uadk_ecc_cb(void *req_t)
 	}
 }
 
-int uadk_ecc_poll(void *ctx)
+static int uadk_ecc_poll(void *ctx)
 {
 	unsigned int recv = 0;
 	int expt = 1;
@@ -306,7 +306,6 @@ int uadk_ecc_crypto(handle_t sess,
 			goto err;
 		if (req->status)
 			return 0;
-
 	} else {
 		ret = wd_do_ecc_sync(sess, req);
 		if (ret < 0)
@@ -374,8 +373,10 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 {
 	unsigned char bin[UADK_ECC_MAX_KEY_BYTES];
 	struct wd_ecc_key *ecc_key;
+	const EC_GROUP *group;
 	struct wd_dtb prikey;
 	const BIGNUM *d;
+	int buflen;
 	int ret;
 
 	d = EC_KEY_get0_private_key(eckey);
@@ -384,9 +385,18 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 		return -EINVAL;
 	}
 
+	group = EC_KEY_get0_group(eckey);
+	if (!group) {
+		printf("failed to get ecc group\n");
+		return -EINVAL;
+	}
+
+	/* pad and convert bits to bytes */
+	buflen = (EC_GROUP_get_degree(group) + 7) / 8;
 	ecc_key = wd_ecc_get_key(sess);
 	prikey.data = (void *)bin;
-	prikey.dsize = BN_bn2bin(d, bin);
+	prikey.dsize = BN_bn2binpad(d, bin, buflen);
+
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
 		printf("failed to set ecc prikey, ret = %d\n", ret);
@@ -508,8 +518,10 @@ int uadk_init_ecc(void)
 		}
 
 		ret = uadk_wd_ecc_init(&ecc_res_config);
-		if (ret)
+		if (ret) {
+			fprintf(stderr, "failed to init ec(%d).\n", ret);
 			goto err_unlock;
+		}
 
 		ecc_res.pid = getpid();
 		pthread_spin_unlock(&ecc_res.lock);
@@ -519,7 +531,6 @@ int uadk_init_ecc(void)
 
 err_unlock:
 	pthread_spin_unlock(&ecc_res.lock);
-	fprintf(stderr, "failed to init ec(%d).\n", ret);
 	return ret;
 }
 
