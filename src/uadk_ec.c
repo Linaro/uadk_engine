@@ -599,7 +599,6 @@ static int openssl_do_verify(const unsigned char *dgst, int dlen,
 	}
 
 	return (*verify_sig_pfunc)(dgst, dlen, sig, eckey);
-
 }
 
 static int ecdsa_do_verify(const unsigned char *dgst, int dlen,

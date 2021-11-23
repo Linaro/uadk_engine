@@ -546,6 +546,8 @@ static size_t ec_field_size(const EC_GROUP *group)
 
 	if (!EC_GROUP_get_curve(group, p, a, b, NULL))
 		goto done;
+
+	/* Pad and convert bits to bytes*/
 	field_size = (BN_num_bits(p) + 7) / 8;
 
 done:
@@ -567,11 +569,9 @@ static int sm2_ciphertext_size(const EC_KEY *key,
 	if (field_size == 0 || md_size < 0)
 		return 0;
 
-	/* Integer and string are
-	 * simple type; set
-	 * constructed = 0, means
-	 * primitive and definite
-	 * length encoding.
+	/*
+	 * Integer and string are simple type; set constructed = 0, means
+	 * primitive and definite length encoding.
 	 */
 	sz = 2 * ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER)
 		+ ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING)
@@ -1455,4 +1455,13 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	pkey_meth->sm2 = meth;
 
 	return 1;
+}
+
+void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
+{
+	if (!pkey_meth || !pkey_meth->sm2)
+		return;
+
+	EVP_PKEY_meth_free(pkey_meth->sm2);
+	pkey_meth->sm2 = NULL;
 }

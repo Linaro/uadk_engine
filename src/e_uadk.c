@@ -142,7 +142,7 @@ static void uadk_e_set_env_enabled(char *alg_name, __u8 value)
 int uadk_e_set_env(const char *var_name, int numa_id)
 {
 	char env_string[ENV_STRING_LEN] = {0};
-	char *var_s;
+	const char *var_s;
 	int ret;
 
 	var_s = getenv(var_name);
@@ -156,7 +156,6 @@ int uadk_e_set_env(const char *var_name, int numa_id)
 		if (ret < 0)
 			return ret;
 	}
-
 	return 0;
 }
 
