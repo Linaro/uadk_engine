@@ -158,7 +158,7 @@ err:
 	if (pthread_mutex_unlock(&poll_queue.async_task_mutex) != 0)
 		return NULL;
 
-	if (cur_task->op == NULL)
+	if (cur_task && cur_task->op == NULL)
 		return NULL;
 
 	return cur_task;

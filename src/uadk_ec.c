@@ -285,7 +285,9 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 	if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits) {
 		m = BN_new();
 
-		/* Need to truncate digest if it is too long: first truncate whole bytes */
+		/* Need to truncate digest if it is too long: first truncate
+		 * whole bytes
+		 */
 		dlen = (order_bits + 7) >> UADK_BITS_2_BYTES_SHIFT;
 		if (!BN_bin2bn(dgst, dlen, m)) {
 			fprintf(stderr, "failed to BN_bin2bn digest\n");
@@ -667,7 +669,8 @@ static int ecdsa_verify(int type, const unsigned char *dgst, int dlen,
 	}
 
 	if (!d2i_ECDSA_SIG(&s, &p, siglen)) {
-		fprintf(stderr, "failed to d2i_ECDSA_SIG: siglen = %d\n", siglen);
+		fprintf(stderr, "failed to d2i_ECDSA_SIG: siglen = %d\n",
+			siglen);
 		goto err;
 	}
 
@@ -850,11 +853,11 @@ static int ecdh_create_key(EC_KEY *eckey)
 		}
 		do {
 			if (!BN_rand_range(priv_key, order))
-				fprintf(stderr, "failed to generate random value\n");
+				fprintf(stderr, "failed to generate \
+					random value\n");
 		} while (BN_is_zero(priv_key));
 		ret = EC_KEY_set_private_key(eckey, priv_key);
 	}
-
 	ret = 1;
 
 free_order:
@@ -1031,7 +1034,8 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 	y_shift = buff_size - key_size_y;
 	buff = (unsigned char *)OPENSSL_malloc(buff_size);
 	if (!buff) {
-		fprintf(stderr, "failed to alloc buf, buff_size = %d\n", buff_size);
+		fprintf(stderr, "failed to alloc buf, buff_size = %d\n",
+			buff_size);
 		goto free_point;
 	}
 	memset(buff, 0, buff_size);
@@ -1072,7 +1076,8 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 
 	*out = OPENSSL_zalloc(*outlen);
 	if (!*out) {
-		fprintf(stderr, "failed to alloc output key, outlen = %lu\n", *outlen);
+		fprintf(stderr, "failed to alloc output key, outlen = %lu\n",
+			*outlen);
 		return 0;
 	}
 

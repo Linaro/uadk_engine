@@ -66,10 +66,8 @@ struct uadk_dh_sess {
 	struct wd_dh_sess_setup setup;
 	struct wd_dh_req req;
 	DH *alg;
-	int key_size;
+	uint32_t key_size;
 };
-
-typedef struct uadk_dh_sess  uadk_dh_sess_t;
 
 struct dh_res {
 	struct wd_ctx_config *ctx_res;
@@ -423,7 +421,8 @@ static struct uadk_dh_sess *dh_new_eng_session(DH *dh_alg)
 	return dh_sess;
 }
 
-static int dh_init_eng_session(uadk_dh_sess_t *dh_sess, int bits, bool is_g2)
+static int dh_init_eng_session(struct uadk_dh_sess *dh_sess,
+			       int bits, bool is_g2)
 {
 	uint32_t key_size = (uint32_t)bits >> CHAR_BIT_SIZE;
 
@@ -446,7 +445,7 @@ static int dh_init_eng_session(uadk_dh_sess_t *dh_sess, int bits, bool is_g2)
 	return UADK_E_SUCCESS;
 }
 
-static void dh_free_eng_session(uadk_dh_sess_t *dh_sess)
+static void dh_free_eng_session(struct uadk_dh_sess *dh_sess)
 {
 	if (!dh_sess)
 		return;
@@ -802,7 +801,8 @@ exe_soft:
 }
 
 /* Main Phase2: Compute shared key */
-static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh)
+static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
+				 DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
 	int bits = DH_bits(dh);
@@ -866,7 +866,7 @@ static DH_METHOD *uadk_e_get_dh_methods(void)
 	if (uadk_dh_method)
 		return uadk_dh_method;
 
-	uadk_dh_method = DH_meth_new("uadk hardware hpre dh method", 0);
+	uadk_dh_method = DH_meth_new("uadk hardware dh method", 0);
 	if (!uadk_dh_method) {
 		fprintf(stderr, "failed to allocate dh method\n");
 		return NULL;

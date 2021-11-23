@@ -51,10 +51,6 @@ struct ecc_sched {
 	struct wd_sched wd_sched;
 };
 
-struct ecc_res_config {
-	struct ecc_sched sched;
-};
-
 typedef struct uadk_ecc_sess {
 	handle_t sess;
 	struct wd_ecc_sess_setup setup;

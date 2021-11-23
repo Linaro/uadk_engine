@@ -38,6 +38,6 @@ extern int uadk_e_bind_dh(ENGINE *e);
 extern void uadk_e_destroy_dh(void);
 extern int uadk_e_bind_ecc(ENGINE *e);
 extern void uadk_e_destroy_ecc(void);
-extern int uadk_e_is_env_enabled(char *alg_name);
+extern int uadk_e_is_env_enabled(const char *alg_name);
 extern int uadk_e_set_env(const char *var_name, int numa_id);
 #endif
