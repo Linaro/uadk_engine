@@ -22,8 +22,6 @@
 #include <uadk/wd.h>
 #include <uadk/wd_ecc.h>
 
-#define UADK_PKEY_DEBUG(fmt, args...)	printf(fmt, ##args)
-
 #define UADK_ARRAY_SIZE(array)	(sizeof(array) / sizeof(array[0]))
 
 #define UADK_DO_SOFT			(-0xE0)

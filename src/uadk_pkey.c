@@ -340,7 +340,7 @@ int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 
 	point = EC_KEY_get0_public_key(eckey);
 	if (!point) {
-		printf("pubkey not set!\n");
+		fprintf(stderr, "pubkey not set!\n");
 		return -EINVAL;
 	}
 
@@ -348,7 +348,7 @@ int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 	len = EC_POINT_point2buf(group, point, UADK_OCTET_STRING,
 				 &point_bin, NULL);
 	if (!len) {
-		printf("EC_POINT_point2buf error.\n");
+		fprintf(stderr, "EC_POINT_point2buf error.\n");
 		return -EINVAL;
 	}
 
@@ -360,7 +360,7 @@ int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_pubkey(ecc_key, &pubkey);
 	if (ret) {
-		printf("failed to set ecc pubkey\n");
+		fprintf(stderr, "failed to set ecc pubkey\n");
 		ret = UADK_DO_SOFT;
 	}
 
@@ -381,13 +381,13 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 
 	d = EC_KEY_get0_private_key(eckey);
 	if (!d) {
-		printf("private key not set\n");
+		fprintf(stderr, "private key not set\n");
 		return -EINVAL;
 	}
 
 	group = EC_KEY_get0_group(eckey);
 	if (!group) {
-		printf("failed to get ecc group\n");
+		fprintf(stderr, "failed to get ecc group\n");
 		return -EINVAL;
 	}
 
@@ -399,7 +399,7 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
-		printf("failed to set ecc prikey, ret = %d\n", ret);
+		fprintf(stderr, "failed to set ecc prikey, ret = %d\n", ret);
 		ret = UADK_DO_SOFT;
 	}
 
@@ -413,7 +413,7 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 	int ret;
 
 	if (!out) {
-		printf("out is NULL\n");
+		fprintf(stderr, "out is NULL\n");
 		return -1;
 	}
 
@@ -424,7 +424,7 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 	do {
 		ret = BN_priv_rand_range(k, usr);
 		if (!ret) {
-			printf("failed to BN_priv_rand_range\n");
+			fprintf(stderr, "failed to BN_priv_rand_range\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -432,7 +432,7 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 		ret = BN_bn2binpad(k, (void *)out, (int)out_len);
 		if (ret < 0) {
 			ret = -EINVAL;
-			printf("failed to BN_bn2binpad\n");
+			fprintf(stderr, "failed to BN_bn2binpad\n");
 			goto err;
 		}
 	} while (--count >= 0 && BN_is_zero(k));
@@ -553,7 +553,7 @@ const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid)
 			return pmeth;
 	}
 
-	printf("not find openssl method %d\n", nid);
+	fprintf(stderr, "not find openssl method %d\n", nid);
 	return NULL;
 }
 
@@ -571,7 +571,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_SM2:
 		ret = uadk_sm2_create_pmeth(&pkey_meth);
 		if (!ret) {
-			printf("failed to register sm2 pmeth");
+			fprintf(stderr, "failed to register sm2 pmeth");
 			return 0;
 		}
 		*pmeth = pkey_meth.sm2;
@@ -579,7 +579,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_EC:
 		ret = uadk_ec_create_pmeth(&pkey_meth);
 		if (!ret) {
-			printf("failed to register ec pmeth");
+			fprintf(stderr, "failed to register ec pmeth");
 			return 0;
 		}
 		*pmeth = pkey_meth.ec;
@@ -587,7 +587,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_X448:
 		ret = uadk_x448_create_pmeth(&pkey_meth);
 		if (!ret) {
-			printf("failed to register x448 pmeth");
+			fprintf(stderr, "failed to register x448 pmeth");
 			return 0;
 		}
 		*pmeth = pkey_meth.x448;
@@ -595,13 +595,13 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_X25519:
 		ret = uadk_x25519_create_pmeth(&pkey_meth);
 		if (!ret) {
-			printf("failed to register x25519 pmeth");
+			fprintf(stderr, "failed to register x25519 pmeth");
 			return 0;
 		}
 		*pmeth = pkey_meth.x25519;
 		break;
 	default:
-		printf("not find nid %d\n", nid);
+		fprintf(stderr, "not find nid %d\n", nid);
 		return 0;
 	}
 
@@ -619,13 +619,13 @@ int uadk_bind_ecc(ENGINE *e)
 
 	ret = uadk_ecc_bind_pmeth(e);
 	if (!ret) {
-		printf("failed to bind ecc pmeth\n");
+		fprintf(stderr, "failed to bind ecc pmeth\n");
 		return ret;
 	}
 
 	ret = uadk_bind_ec(e);
 	if (!ret) {
-		printf("failed to bind ec\n");
+		fprintf(stderr, "failed to bind ec\n");
 		return ret;
 	}
 
