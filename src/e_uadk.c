@@ -48,7 +48,6 @@ static int uadk_ecc;
 static int uadk_cipher_nosva;
 static int uadk_digest_nosva;
 static int uadk_rsa_nosva;
-static int uadk_pkey_nosva;
 static int uadk_dh_nosva;
 #endif
 
@@ -290,17 +289,6 @@ static void bind_fn_kae_alg(ENGINE *e)
 		}
 		free(dev);
 	}
-
-	dev = wd_get_accel_dev("sm2");
-	if (dev) {
-		if (!(dev->flags & UACCE_DEV_SVA)) {
-			if (!ENGINE_set_pkey_meths(e, hpre_pkey_meths))
-				fprintf(stderr, "uadk bind pkey failed\n");
-			else
-				uadk_pkey_nosva = 1;
-		}
-		free(dev);
-	}
 }
 #endif
 
@@ -371,7 +359,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	bind_fn_kae_alg(e);
 
 	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
-	    uadk_dh_nosva || uadk_pkey_nosva) {
+	    uadk_dh_nosva) {
 		async_module_init_v1();
 		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
 		goto set_ctrl_cmd;
