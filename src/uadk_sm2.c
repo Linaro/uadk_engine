@@ -323,10 +323,10 @@ static int sm2_sign_init(EVP_PKEY_CTX *ctx)
 static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 			   unsigned char *sig, size_t *siglen)
 {
-	unsigned int sltmp;
 	int ret = -EINVAL;
 	ECDSA_SIG *e_sig;
 	BIGNUM *br, *bs;
+	int sltmp;
 
 	e_sig = ECDSA_SIG_new();
 	if (!e_sig) {
@@ -508,9 +508,6 @@ static int cipher_ber_to_bin(unsigned char *ber, size_t ber_len,
 		printf("failed to d2i_SM2_Ciphertext\n");
 		return -ENOMEM;
 	}
-
-	if (ctext_struct->C2->length > UINT_MAX)
-		return UADK_DO_SOFT;
 
 	len = BN_num_bytes(ctext_struct->C1x);
 	len1 = BN_num_bytes(ctext_struct->C1y);
@@ -1363,6 +1360,11 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	uint8_t z[EVP_MAX_MD_SIZE];
 	int mdlen = EVP_MD_size(md);
+
+	if (!smctx) {
+		printf("smctx not set in digest custom\n");
+		return 0;
+	}
 
 	if (!smctx->ctx.id_set) {
 		/*

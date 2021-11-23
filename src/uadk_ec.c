@@ -638,8 +638,8 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
 	if (ret != 1) {
-		ret = (ret == WD_VERIFY_ERR) ? 0 : UADK_DO_SOFT;
-		goto uninit_iot;
+		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
+		ret = UADK_DO_SOFT;
 	}
 uninit_iot:
 	wd_ecc_del_in(sess, req.src);

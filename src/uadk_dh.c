@@ -94,11 +94,16 @@ static int uadk_e_dh_soft_generate_key(DH *dh)
 	int ret;
 
 	if (!uadk_dh_gen_soft) {
-		printf("failed to get soft method\n");
+		fprintf(stderr, "failed to get soft method\n");
 		return UADK_E_FAIL;
 	}
 
 	dh_soft_generate_key = DH_meth_get_generate_key(uadk_dh_gen_soft);
+	if (!dh_soft_generate_key) {
+		fprintf(stderr, "failed to get soft function\n");
+		return UADK_E_FAIL;
+	}
+
 	ret = dh_soft_generate_key(dh);
 	if (ret < 0) {
 		fprintf(stderr, "failed to do dh soft generate key\n");
@@ -420,7 +425,7 @@ static struct uadk_dh_sess *dh_new_eng_session(DH *dh_alg)
 
 static int dh_init_eng_session(uadk_dh_sess_t *dh_sess, int bits, bool is_g2)
 {
-	int key_size =  bits >> CHAR_BIT_SIZE;
+	uint32_t key_size = (uint32_t)bits >> CHAR_BIT_SIZE;
 
 	if (dh_sess->sess && dh_sess->req.x_p) {
 		memset(dh_sess->req.x_p, 0, dh_sess->req.pbytes +
@@ -449,20 +454,13 @@ static void dh_free_eng_session(uadk_dh_sess_t *dh_sess)
 	if (dh_sess->sess)
 		wd_dh_free_sess(dh_sess->sess);
 
-	dh_sess->alg = NULL;
-	if (dh_sess->req.x_p) {
+	if (dh_sess->req.x_p)
 		OPENSSL_free(dh_sess->req.x_p);
-		dh_sess->req.pri = NULL;
-		dh_sess->req.x_p = NULL;
-	}
 
-	if (dh_sess->req.pv) {
+	if (dh_sess->req.pv)
 		OPENSSL_free(dh_sess->req.pv);
-		dh_sess->req.pv = NULL;
-	}
 
 	OPENSSL_free(dh_sess);
-	dh_sess = NULL;
 }
 
 static struct uadk_dh_sess *dh_get_eng_session(DH *dh, int bits,
