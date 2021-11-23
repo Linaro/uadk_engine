@@ -564,7 +564,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 
 	if (!pmeth) {
 		*nids = pkey_nids;
-		return UADK_ARRAY_SIZE(pkey_nids);
+		return ARRAY_SIZE(pkey_nids);
 	}
 
 	switch (nid) {

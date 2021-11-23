@@ -161,7 +161,7 @@ static void x448_uninit(EVP_PKEY_CTX *ctx)
 		return;
 
 	if (x448_ctx->sess)
-	wd_ecc_free_sess(x448_ctx->sess);
+		wd_ecc_free_sess(x448_ctx->sess);
 
 	free(x448_ctx);
 
@@ -477,10 +477,8 @@ do_soft:
 	return openssl_do_ecx_genkey(ctx, pkey);
 }
 
-static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx,
-				struct wd_ecc_req *req,
-				ECX_KEY *peer_ecx_key,
-				ECX_KEY *ecx_key)
+static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx, struct wd_ecc_req *req,
+				ECX_KEY *peer_ecx_key, ECX_KEY *ecx_key)
 {
 	int key_size = ecx_ctx->key_size;
 	handle_t sess = ecx_ctx->sess;

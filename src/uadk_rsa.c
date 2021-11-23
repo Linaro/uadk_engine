@@ -173,9 +173,10 @@ static int prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
 	return BN_VALID;
 }
 
-static int check_prime_sufficient(int *num, int *bitsr, int *bitse, int *n,
-				  BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
-				  BIGNUM *r2, BN_CTX *ctx, BN_GENCB *cb)
+static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
+				  int *n, BIGNUM *rsa_p, BIGNUM *rsa_q,
+				  BIGNUM *r1, BIGNUM *r2, BN_CTX *ctx,
+				  BN_GENCB *cb)
 {
 	static int retries;
 	BN_ULONG bitst;
@@ -373,7 +374,7 @@ static int check_rsa_is_crt(RSA *rsa)
 }
 
 static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
-				 BIGNUM *q, BN_GENCB *cb)
+			  BIGNUM *q, BN_GENCB *cb)
 {
 	BIGNUM *r1, *r2, *rsa_p, *rsa_q;
 	int bitsr[RSA_MAX_PRIME_NUM] = {0};
@@ -490,12 +491,6 @@ static int check_rsa_pridec_padding(unsigned char *to, int num,
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
-	case RSA_NO_PADDING:
-		memcpy(to, buf, len);
-		ret = len;
-		if (!ret)
-			fprintf(stderr, "RSA_NO_PADDING err\n");
-		break;
 	default:
 		ret = UADK_E_FAIL;
 	}
@@ -523,11 +518,6 @@ static int add_rsa_prienc_padding(int flen, const unsigned char *from,
 		if (!ret)
 			fprintf(stderr, "RSA_X931_PADDING err\n");
 		break;
-	case RSA_NO_PADDING:
-		ret = RSA_padding_add_none(to_buf, tlen, from, flen);
-		if (!ret)
-			fprintf(stderr, "RSA_NO_PADDING err\n");
-		break;
 	default:
 		ret = UADK_E_FAIL;
 	}
@@ -553,12 +543,6 @@ static int check_rsa_pubdec_padding(unsigned char *to, int num,
 		ret = RSA_padding_check_X931(to, num, buf, len, num);
 		if (!ret)
 			fprintf(stderr, "RSA_X931_PADDING err\n");
-		break;
-	case RSA_NO_PADDING:
-		memcpy(to, buf, len);
-		ret = len;
-		if (!ret)
-			fprintf(stderr, "RSA_NO_PADDING err\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -586,8 +570,8 @@ static BN_ULONG *bn_get_words(const BIGNUM *a)
 	return a->d;
 }
 
-static int rsa_get_sign_res(int padding, BIGNUM *to_bn, const BIGNUM *n, BIGNUM
-				 *ret_bn, BIGNUM **res)
+static int rsa_get_sign_res(int padding, BIGNUM *to_bn, const BIGNUM *n,
+			    BIGNUM *ret_bn, BIGNUM **res)
 {
 	if (padding == RSA_X931_PADDING) {
 		if (!BN_sub(to_bn, n, ret_bn))
@@ -1025,10 +1009,10 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 
 	if (!op.job) {
 		ret = wd_do_rsa_sync(rsa_sess->sess, &(rsa_sess->req));
-		if (ret)
-			goto err;
-		else
+		if (!ret)
 			return UADK_E_SUCCESS;
+		else
+			goto err;
 	}
 	cb_param.op = &op;
 	cb_param.priv = &(rsa_sess->req);
@@ -1253,7 +1237,7 @@ static int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
 	if (pri) {
 		*pri = OPENSSL_malloc(sizeof(struct rsa_prikey_param));
 		if (!(*pri)) {
-			if (*pub)
+			if (pub)
 				OPENSSL_free(*pub);
 			return -ENOMEM;
 		}
@@ -1354,8 +1338,8 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	struct rsa_keygen_param *keygen_param = NULL;
 	struct rsa_keygen_param_bn *bn_param = NULL;
-	struct uadk_rsa_sess *rsa_sess = NULL;
-	struct rsa_keypair *key_pair;
+	struct rsa_keypair *key_pair = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	int is_crt = 1;
 	int key_size;
 	int ret;
@@ -1483,7 +1467,6 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	ret_bn = NULL;
 	ret_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
 			   rsa_sess->req.dst_bytes, ret_bn);
 	if (!ret_bn) {
@@ -1568,7 +1551,6 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	ret_bn = NULL;
 	ret_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
 			   rsa_sess->req.dst_bytes, ret_bn);
 	if (!ret_bn) {

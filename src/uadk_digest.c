@@ -765,8 +765,8 @@ void uadk_e_destroy_digest(void)
 			for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
 				wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
 			free(engine.ctx_cfg.ctxs);
-			engine.pid = 0;
 		}
+		engine.pid = 0;
 	}
 
 	pthread_spin_destroy(&engine.lock);
