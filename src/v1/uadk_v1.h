@@ -35,4 +35,5 @@ extern void hpre_dh_destroy(void);
 
 extern int hpre_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 			   const int **pnids, int nid);
+extern int wd_get_nosva_dev_num(const char *algorithm);
 #endif

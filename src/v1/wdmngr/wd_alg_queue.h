@@ -25,4 +25,6 @@
 struct wd_queue *wd_new_queue(int algtype);
 
 void wd_free_queue(struct wd_queue *queue);
+
+int wd_get_nosva_dev_num(const char *algorithm);
 #endif
