@@ -32,7 +32,6 @@
 #define UADK_CMD_ENABLE_RSA_ENV		(ENGINE_CMD_BASE + 2)
 #define UADK_CMD_ENABLE_DH_ENV		(ENGINE_CMD_BASE + 3)
 #define UADK_CMD_ENABLE_ECC_ENV		(ENGINE_CMD_BASE + 4)
-#define ARRAY_SIZE(x)			(sizeof(x) / sizeof((x)[0]))
 
 /* Constants used when creating the ENGINE */
 const char *engine_uadk_id = "uadk_engine";
@@ -110,7 +109,7 @@ static struct uadk_alg_env_enabled uadk_env_enabled[] = {
 	{ "ecc", 0 }
 };
 
-int uadk_e_is_env_enabled(char *alg_name)
+int uadk_e_is_env_enabled(const char *alg_name)
 {
 	int len = ARRAY_SIZE(uadk_env_enabled);
 	int i = 0;
@@ -124,7 +123,7 @@ int uadk_e_is_env_enabled(char *alg_name)
 	return 0;
 }
 
-static void uadk_e_set_env_enabled(char *alg_name, __u8 value)
+static void uadk_e_set_env_enabled(const char *alg_name, __u8 value)
 {
 	int len = ARRAY_SIZE(uadk_env_enabled);
 	int i = 0;
@@ -147,8 +146,10 @@ int uadk_e_set_env(const char *var_name, int numa_id)
 
 	var_s = secure_getenv(var_name);
 	if (!var_s || !strlen(var_s)) {
+		/* uadk will request ctxs from device on specified numa node */
 		ret = snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
-			       "sync:2@", numa_id, ",async:2@", numa_id);
+			       "sync:2@", numa_id,
+			       ",async:2@", numa_id);
 		if (ret < 0)
 			return ret;
 
@@ -162,7 +163,6 @@ int uadk_e_set_env(const char *var_name, int numa_id)
 static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
 			    void *p, void (*f) (void))
 {
-	int ret = 1;
 	(void)p;
 	(void)f;
 
@@ -188,11 +188,10 @@ static int uadk_engine_ctrl(ENGINE *e, int cmd, long i,
 		uadk_e_set_env_enabled("ecc", i);
 		break;
 	default:
-		ret = 0;
-		break;
+		return 0;
 	}
 
-	return ret;
+	return 1;
 }
 
 static int uadk_destroy(ENGINE *e)
@@ -362,9 +361,14 @@ static int bind_fn(ENGINE *e, const char *id)
 set_ctrl_cmd:
 #endif
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
-	ret &= ENGINE_set_cmd_defns(e, g_uadk_cmd_defns);
 	if (ret != 1) {
-		fprintf(stderr, "Engine set ctrl function or defines failed\n");
+		fprintf(stderr, "failed to set ctrl function\n");
+		return 0;
+	}
+
+	ret = ENGINE_set_cmd_defns(e, g_uadk_cmd_defns);
+	if (ret != 1) {
+		fprintf(stderr, "failed to set defns\n");
 		return 0;
 	}
 
