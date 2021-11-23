@@ -613,7 +613,7 @@ static int uadk_ecc_bind_pmeth(ENGINE *e)
 	return ENGINE_set_pkey_meths(e, get_pkey_meths);
 }
 
-int uadk_bind_ecc(ENGINE *e)
+int uadk_e_bind_ecc(ENGINE *e)
 {
 	int ret;
 
@@ -634,7 +634,7 @@ int uadk_bind_ecc(ENGINE *e)
 	return ret;
 }
 
-void uadk_destroy_ecc(void)
+void uadk_e_destroy_ecc(void)
 {
 	pthread_spin_destroy(&ecc_res.lock);
 	uadk_ec_delete_meth();
