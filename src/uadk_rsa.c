@@ -1066,70 +1066,6 @@ static int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	return ret;
 }
 
-static int uadk_e_soft_rsa_pub_enc(int flen, const unsigned char *from,
-				   unsigned char *to, RSA *rsa,
-				   int padding)
-{
-	const RSA_METHOD *soft_rsa;
-
-	soft_rsa = RSA_PKCS1_OpenSSL();
-	if (!soft_rsa) {
-		fprintf(stderr, "failed to get soft method\n");
-		return UADK_E_FAIL;
-	}
-
-	return RSA_meth_get_pub_enc(soft_rsa)(flen, from, to,
-					      rsa, padding);
-}
-
-static int uadk_e_soft_rsa_pri_dec(int flen, const unsigned char *from,
-				   unsigned char *to, RSA *rsa,
-				   int padding)
-{
-	const RSA_METHOD *soft_rsa;
-
-	soft_rsa = RSA_PKCS1_OpenSSL();
-	if (!soft_rsa) {
-		fprintf(stderr, "failed to get soft method\n");
-		return UADK_E_FAIL;
-	}
-
-	return RSA_meth_get_priv_dec(soft_rsa)(flen, from, to,
-					       rsa, padding);
-}
-
-static int uadk_e_soft_rsa_pri_sign(int flen, const unsigned char *from,
-				    unsigned char *to, RSA *rsa,
-				    int padding)
-{
-	const RSA_METHOD *soft_rsa;
-
-	soft_rsa = RSA_PKCS1_OpenSSL();
-	if (!soft_rsa) {
-		fprintf(stderr, "failed to get soft method\n");
-		return UADK_E_FAIL;
-	}
-
-	return RSA_meth_get_priv_enc(soft_rsa)(flen, from, to,
-					       rsa, padding);
-}
-
-static int uadk_e_soft_rsa_pub_verify(int flen, const unsigned char *from,
-				      unsigned char *to, RSA *rsa,
-				      int padding)
-{
-	const RSA_METHOD *soft_rsa;
-
-	soft_rsa = RSA_PKCS1_OpenSSL();
-	if (!soft_rsa) {
-		fprintf(stderr, "failed to get soft method\n");
-		return UADK_E_FAIL;
-	}
-
-	return RSA_meth_get_pub_dec(soft_rsa)(flen, from, to,
-					      rsa, padding);
-}
-
 static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 				struct rsa_keypair *key_pair,
 				struct rsa_keygen_param *keygen_param,
@@ -1490,7 +1426,8 @@ free_pkey:
 		return ret;
 exe_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return uadk_e_soft_rsa_pub_enc(flen, from, to, rsa, padding);
+	return RSA_meth_get_pub_enc(RSA_PKCS1_OpenSSL())
+				   (flen, from, to, rsa, padding);
 }
 
 static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
@@ -1580,7 +1517,8 @@ free_pkey:
 		return ret;
 exe_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return uadk_e_soft_rsa_pri_dec(flen, from, to, rsa, padding);
+	return RSA_meth_get_priv_dec(RSA_PKCS1_OpenSSL())
+				    (flen, from, to, rsa, padding);
 }
 
 static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
@@ -1684,7 +1622,8 @@ free_pkey:
 		return ret;
 exe_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return uadk_e_soft_rsa_pri_sign(flen, from, to, rsa, padding);
+	return RSA_meth_get_priv_enc(RSA_PKCS1_OpenSSL())
+				    (flen, from, to, rsa, padding);
 }
 
 static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
@@ -1790,7 +1729,8 @@ free_pkey:
 		return ret;
 exe_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return uadk_e_soft_rsa_pub_verify(flen, from, to, rsa, padding);
+	return RSA_meth_get_pub_dec(RSA_PKCS1_OpenSSL())
+				   (flen, from, to, rsa, padding);
 }
 
 static RSA_METHOD *uadk_e_get_rsa_sw_methods(void)
