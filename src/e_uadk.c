@@ -15,6 +15,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <dlfcn.h>
@@ -145,7 +146,7 @@ int uadk_e_set_env(const char *var_name, int numa_id)
 	const char *var_s;
 	int ret;
 
-	var_s = getenv(var_name);
+	var_s = secure_getenv(var_name);
 	if (!var_s || !strlen(var_s)) {
 		ret = snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
 			       "sync:2@", numa_id, ",async:2@", numa_id);
