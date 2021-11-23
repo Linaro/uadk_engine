@@ -598,6 +598,19 @@ static int ecx_get_key(EVP_PKEY_CTX *ctx, ECX_KEY **ecx_key,
 	return UADK_E_SUCCESS;
 }
 
+static void x25519_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
+			       size_t len)
+{
+	unsigned char x25519_pad_key[X25519_KEYLEN] = {0};
+
+	if (len != X25519_KEYLEN) {
+		memcpy(x25519_pad_key, src_key, len);
+		memcpy(dst_key, x25519_pad_key, X25519_KEYLEN);
+	} else {
+		memcpy(dst_key, src_key, X25519_KEYLEN);
+	}
+}
+
 /**
  * x25519_derive: generate shared key.
  * @ctx: the X25519 key ctx, contain own private key,
@@ -608,8 +621,7 @@ static int ecx_get_key(EVP_PKEY_CTX *ctx, ECX_KEY **ecx_key,
 static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 			 size_t *keylen)
 {
-	unsigned char pad_key[X25519_KEYLEN] = {0};
-	struct wd_ecc_point *shared_key = NULL;
+	struct wd_ecc_point *s_key = NULL;
 	struct ecx_ctx *derive_ctx = NULL;
 	ECX_KEY *peer_ecx_key = NULL;
 	struct wd_ecc_req req = {0};
@@ -648,18 +660,15 @@ static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	if (ret != 1)
 		goto uninit_iot;
 
-	wd_ecxdh_get_out_params(req.dst, &shared_key);
-	if (!shared_key)
+	wd_ecxdh_get_out_params(req.dst, &s_key);
+	if (!s_key)
 		goto uninit_iot;
 
-	ret = reverse_bytes((unsigned char *)shared_key->x.data,
-			     shared_key->x.dsize);
+	ret = reverse_bytes((unsigned char *)s_key->x.data, s_key->x.dsize);
 	if (!ret)
 		goto uninit_iot;
 
-	memcpy(pad_key, shared_key->x.data, shared_key->x.dsize);
-	*keylen = X25519_KEYLEN;
-	memcpy(key, pad_key, *keylen);
+	x25519_pad_out_key(key, (unsigned char *)s_key->x.data, s_key->x.dsize);
 
 	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 	x25519_uninit(ctx);
@@ -675,6 +684,19 @@ do_soft:
 	return openssl_do_derive(ctx, key, keylen);
 }
 
+static void x448_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
+			     size_t len)
+{
+	unsigned char x448_pad_key[X448_KEYLEN] = {0};
+
+	if (len != X448_KEYLEN) {
+		memcpy(x448_pad_key, src_key, len);
+		memcpy(dst_key, x448_pad_key, X448_KEYLEN);
+	} else {
+		memcpy(dst_key, src_key, X448_KEYLEN);
+	}
+}
+
 /**
  * x448_derive: generate shared key.
  * @ctx: the X448 key ctx, contain own private key,
@@ -683,10 +705,9 @@ do_soft:
  * @keylen: the length of output shared key.
  */
 static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
-       size_t *keylen)
+		       size_t *keylen)
 {
-	unsigned char pad_key[X448_KEYLEN] = {0};
-	struct wd_ecc_point *shared_key = NULL;
+	struct wd_ecc_point *s_key = NULL;
 	struct ecx_ctx *derive_ctx = NULL;
 	ECX_KEY *peer_ecx_key = NULL;
 	struct wd_ecc_req req = {0};
@@ -725,18 +746,15 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	if (ret != 1)
 		goto uninit_iot;
 
-	wd_ecxdh_get_out_params(req.dst, &shared_key);
-	if (!shared_key)
+	wd_ecxdh_get_out_params(req.dst, &s_key);
+	if (!s_key)
 		goto uninit_iot;
 
-	ret = reverse_bytes((unsigned char *)shared_key->x.data,
-			     shared_key->x.dsize);
+	ret = reverse_bytes((unsigned char *)s_key->x.data, s_key->x.dsize);
 	if (!ret)
 		goto uninit_iot;
 
-	memcpy(pad_key, shared_key->x.data, shared_key->x.dsize);
-	*keylen = X448_KEYLEN;
-	memcpy(key, pad_key, *keylen);
+	x448_pad_out_key(key, (unsigned char *)s_key->x.data, s_key->x.dsize);
 
 	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 	x448_uninit(ctx);
