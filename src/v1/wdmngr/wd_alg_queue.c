@@ -74,3 +74,7 @@ void wd_free_queue(struct wd_queue *queue)
 	}
 }
 
+int wd_get_nosva_dev_num(const char *algorithm)
+{
+	return wd_get_available_dev_num(algorithm);
+}

@@ -239,54 +239,42 @@ static void engine_init_child_at_fork_handler(void)
 #ifdef KAE
 static void bind_fn_kae_alg(ENGINE *e)
 {
-	struct uacce_dev *dev;
+	int dev_num;
 
-	dev = wd_get_accel_dev("cipher");
-	if (dev) {
-		if (!(dev->flags & UACCE_DEV_SVA)) {
-			cipher_module_init();
-			if (!ENGINE_set_ciphers(e, sec_engine_ciphers))
-				fprintf(stderr, "uadk bind cipher failed\n");
-			else
-				uadk_cipher_nosva = 1;
-		}
-		free(dev);
+	dev_num = wd_get_nosva_dev_num("cipher");
+	if (dev_num > 0) {
+		cipher_module_init();
+		if (!ENGINE_set_ciphers(e, sec_engine_ciphers))
+			fprintf(stderr, "uadk bind cipher failed\n");
+		else
+			uadk_cipher_nosva = 1;
 	}
 
-	dev = wd_get_accel_dev("digest");
-	if (dev) {
-		if (!(dev->flags & UACCE_DEV_SVA)) {
-			digest_module_init();
-			if (!ENGINE_set_digests(e, sec_engine_digests))
-				fprintf(stderr, "uadk bind digest failed\n");
-			else
-				uadk_digest_nosva = 1;
-		}
-		free(dev);
+	dev_num = wd_get_nosva_dev_num("digest");
+	if (dev_num > 0) {
+		digest_module_init();
+		if (!ENGINE_set_digests(e, sec_engine_digests))
+			fprintf(stderr, "uadk bind digest failed\n");
+		else
+			uadk_digest_nosva = 1;
 	}
 
-	dev = wd_get_accel_dev("rsa");
-	if (dev) {
-		if (!(dev->flags & UACCE_DEV_SVA)) {
-			hpre_module_init();
-			if (!ENGINE_set_RSA(e, hpre_get_rsa_methods()))
-				fprintf(stderr, "uadk bind rsa failed\n");
-			else
-				uadk_rsa_nosva = 1;
-		}
-		free(dev);
+	dev_num = wd_get_nosva_dev_num("rsa");
+	if (dev_num > 0) {
+		hpre_module_init();
+		if (!ENGINE_set_RSA(e, hpre_get_rsa_methods()))
+			fprintf(stderr, "uadk bind rsa failed\n");
+		else
+			uadk_rsa_nosva = 1;
 	}
 
-	dev = wd_get_accel_dev("dh");
-	if (dev) {
-		if (!(dev->flags & UACCE_DEV_SVA)) {
-			hpre_module_dh_init();
-			if (!ENGINE_set_DH(e, hpre_get_dh_methods()))
-				fprintf(stderr, "uadk bind dh failed\n");
-			else
-				uadk_dh_nosva = 1;
-		}
-		free(dev);
+	dev_num = wd_get_nosva_dev_num("dh");
+	if (dev_num > 0) {
+		hpre_module_dh_init();
+		if (!ENGINE_set_DH(e, hpre_get_dh_methods()))
+			fprintf(stderr, "uadk bind dh failed\n");
+		else
+			uadk_dh_nosva = 1;
 	}
 }
 #endif
