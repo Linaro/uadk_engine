@@ -859,11 +859,10 @@ static int ecdh_create_key(EC_KEY *eckey)
 	ret = 1;
 
 free_order:
-	if (order)
-		BN_clear(order);
+	BN_clear(order);
 free_ctx:
-	if (ctx)
-		BN_CTX_free(ctx);
+	BN_CTX_free(ctx);
+
 	return ret;
 }
 
@@ -1054,11 +1053,10 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 	}
 
 free_buf:
-	if (buff)
-		OPENSSL_free(buff);
+	OPENSSL_free(buff);
 free_point:
-	if (point)
-		EC_POINT_free(point);
+	EC_POINT_free(point);
+
 	return ret;
 }
 
