@@ -20,7 +20,6 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <openssl/engine.h>
-#include <uadk/wd.h>
 #include "uadk.h"
 #include "uadk_async.h"
 #ifdef KAE
