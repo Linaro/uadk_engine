@@ -31,6 +31,8 @@
 #define CTX_SYNC	0
 #define CTX_ASYNC	1
 #define CTX_NUM		2
+#define DIGEST_DOING	1
+#define DIGEST_END	0
 #define ENV_ENABLED	1
 
 /* The max BD data length is 16M-512B */
@@ -41,6 +43,7 @@
 #define SM3_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (8 * 1024)
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
+#define MAX_DIGEST_LENGTH	64
 
 struct digest_threshold_table {
 	int nid;
@@ -69,12 +72,16 @@ struct evp_md_ctx_st {
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 };
 
+#define DIGEST_BLOCK_SIZE 4096
+
 struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
 	unsigned char *data;
-	long tail;
+	unsigned char out[MAX_DIGEST_LENGTH];
+	size_t tail;
+	size_t last_update_bufflen;
 	bool copy;
 	uint32_t e_nid;
 	EVP_MD_CTX *soft_ctx;
@@ -496,12 +503,58 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	if (unlikely(!priv->sess))
 		return 0;
 
+	priv->data = malloc(DIGEST_BLOCK_SIZE);
+	if (priv->data == NULL) {
+		wd_digest_free_sess(priv->sess);
+		return 0;
+	}
+	memset(priv->data, 0, DIGEST_BLOCK_SIZE);
+
 	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
 
 	return 1;
 
 soft_init:
 	return digest_soft_init(priv->soft_ctx, priv->e_nid);
+}
+
+static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_len)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+	const unsigned char *tmpdata = (const unsigned char *)data;
+	size_t left_len = data_len;
+	int copy_to_bufflen;
+	int ret;
+
+	priv->req.has_next = DIGEST_DOING;
+
+	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
+		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
+		memcpy(priv->data + priv->last_update_bufflen, tmpdata, copy_to_bufflen);
+
+		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
+		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
+		priv->req.in = priv->data;
+		priv->req.out = priv->out;
+		left_len -= copy_to_bufflen;
+		tmpdata += copy_to_bufflen;
+
+		ret = wd_do_digest_sync(priv->sess, &priv->req);
+		if (ret)
+			return 0;
+
+		priv->last_update_bufflen = 0;
+		memset(priv->data, 0, DIGEST_BLOCK_SIZE);
+		if (left_len <= DIGEST_BLOCK_SIZE) {
+			priv->last_update_bufflen = left_len;
+			memcpy(priv->data, tmpdata, priv->last_update_bufflen);
+			break;
+		}
+
+	}
+
+		return 1;
 }
 
 static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
@@ -512,20 +565,13 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
 
-	if ((data_len <= BUF_LEN - priv->tail) && (data_len > 0)) {
-		if (!priv->data) {
-			priv->data = OPENSSL_malloc(BUF_LEN);
-			if (priv->data == NULL)
-				return 0;
-		}
-
-		memcpy(priv->data + priv->tail, data, data_len);
-		priv->tail += data_len;
-
+	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
+		memcpy(priv->data + priv->last_update_bufflen, data, data_len);
+		priv->last_update_bufflen += data_len;
 		return 1;
 	}
 
-	return 0;
+	return digest_update_inner(ctx, data, data_len);
 
 soft_update:
 	return digest_soft_update(priv->soft_ctx, priv->e_nid, data, data_len);
@@ -606,10 +652,10 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	int ret = 1;
 	struct async_op op;
-
+	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
-	priv->req.out = digest;
-	priv->req.in_bytes = priv->tail;
+	priv->req.out = priv->out;
+	priv->req.in_bytes = priv->last_update_bufflen;
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	ret = async_setup_async_event_notification(&op);
@@ -634,6 +680,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 		if (!ret)
 			goto clear;
 	}
+	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
 	return 1;
 
