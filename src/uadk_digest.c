@@ -607,10 +607,6 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	int ret = 1;
 	struct async_op op;
 
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (unlikely(!priv->sess))
-		return 0;
-
 	priv->req.in = priv->data;
 	priv->req.out = digest;
 	priv->req.in_bytes = priv->tail;
@@ -639,11 +635,6 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 			goto clear;
 	}
 
-	if (priv->sess) {
-		wd_digest_free_sess(priv->sess);
-		priv->sess = 0;
-	}
-
 	return 1;
 
 sync_err:
@@ -664,6 +655,11 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 
 	if (!priv || priv->copy)
 		return 1;
+
+	if (priv->sess) {
+		wd_digest_free_sess(priv->sess);
+		priv->sess = 0;
+	}
 
 	if (priv && priv->data)
 		OPENSSL_free(priv->data);
