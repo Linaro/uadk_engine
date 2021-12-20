@@ -174,7 +174,7 @@ static int prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
 }
 
 static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
-				  int *n, BIGNUM *rsa_p, BIGNUM *rsa_q,
+				  const int *n, BIGNUM *rsa_p, BIGNUM *rsa_q,
 				  BIGNUM *r1, BIGNUM *r2, BN_CTX *ctx,
 				  BN_GENCB *cb)
 {
@@ -268,7 +268,7 @@ static int check_prime_equal(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
 	return UADK_E_SUCCESS;
 }
 
-static int check_prime_useful(int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r2,
+static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r2,
 			      BIGNUM *e_pub, BN_CTX *ctx, BN_GENCB *cb)
 {
 	unsigned long err;
