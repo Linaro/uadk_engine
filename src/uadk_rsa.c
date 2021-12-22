@@ -97,6 +97,14 @@ struct rsa_prikey_param {
 	int is_crt;
 };
 
+struct rsa_prime_param {
+	BIGNUM *r1;
+	BIGNUM *r2;
+	BIGNUM *rsa_p;
+	BIGNUM *rsa_q;
+	BIGNUM *prime;
+};
+
 struct uadk_rsa_sess {
 	handle_t sess;
 	struct wd_rsa_sess_setup setup;
@@ -156,15 +164,14 @@ static int rsa_check_bit_useful(const int bits, int flen)
 	}
 }
 
-static int prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
-			 BN_CTX *ctx, BN_GENCB *cb)
+static int rsa_prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
+			     BN_CTX *ctx, BN_GENCB *cb)
 {
-	/* calculate n = p * q */
 	if (num == 1) {
 		if (!BN_mul(r1, rsa_p, rsa_q, ctx))
 			return BN_ERR;
 	} else {
-		/* if num == 0, use number 3 to indicate do nothing */
+		/* If num == 0, use number 3 to indicate do nothing */
 		if (!BN_GENCB_call(cb, 3, num))
 			return BN_ERR;
 		return BN_CONTINUE;
@@ -173,20 +180,21 @@ static int prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
 	return BN_VALID;
 }
 
-static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
-				  const int *n, BIGNUM *rsa_p, BIGNUM *rsa_q,
-				  BIGNUM *r1, BIGNUM *r2, BN_CTX *ctx,
-				  BN_GENCB *cb)
+static int check_rsa_prime_sufficient(int *num, const int *bitsr,
+				      int *bitse, const int *n,
+				      struct rsa_prime_param *param,
+				      BN_CTX *ctx, BN_GENCB *cb)
 {
 	static int retries;
 	BN_ULONG bitst;
 	int ret;
 
-	ret = prime_mul_res(*num, rsa_p, rsa_q, r1, ctx, cb);
+	ret = rsa_prime_mul_res(*num, param->rsa_p, param->rsa_q,
+				param->r1, ctx, cb);
 	if (ret)
 		return ret;
 	/*
-	 * if |r1|, product of factors so far, is not as long as expected
+	 * If |r1|, product of factors so far, is not as long as expected
 	 * (by checking the first 4 bits are less than 0x9 or greater than
 	 * 0xF). If so, re-generate the last prime.
 	 *
@@ -199,10 +207,10 @@ static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
 	 * key by using the modulus in a certificate. This is also covered
 	 * by checking the length should not be less than 0x9.
 	 */
-	if (!BN_rshift(r2, r1, *bitse - 4))
+	if (!BN_rshift(param->r2, param->r1, *bitse - 4))
 		return BN_ERR;
 
-	bitst = BN_get_word(r2);
+	bitst = BN_get_word(param->r2);
 	if (bitst < 0x9 || bitst > 0xF) {
 	/*
 	 * For keys with more than 4 primes, we attempt longer factor to
@@ -216,7 +224,9 @@ static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
 			*bitse -= bitsr[*num];
 		else
 			return -1;
-		if (!BN_GENCB_call(cb, 2, *n++))
+
+		ret = BN_GENCB_call(cb, 2, *n++);
+		if (!ret)
 			return -1;
 		if (retries == 4) {
 			*num = -1;
@@ -227,14 +237,17 @@ static int check_prime_sufficient(int *num, const int *bitsr, int *bitse,
 		retries++;
 		return BN_REDO;
 	}
-	if (!BN_GENCB_call(cb, 3, *num))
+
+	ret = BN_GENCB_call(cb, 3, *num);
+	if (!ret)
 		return BN_ERR;
 	retries = 0;
 
 	return BN_VALID;
 }
 
-static void set_primes(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM **prime)
+static void rsa_set_primes(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
+			   BIGNUM **prime)
 {
 	if (num == 0)
 		*prime = rsa_p;
@@ -244,8 +257,8 @@ static void set_primes(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM **prime)
 	BN_set_flags(*prime, BN_FLG_CONSTTIME);
 }
 
-static int check_prime_equal(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
-			     BIGNUM *prime)
+static int check_rsa_prime_equal(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
+				 BIGNUM *prime)
 {
 	BIGNUM *prev_prime;
 	int j;
@@ -268,8 +281,8 @@ static int check_prime_equal(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
 	return UADK_E_SUCCESS;
 }
 
-static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r2,
-			      BIGNUM *e_pub, BN_CTX *ctx, BN_GENCB *cb)
+static int check_rsa_prime_useful(const int *n, struct rsa_prime_param *param,
+				  BIGNUM *e_pub, BN_CTX *ctx, BN_GENCB *cb)
 {
 	unsigned long err;
 	/*
@@ -278,10 +291,10 @@ static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r
 	 * BN_value_one() returns a BIGNUM constant of value 1.
 	 * r2 = prime - 1.
 	 */
-	if (!BN_sub(r2, prime, BN_value_one()))
+	if (!BN_sub(param->r2, param->prime, BN_value_one()))
 		return -1;
 	ERR_set_mark();
-	BN_set_flags(r2, BN_FLG_CONSTTIME);
+	BN_set_flags(param->r2, BN_FLG_CONSTTIME);
 	/*
 	 * BN_mod_inverse(r,a,n,ctx) used to compute inverse modulo n.
 	 * Precisely, it computes the inverse of "a" modulo "n", and places
@@ -290,7 +303,7 @@ static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r
 	 * The expected result: (r2 * r1) % e_pub ==1,
 	 * the inverse of r2 exist, that is r1.
 	 */
-	if (BN_mod_inverse(r1, r2, e_pub, ctx))
+	if (BN_mod_inverse(param->r1, param->r2, e_pub, ctx))
 		return UADK_E_SUCCESS;
 
 	err = ERR_peek_last_error();
@@ -307,10 +320,9 @@ static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r
 	return GET_ERR_FINISH;
 }
 
-static int get_prime_once(int num, const int *bitsr, const int *n,
-			  BIGNUM *prime, BIGNUM *rsa_p, BIGNUM *rsa_q,
-			  BIGNUM *r1, BIGNUM *r2, BIGNUM *e_pub,
-			  BN_CTX *ctx, BN_GENCB *cb)
+static int get_rsa_prime_once(int num, const int *bitsr, const int *n,
+			      BIGNUM *e_pub, struct rsa_prime_param *param,
+			      BN_CTX *ctx, BN_GENCB *cb)
 {
 	int ret = -1;
 
@@ -318,12 +330,13 @@ static int get_prime_once(int num, const int *bitsr, const int *n,
 		return ret;
 	while (1) {
 		/* Generate prime with bitsr[num] len. */
-		if (!BN_generate_prime_ex(prime, bitsr[num],
+		if (!BN_generate_prime_ex(param->prime, bitsr[num],
 					  0, NULL, NULL, cb))
 			return BN_ERR;
-		if (!check_prime_equal(num, rsa_p, rsa_q, prime))
+		if (!check_rsa_prime_equal(num, param->rsa_p, param->rsa_q,
+					   param->prime))
 			continue;
-		ret = check_prime_useful(n, prime, r1, r2, e_pub, ctx, cb);
+		ret = check_rsa_prime_useful(n, param, e_pub, ctx, cb);
 		if (ret == BN_ERR)
 			return BN_ERR;
 		else if (ret == UADK_E_SUCCESS)
@@ -333,8 +346,7 @@ static int get_prime_once(int num, const int *bitsr, const int *n,
 	return ret;
 }
 
-static void switch_p_q(BIGNUM *rsa_p, BIGNUM *rsa_q,
-		       BIGNUM *p, BIGNUM *q)
+static void rsa_switch_p_q(BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *p, BIGNUM *q)
 {
 	BIGNUM *tmp;
 
@@ -373,13 +385,37 @@ static int check_rsa_is_crt(RSA *rsa)
 	return UN_SET;
 }
 
+static int get_rsa_prime_param(struct rsa_prime_param *param, BN_CTX *ctx)
+{
+	param->r1 = BN_CTX_get(ctx);
+	if (!param->r1)
+		goto end;
+
+	param->r2 = BN_CTX_get(ctx);
+	if (!param->r2)
+		goto end;
+
+	param->rsa_p = BN_CTX_get(ctx);
+	if (!param->rsa_p)
+		goto end;
+
+	param->rsa_q = BN_CTX_get(ctx);
+	if (!param->rsa_q)
+		goto end;
+
+	return UADK_E_SUCCESS;
+
+end:
+	fprintf(stderr, "failed to malloc params\n");
+	return UADK_E_FAIL;
+}
+
 static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 			  BIGNUM *q, BN_GENCB *cb)
 {
-	BIGNUM *r1, *r2, *rsa_p, *rsa_q;
+	struct rsa_prime_param *param = NULL;
 	int bitsr[RSA_MAX_PRIME_NUM] = {0};
 	int flag, quo, rmd, i;
-	BIGNUM *prime = NULL;
 	BN_CTX *ctx;
 	int bitse = 0;
 	int ret = 0;
@@ -391,12 +427,15 @@ static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 		return ret;
 
 	BN_CTX_start(ctx);
-	r1 = BN_CTX_get(ctx);
-	r2 = BN_CTX_get(ctx);
-	rsa_p = BN_CTX_get(ctx);
-	rsa_q = BN_CTX_get(ctx);
-	if (!r1 || !r2 || !rsa_p || !rsa_q)
-		goto err;
+	param = OPENSSL_zalloc(sizeof(struct rsa_prime_param));
+	if (!param) {
+		fprintf(stderr, "failed to malloc rsa prime param\n");
+		goto free_ctx;
+	}
+
+	ret = get_rsa_prime_param(param, ctx);
+	if (!ret)
+		goto free_param;
 
 	/* Divide bits into 'primes' pieces evenly */
 	quo = bits / RSA_MAX_PRIME_NUM;
@@ -409,39 +448,37 @@ static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 		/* flag: whether primes are generated correctely. */
 		flag = 1;
 		/* Set flag for primes rsa_p and rsa_q separately. */
-		set_primes(i, rsa_p, rsa_q, &prime);
+		rsa_set_primes(i, param->rsa_p, param->rsa_q, &param->prime);
 		while (flag == 1) {
-			if (get_prime_once(i, bitsr, &n, prime, rsa_p, rsa_q,
-			    r1, r2, e_pub, ctx, cb) == -1)
-				goto err;
+			ret = get_rsa_prime_once(i, bitsr, &n, e_pub, param,
+						 ctx, cb);
+			if (ret == -1)
+				goto free_param;
 			bitse += bitsr[i];
-			ret = check_prime_sufficient(&i, bitsr, &bitse, &n,
-						     rsa_p, rsa_q, r1, r2,
-						     ctx, cb);
+			ret = check_rsa_prime_sufficient(&i, bitsr, &bitse, &n,
+							 param, ctx, cb);
 			if (ret == BN_ERR)
-				goto err;
+				goto free_param;
 			else if (ret == BN_REDO)
 				continue;
 			else
 				flag = 0;
 		}
 	}
-	switch_p_q(rsa_p, rsa_q, p, q);
+	rsa_switch_p_q(param->rsa_p, param->rsa_q, p, q);
 
 	ret = UADK_E_SUCCESS;
 
-err:
-	if (ctx) {
-		BN_CTX_end(ctx);
-		BN_CTX_free(ctx);
-	}
-
+free_param:
+	OPENSSL_free(param);
+free_ctx:
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
 	return ret;
 }
 
 static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
-				  unsigned char *buf, int num,
-				  int padding)
+				  unsigned char *buf, int num, int padding)
 {
 	int ret;
 
@@ -852,8 +889,7 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 
 static int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 			   struct uadk_rsa_sess *rsa_sess,
-			   unsigned char *in_buf,
-			   unsigned char *to)
+			   unsigned char *in_buf, unsigned char *to)
 {
 	struct wd_rsa_pubkey *pubkey = NULL;
 	struct wd_dtb *wd_e = NULL;
@@ -882,8 +918,7 @@ static int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 
 static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 			   struct rsa_prikey_param *pri,
-			   unsigned char *in_buf,
-			   unsigned char *to)
+			   unsigned char *in_buf, unsigned char *to)
 {
 	struct wd_rsa_prikey *prikey;
 	struct wd_dtb *wd_dq;
