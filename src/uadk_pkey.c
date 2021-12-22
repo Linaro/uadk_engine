@@ -178,38 +178,20 @@ static int uadk_e_wd_ecc_env_init(struct uacce_dev *dev)
 	return async_register_poll_fn(ASYNC_TASK_ECC, uadk_e_ecc_env_poll);
 }
 
-static int uadk_wd_ecc_init(struct ecc_res_config *config)
+static int uadk_e_wd_ecc_general_init(struct uacce_dev *dev,
+				      struct wd_sched *sched)
 {
-	struct wd_sched *sched = &config->sched.wd_sched;
 	struct wd_ctx_config *ctx_cfg;
-	struct uacce_dev *dev;
 	int ret, i;
 
-	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
-	dev = wd_get_accel_dev("ecdsa");
-	if (!dev)
-		return -ENOMEM;
-
-	config->numa_id = dev->numa_id;
-
-	ret = uadk_e_is_env_enabled("ecc");
-	if (ret == ENV_ENABLED) {
-		ret = uadk_e_wd_ecc_env_init(dev);
-		goto free_dev;
-	}
-
-	if (ecc_res.ctx_res) {
-		ret = 0;
-		goto free_dev;
-	}
+	if (ecc_res.ctx_res)
+		return 0;
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
-	if (!ctx_cfg) {
+	if (!ctx_cfg)
 		ret = -ENOMEM;
-		goto free_dev;
-	}
-	ecc_res.ctx_res = ctx_cfg;
 
+	ecc_res.ctx_res = ctx_cfg;
 	ctx_cfg->ctx_num = CTX_NUM;
 	ctx_cfg->ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
 	if (!ctx_cfg->ctxs) {
@@ -230,23 +212,42 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 	if (ret)
 		goto free_ctx;
 
-	free(dev);
-
 	return async_register_poll_fn(ASYNC_TASK_ECC, uadk_ecc_poll);
 
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
-		if (ctx_cfg->ctxs[i].ctx) {
+		if (ctx_cfg->ctxs[i].ctx)
 			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-			ctx_cfg->ctxs[i].ctx = 0;
-		}
 	}
 	free(ctx_cfg->ctxs);
 free_cfg:
 	free(ctx_cfg);
 	ecc_res.ctx_res = NULL;
-free_dev:
+
+	return ret;
+}
+
+static int uadk_wd_ecc_init(struct ecc_res_config *config)
+{
+	struct wd_sched *sched = &config->sched.wd_sched;
+	struct uacce_dev *dev;
+	int ret;
+
+	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
+	dev = wd_get_accel_dev("ecdsa");
+	if (!dev)
+		return -ENOMEM;
+
+	config->numa_id = dev->numa_id;
+
+	ret = uadk_e_is_env_enabled("ecc");
+	if (ret)
+		ret = uadk_e_wd_ecc_env_init(dev);
+	else
+		ret = uadk_e_wd_ecc_general_init(dev, sched);
+
 	free(dev);
+
 	return ret;
 }
 
