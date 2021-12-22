@@ -784,59 +784,78 @@ static int sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 
 static int eckey_create_key(EC_KEY *eckey)
 {
-	const EC_GROUP *group;
-	EC_POINT *pub_key;
 	BIGNUM *priv_key;
+	int ret;
 
-	group = EC_KEY_get0_group(eckey);
-	pub_key = (EC_POINT *)EC_KEY_get0_public_key(eckey);
-	if (!pub_key) {
-		pub_key = EC_POINT_new(group);
-		if (!pub_key) {
-			fprintf(stderr, "failed to new pub_key\n");
-			return -1;
-		}
-		EC_KEY_set_public_key(eckey, pub_key);
-	}
+	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
+	if (priv_key)
+		return 1;
 
 	priv_key = BN_new();
 	if (!priv_key) {
 		fprintf(stderr, "failed to BN_new priv_key\n");
-		return -1;
+		return 0;
 	}
-	EC_KEY_set_private_key(eckey, priv_key);
 
-	return 0;
+	ret = EC_KEY_set_private_key(eckey, priv_key);
+	if (!ret)
+		fprintf(stderr, "failed to set private key\n");
+
+	BN_free(priv_key);
+	return ret;
+}
+
+static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
+{
+	BIGNUM *priv_key;
+	int ret;
+
+	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
+	if (priv_key)
+		return 1;
+
+	priv_key = BN_new();
+	if (!priv_key) {
+		fprintf(stderr, "failed to BN_new priv_key\n");
+		return 0;
+	}
+
+	do {
+		if (!BN_rand_range(priv_key, order)) {
+			fprintf(stderr, "failed to generate random value\n");
+			ret = 0;
+			goto free_priv_key;
+		}
+	} while (BN_is_zero(priv_key));
+
+	ret = EC_KEY_set_private_key(eckey, priv_key);
+	if (!ret)
+		fprintf(stderr, "failed to set private key\n");
+
+free_priv_key:
+	BN_free(priv_key);
+	return ret;
 }
 
 static int ecdh_create_key(EC_KEY *eckey)
 {
-	BIGNUM *priv_key, *order;
 	const EC_GROUP *group;
-	EC_POINT *pub_key;
+	BIGNUM *order;
 	BN_CTX *ctx;
-	int ret = 0;
+	int ret;
 
 	group = EC_KEY_get0_group(eckey);
-	pub_key = (EC_POINT *)EC_KEY_get0_public_key(eckey);
-	if (!pub_key) {
-		pub_key = EC_POINT_new(group);
-		if (!pub_key) {
-			fprintf(stderr, "failed to new pub_key\n");
-			return ret;
-		}
-		ret = EC_KEY_set_public_key(eckey, pub_key);
-	}
 
 	ctx = BN_CTX_new();
 	if (!ctx) {
 		fprintf(stderr, "failed to allocate ctx\n");
-		return ret;
+		return 0;
 	}
 
-	order =  BN_CTX_get(ctx);
+	order = BN_CTX_get(ctx);
 	if (!order) {
 		fprintf(stderr, "failed to allocate order\n");
+		ret = 0;
 		goto free_ctx;
 	}
 
@@ -846,26 +865,14 @@ static int ecdh_create_key(EC_KEY *eckey)
 		goto free_order;
 	}
 
-	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
-	if (!priv_key) {
-		priv_key = BN_new();
-		if (!priv_key) {
-			fprintf(stderr, "failed to BN_new priv_key\n");
-			goto free_order;
-		}
-		do {
-			if (!BN_rand_range(priv_key, order))
-				fprintf(stderr, "failed to generate random value\n");
-		} while (BN_is_zero(priv_key));
-		ret = EC_KEY_set_private_key(eckey, priv_key);
-	}
-	ret = 1;
+	ret = ecdh_set_private_key(eckey, order);
+	if (!ret)
+		fprintf(stderr, "failed to set private key\n");
 
 free_order:
 	BN_clear(order);
 free_ctx:
 	BN_CTX_free(ctx);
-
 	return ret;
 }
 
@@ -880,7 +887,7 @@ static int sm2_generate_key(EC_KEY *eckey)
 		goto do_soft;
 
 	ret = eckey_create_key(eckey);
-	if (ret)
+	if (!ret)
 		return ret;
 
 	ret = UADK_DO_SOFT;
