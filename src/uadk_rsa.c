@@ -1595,7 +1595,6 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	memcpy(rsa_sess->req.src, from_buf, rsa_sess->req.src_bytes);
 	ret = rsa_do_crypto(rsa_sess);
 	if (!ret || rsa_sess->req.status) {
 		ret = UADK_DO_SOFT;
