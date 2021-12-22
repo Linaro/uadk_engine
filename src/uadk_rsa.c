@@ -307,10 +307,10 @@ static int check_prime_useful(const int *n, BIGNUM *prime, BIGNUM *r1, BIGNUM *r
 	return GET_ERR_FINISH;
 }
 
-static int get_prime_once(int num, const int *bitsr, int *n, BIGNUM *prime,
-			  BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
-			  BIGNUM *r2, BIGNUM *e_pub, BN_CTX *ctx,
-			  BN_GENCB *cb)
+static int get_prime_once(int num, const int *bitsr, const int *n,
+			  BIGNUM *prime, BIGNUM *rsa_p, BIGNUM *rsa_q,
+			  BIGNUM *r1, BIGNUM *r2, BIGNUM *e_pub,
+			  BN_CTX *ctx, BN_GENCB *cb)
 {
 	int ret = -1;
 
