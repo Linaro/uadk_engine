@@ -62,6 +62,26 @@ typedef struct sm2_ciphertext {
 	ASN1_OCTET_STRING *C2;
 } SM2_Ciphertext;
 
+struct sm2_param {
+	/*
+	 * p: BIGNUM with the prime number (GFp) or the polynomial
+	 * defining the underlying field (GF2m)
+	 */
+	BIGNUM *p;
+	/* a: BIGNUM for parameter a of the equation */
+	BIGNUM *a;
+	/* b: BIGNUM for parameter b of the equation */
+	BIGNUM *b;
+	/* xG: BIGNUM for the x-coordinate value of G point */
+	BIGNUM *xG;
+	/* yG: BIGNUM for the y-coordinate value of G point */
+	BIGNUM *yG;
+	/* xA: BIGNUM for the x-coordinate value of PA point */
+	BIGNUM *xA;
+	/* yA: BIGNUM for the y-coordinate value of PA point */
+	BIGNUM *yA;
+};
+
 DECLARE_ASN1_FUNCTIONS(SM2_Ciphertext)
 
 ASN1_SEQUENCE(SM2_Ciphertext) = {
@@ -695,8 +715,7 @@ static int sm2_verify_init(EVP_PKEY_CTX *ctx)
 }
 
 static int sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
-			       struct wd_dtb *e,
-			       struct wd_dtb *r,
+			       struct wd_dtb *e, struct wd_dtb *r,
 			       struct wd_dtb *s)
 {
 	struct wd_ecc_in *ecc_in;
@@ -1229,119 +1248,217 @@ static int sm2_ctrl_str(EVP_PKEY_CTX *ctx,
 	return UADK_E_INVALID;
 }
 
-static int sm2_compute_z_digest(uint8_t *out,
-				const EVP_MD *digest,
-				const uint8_t *id,
-				const size_t id_len,
-				const EC_KEY *key)
+static int get_sm2_param(struct sm2_param *sm2_param, BN_CTX *ctx)
 {
-	const EC_GROUP *group = EC_KEY_get0_group(key);
-	EVP_MD_CTX *hash = NULL;
-	uint8_t *buf = NULL;
-	BN_CTX *ctx = NULL;
-	BIGNUM *p = NULL;
-	BIGNUM *a = NULL;
-	BIGNUM *b = NULL;
-	BIGNUM *xG = NULL;
-	BIGNUM *yG = NULL;
-	BIGNUM *xA = NULL;
-	BIGNUM *yA = NULL;
+	sm2_param->p = BN_CTX_get(ctx);
+	if (!sm2_param->p)
+		goto end;
+
+	sm2_param->a = BN_CTX_get(ctx);
+	if (!sm2_param->a)
+		goto end;
+
+	sm2_param->b = BN_CTX_get(ctx);
+	if (!sm2_param->b)
+		goto end;
+
+	sm2_param->xG = BN_CTX_get(ctx);
+	if (!sm2_param->xG)
+		goto end;
+
+	sm2_param->yG = BN_CTX_get(ctx);
+	if (!sm2_param->yG)
+		goto end;
+
+	sm2_param->xA = BN_CTX_get(ctx);
+	if (!sm2_param->xA)
+		goto end;
+
+	sm2_param->yA = BN_CTX_get(ctx);
+	if (!sm2_param->yA)
+		goto end;
+
+	return 1;
+
+end:
+	fprintf(stderr, "failed to malloc params\n");
+	return 0;
+}
+
+static int check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash,
+				const size_t id_len, const uint8_t *id)
+{
 	uint8_t e_byte;
 	uint16_t entl;
-	int p_bytes;
-	int rc = 0;
-
-	hash = EVP_MD_CTX_new();
-	ctx = BN_CTX_new();
-	if (hash == NULL || ctx == NULL) {
-		fprintf(stderr, "failed to EVP_CTX_new\n");
-		goto done;
-	}
-
-	p = BN_CTX_get(ctx);
-	a = BN_CTX_get(ctx);
-	b = BN_CTX_get(ctx);
-	xG = BN_CTX_get(ctx);
-	yG = BN_CTX_get(ctx);
-	xA = BN_CTX_get(ctx);
-	yA = BN_CTX_get(ctx);
-	if (yA == NULL) {
-		fprintf(stderr, "failed to malloc\n");
-		goto done;
-	}
 
 	if (!EVP_DigestInit(hash, digest)) {
 		fprintf(stderr, "error evp lib\n");
-		goto done;
+		return 0;
 	}
 
 	/* Z = h(ENTL || ID || a || b || xG || yG || xA || yA) */
 	if (id_len >= (UINT16_MAX / 8)) {
-		/* too large */
 		fprintf(stderr, "id too large\n");
-		goto done;
+		return 0;
 	}
 
 	entl = (uint16_t)(8 * id_len);
 
 	e_byte = entl >> 8;
-		if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
-			fprintf(stderr, "error evp lib\n");
-			goto done;
-		}
+	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
+		fprintf(stderr, "error evp lib\n");
+		return 0;
+	}
+
 	e_byte = entl & 0xFF;
 	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
 		fprintf(stderr, "error evp lib\n");
-		goto done;
+		return 0;
 	}
 
 	if (id_len > 0 && !EVP_DigestUpdate(hash, id, id_len)) {
 		fprintf(stderr, "error evp lib\n");
-		goto done;
+		return 0;
 	}
 
-	if (!EC_GROUP_get_curve(group, p, a, b, ctx)) {
-		fprintf(stderr, "error ec lib\n");
-		goto done;
+	return 1;
+}
+
+static int check_equation_param(struct sm2_param *param, EVP_MD_CTX *hash,
+				uint8_t *buf, int p_bytes)
+{
+	if (BN_bn2binpad(param->a, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
+	    BN_bn2binpad(param->b, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes)) {
+		fprintf(stderr, "failed to check equation param\n");
+		return 0;
 	}
 
-	p_bytes = BN_num_bytes(p);
+	return 1;
+}
+
+
+static int check_base_point_group_param(struct sm2_param *param, BN_CTX *ctx,
+					const EC_KEY *key)
+{
+	const EC_GROUP *group = EC_KEY_get0_group(key);
+
+	if (!EC_POINT_get_affine_coordinates(group,
+					     EC_GROUP_get0_generator(group),
+					     param->xG, param->yG, ctx)) {
+		fprintf(stderr, "failed to check base point group param\n");
+		return 0;
+	}
+
+	return 1;
+}
+
+static int check_base_point_param(struct sm2_param *param, EVP_MD_CTX *hash,
+				  uint8_t *buf, int p_bytes)
+{
+	if (BN_bn2binpad(param->xG, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
+	    BN_bn2binpad(param->yG, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes)) {
+		fprintf(stderr, "failed to check base point param\n");
+		return 0;
+	}
+
+	return 1;
+}
+
+static int check_pkey_point_group_param(struct sm2_param *param, BN_CTX *ctx,
+					const EC_KEY *key)
+{
+	const EC_GROUP *group = EC_KEY_get0_group(key);
+
+	if (!EC_POINT_get_affine_coordinates(group,
+					     EC_KEY_get0_public_key(key),
+					     param->xA, param->yA, ctx)) {
+		fprintf(stderr, "failed to check pkey point group param\n");
+		return 0;
+	}
+	return 1;
+}
+
+static int check_pkey_point_param(struct sm2_param *param, EVP_MD_CTX *hash,
+				  uint8_t *buf, int p_bytes, uint8_t *out)
+{
+	if (BN_bn2binpad(param->xA, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
+	    BN_bn2binpad(param->yA, buf, p_bytes) < 0 ||
+	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
+	    !EVP_DigestFinal(hash, out, NULL)) {
+		fprintf(stderr, "failed to check pkey point param\n");
+		return 0;
+	}
+
+	return 1;
+}
+
+static int sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
+				const uint8_t *id, const size_t id_len,
+				const EC_KEY *key)
+{
+	const EC_GROUP *group = EC_KEY_get0_group(key);
+	struct sm2_param *param = NULL;
+	EVP_MD_CTX *hash = NULL;
+	uint8_t *buf = NULL;
+	BN_CTX *ctx = NULL;
+	int p_bytes;
+	int ret = 0;
+
+	hash = EVP_MD_CTX_new();
+	if (!hash)
+		return ret;
+
+	ctx = BN_CTX_new();
+	if (!ctx)
+		goto free_hash;
+
+	param = OPENSSL_zalloc(sizeof(struct sm2_param));
+	if (!param) {
+		fprintf(stderr, "failed to malloc sm2 param\n");
+		goto free_ctx;
+	}
+
+	if (!get_sm2_param(param, ctx))
+		goto free_param;
+
+	if (!check_digest_evp_lib(digest, hash, id_len, id))
+		goto free_param;
+
+	if (!EC_GROUP_get_curve(group, param->p, param->a, param->b, ctx)) {
+		fprintf(stderr, "failed to get curve\n");
+		goto free_param;
+	}
+
+	p_bytes = BN_num_bytes(param->p);
 	buf = OPENSSL_zalloc(p_bytes);
-	if (buf == NULL) {
-		fprintf(stderr, "failed to malloc\n");
-		goto done;
+	if (!buf) {
+		fprintf(stderr, "failed to malloc buf\n");
+		goto free_param;
 	}
 
-	if (BN_bn2binpad(a, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || BN_bn2binpad(b, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || !EC_POINT_get_affine_coordinates(group,
-						EC_GROUP_get0_generator(group),
-						xG, yG, ctx)
-	    || BN_bn2binpad(xG, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || BN_bn2binpad(yG, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || !EC_POINT_get_affine_coordinates(group,
-						EC_KEY_get0_public_key(key),
-						xA, yA, ctx)
-	    || BN_bn2binpad(xA, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || BN_bn2binpad(yA, buf, p_bytes) < 0
-	    || !EVP_DigestUpdate(hash, buf, p_bytes)
-	    || !EVP_DigestFinal(hash, out, NULL)) {
-		fprintf(stderr, "internal error\n");
-		goto done;
-	}
+	if (!check_equation_param(param, hash, buf, p_bytes) ||
+	    !check_base_point_group_param(param, ctx, key) ||
+	    !check_base_point_param(param, hash, buf, p_bytes) ||
+	    !check_pkey_point_group_param(param, ctx, key) ||
+	    !check_pkey_point_param(param, hash, buf, p_bytes, out))
+		goto free_buf;
 
-	rc = 1;
+	ret = 1;
 
-done:
+free_buf:
 	OPENSSL_free(buf);
+free_param:
+	OPENSSL_free(param);
+free_ctx:
 	BN_CTX_free(ctx);
+free_hash:
 	EVP_MD_CTX_free(hash);
-	return rc;
+	return ret;
 }
 
 static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
