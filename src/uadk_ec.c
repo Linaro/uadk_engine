@@ -426,7 +426,10 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto do_soft;
 
-	ret = UADK_DO_SOFT;
+	ret = uadk_init_ecc();
+	if (ret)
+		goto do_soft;
+
 	sess = ecc_alloc_sess(eckey, "ecdsa");
 	if (!sess)
 		goto do_soft;
@@ -438,23 +441,21 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto free_sess;
 
-	ret =  uadk_ecc_set_private_key(sess, eckey);
+	ret = uadk_ecc_set_private_key(sess, eckey);
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_init_ecc();
-	if (ret) {
-		ret = UADK_DO_SOFT;
-		goto uninit_iot;
-	}
-
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1) {
-		ret = UADK_DO_SOFT;
+	if (ret != 1)
 		goto uninit_iot;
-	}
 
 	sig = create_ecdsa_sig(&req);
+
+	wd_ecc_del_in(sess, req.src);
+	wd_ecc_del_out(sess, req.dst);
+	wd_ecc_free_sess(sess);
+
+	return sig;
 
 uninit_iot:
 	wd_ecc_del_in(sess, req.src);
@@ -462,9 +463,6 @@ uninit_iot:
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (ret != UADK_DO_SOFT)
-		return sig;
-
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_do_sign(dgst, dlen, in_kinv, in_r, eckey);
 }
@@ -617,7 +615,10 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto do_soft;
 
-	ret = UADK_DO_SOFT;
+	ret = uadk_init_ecc();
+	if (ret)
+		goto do_soft;
+
 	sess = ecc_alloc_sess(eckey, "ecdsa");
 	if (!sess)
 		goto do_soft;
@@ -633,24 +634,19 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_init_ecc();
-	if (ret) {
-		ret = UADK_DO_SOFT;
+	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
+	if (ret != 1) {
+		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
-	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1) {
-		printf("failed to uadk_ecc_crypto, ret = %d\n", ret);
-		ret = UADK_DO_SOFT;
-	}
+	return ret;
+
 uninit_iot:
 	wd_ecc_del_in(sess, req.src);
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (ret != UADK_DO_SOFT)
-		return ret;
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_do_verify(dgst, dlen, sig, eckey);
 }
@@ -888,9 +884,12 @@ static int sm2_generate_key(EC_KEY *eckey)
 
 	ret = eckey_create_key(eckey);
 	if (!ret)
-		return ret;
+		goto do_soft;
 
-	ret = UADK_DO_SOFT;
+	ret = uadk_init_ecc();
+	if (ret)
+		goto do_soft;
+
 	sess = ecc_alloc_sess(eckey, "sm2");
 	if (!sess)
 		goto do_soft;
@@ -900,34 +899,28 @@ static int sm2_generate_key(EC_KEY *eckey)
 	if (ret)
 		goto free_sess;
 
-	ret = uadk_init_ecc();
-	if (ret) {
-		ret = UADK_DO_SOFT;
-		goto uninit_iot;
-	}
-
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1) {
-		ret = UADK_DO_SOFT;
+	if (ret != 1)
 		goto uninit_iot;
-	}
 
 	ret = set_key_to_ec_key(eckey, &req);
 	if (ret)
 		goto uninit_iot;
 
 	ret = 1;
+	wd_ecc_del_out(sess, req.dst);
+	wd_ecc_free_sess(sess);
+
+	return ret;
+
 uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
 do_soft:
-	if (ret != UADK_DO_SOFT)
-		return ret;
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_do_generate(eckey);
 }
-
 
 static int ecdh_keygen_init_iot(handle_t sess, struct wd_ecc_req *req,
 				EC_KEY *ecdh)
@@ -1108,6 +1101,10 @@ static int ecdh_generate_key(EC_KEY *ecdh)
 	if (!ret)
 		goto do_soft;
 
+	ret = uadk_init_ecc();
+	if (ret)
+		goto do_soft;
+
 	sess = ecc_alloc_sess(ecdh, "ecdh");
 	if (!sess)
 		goto do_soft;
@@ -1118,10 +1115,6 @@ static int ecdh_generate_key(EC_KEY *ecdh)
 		goto free_sess;
 
 	ret = uadk_ecc_set_private_key(sess, ecdh);
-	if (ret)
-		goto uninit_iot;
-
-	ret = uadk_init_ecc();
 	if (ret)
 		goto uninit_iot;
 
@@ -1202,10 +1195,8 @@ static int ecc_compkey_check(unsigned char **out,
 	return 1;
 }
 
-static int ecdh_compute_key(unsigned char **out,
-			    size_t *outlen,
-			    const EC_POINT *pub_key,
-			    const EC_KEY *ecdh)
+static int ecdh_compute_key(unsigned char **out, size_t *outlen,
+			    const EC_POINT *pub_key, const EC_KEY *ecdh)
 {
 	struct wd_ecc_req req;
 	handle_t sess;
@@ -1213,6 +1204,10 @@ static int ecdh_compute_key(unsigned char **out,
 
 	ret = ecc_compkey_check(out, outlen, pub_key, ecdh);
 	if (!ret)
+		goto do_soft;
+
+	ret = uadk_init_ecc();
+	if (ret)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(ecdh, "ecdh");
@@ -1229,10 +1224,6 @@ static int ecdh_compute_key(unsigned char **out,
 		goto uninit_iot;
 
 	ret = uadk_ecc_set_public_key(sess, ecdh);
-	if (ret)
-		goto uninit_iot;
-
-	ret = uadk_init_ecc();
 	if (ret)
 		goto uninit_iot;
 
