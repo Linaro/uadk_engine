@@ -164,14 +164,17 @@ static int rsa_check_bit_useful(const int bits, int flen)
 	}
 }
 
-static int rsa_prime_mul_res(int num, BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *r1,
+static int rsa_prime_mul_res(int num, struct rsa_prime_param *param,
 			     BN_CTX *ctx, BN_GENCB *cb)
 {
 	if (num == 1) {
-		if (!BN_mul(r1, rsa_p, rsa_q, ctx))
+		if (!BN_mul(param->r1, param->rsa_p, param->rsa_q, ctx))
 			return BN_ERR;
 	} else {
-		/* If num == 0, use number 3 to indicate do nothing */
+		/*
+		 * Use the number 3 to indicate whether
+		 * the generator has been found.
+		 */
 		if (!BN_GENCB_call(cb, 3, num))
 			return BN_ERR;
 		return BN_CONTINUE;
@@ -189,8 +192,7 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 	BN_ULONG bitst;
 	int ret;
 
-	ret = rsa_prime_mul_res(*num, param->rsa_p, param->rsa_q,
-				param->r1, ctx, cb);
+	ret = rsa_prime_mul_res(*num, param, ctx, cb);
 	if (ret)
 		return ret;
 	/*
@@ -224,7 +226,10 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 			*bitse -= bitsr[*num];
 		else
 			return -1;
-
+		/*
+		 * Use the number 2 to indicate whether
+		 * a prime has been found.
+		 */
 		ret = BN_GENCB_call(cb, 2, *n++);
 		if (!ret)
 			return -1;
@@ -237,7 +242,7 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		retries++;
 		return BN_REDO;
 	}
-
+	/* Use the number 3 to indicate whether the generator has been found. */
 	ret = BN_GENCB_call(cb, 3, *num);
 	if (!ret)
 		return BN_ERR;
@@ -314,6 +319,7 @@ static int check_rsa_prime_useful(const int *n, struct rsa_prime_param *param,
 	else
 		return BN_ERR;
 
+	/* Use the number 2 to indicate whether a prime has been found. */
 	if (!BN_GENCB_call(cb, 2, *n++))
 		return BN_ERR;
 
@@ -1094,7 +1100,7 @@ static int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int ret;
 
 	if (!default_meth) {
-		printf("failed to get soft method.\n");
+		fprintf(stderr, "failed to get soft method.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1121,7 +1127,7 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 		return UADK_E_FAIL;
 
 	keygen_param->wd_e->dsize = BN_bn2bin(bn_param->e,
-					(unsigned char *)keygen_param->wd_e->data);
+				    (unsigned char *)keygen_param->wd_e->data);
 
 	wd_rsa_get_prikey(rsa_sess->sess, &key_pair->prikey);
 	if (!key_pair->prikey)
@@ -1133,9 +1139,9 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 		return UADK_E_FAIL;
 
 	keygen_param->wd_q->dsize = BN_bn2bin(bn_param->q,
-					(unsigned char *)keygen_param->wd_q->data);
+				    (unsigned char *)keygen_param->wd_q->data);
 	keygen_param->wd_p->dsize = BN_bn2bin(bn_param->p,
-					(unsigned char *)keygen_param->wd_p->data);
+				    (unsigned char *)keygen_param->wd_p->data);
 
 	rsa_sess->req.src_bytes = rsa_sess->key_size;
 	rsa_sess->req.dst_bytes = rsa_sess->key_size;
