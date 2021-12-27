@@ -273,8 +273,7 @@ static void uadk_wd_ecc_uninit(void)
 	ecc_res.pid = 0;
 }
 
-int uadk_ecc_crypto(handle_t sess,
-		    struct wd_ecc_req *req, void *usr)
+int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
@@ -314,7 +313,7 @@ int uadk_ecc_crypto(handle_t sess,
 	} else {
 		ret = wd_do_ecc_sync(sess, req);
 		if (ret < 0)
-			return ret;
+			return 0;
 	}
 	return 1;
 err:

@@ -359,7 +359,7 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 	}
 
 	ret = ECDSA_SIG_set0(e_sig, br, bs);
-	if (ret != 1) {
+	if (!ret) {
 		fprintf(stderr, "failed to ECDSA_SIG_set0\n");
 		ret = -EINVAL;
 		goto free_s;
@@ -686,7 +686,7 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
-	if (ret != 1) {
+	if (!ret) {
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		ret = UADK_DO_SOFT;
 		goto uninit_iot;
@@ -907,7 +907,7 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
-	if (ret != 1) {
+	if (!ret) {
 		ret = UADK_DO_SOFT;
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -1061,7 +1061,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
-	if (ret != 1) {
+	if (!ret) {
 		ret = UADK_DO_SOFT;
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;

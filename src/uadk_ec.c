@@ -446,7 +446,7 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	sig = create_ecdsa_sig(&req);
@@ -635,10 +635,13 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1) {
+	if (!ret) {
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
+
+	wd_ecc_del_in(sess, req.src);
+	wd_ecc_free_sess(sess);
 
 	return ret;
 
@@ -701,7 +704,7 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	tmp = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
 	ret = EC_KEY_set_private_key(ec, tmp);
 	BN_free(tmp);
-	if (ret != 1) {
+	if (!ret) {
 		fprintf(stderr, "failed to EC KEY set private key\n");
 		return -EINVAL;
 	}
@@ -725,7 +728,7 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 
 	ret = EC_KEY_set_public_key(ec, point);
 	EC_POINT_free(point);
-	if (ret != 1) {
+	if (!ret) {
 		fprintf(stderr, "failed to EC_KEY_set_public_key\n");
 		return -EINVAL;
 	}
@@ -900,18 +903,17 @@ static int sm2_generate_key(EC_KEY *eckey)
 		goto free_sess;
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	ret = set_key_to_ec_key(eckey, &req);
 	if (ret)
 		goto uninit_iot;
 
-	ret = 1;
 	wd_ecc_del_out(sess, req.dst);
 	wd_ecc_free_sess(sess);
 
-	return ret;
+	return 1;
 
 uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
@@ -1119,7 +1121,7 @@ static int ecdh_generate_key(EC_KEY *ecdh)
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	ret = ecdh_set_key_to_ec_key(ecdh, &req);
@@ -1228,7 +1230,7 @@ static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	ret = ecdh_get_shared_key(ecdh, out, outlen, &req);

@@ -399,7 +399,7 @@ static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(keygen_ctx->sess, &req, (void *)keygen_ctx->sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	ret = ecx_keygen_set_pkey(pkey, keygen_ctx, &req, ecx_key);
@@ -457,7 +457,7 @@ static int x448_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(keygen_ctx->sess, &req, (void *)keygen_ctx->sess);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	ret = ecx_keygen_set_pkey(pkey, keygen_ctx, &req, ecx_key);
@@ -659,7 +659,7 @@ static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(derive_ctx->sess, &req, (void *)derive_ctx);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	wd_ecxdh_get_out_params(req.dst, &s_key);
@@ -745,7 +745,7 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 		goto uninit_iot;
 
 	ret = uadk_ecc_crypto(derive_ctx->sess, &req, (void *)derive_ctx);
-	if (ret != 1)
+	if (!ret)
 		goto uninit_iot;
 
 	wd_ecxdh_get_out_params(req.dst, &s_key);
