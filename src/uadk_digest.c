@@ -688,10 +688,6 @@ sync_err:
 	ret = uadk_e_digest_soft_work(priv, priv->tail, digest);
 clear:
 	async_clear_async_event_notification();
-	if (priv->sess) {
-		wd_digest_free_sess(priv->sess);
-		priv->sess = 0;
-	}
 	return ret;
 }
 
