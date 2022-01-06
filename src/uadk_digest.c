@@ -44,6 +44,14 @@
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (8 * 1024)
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MAX_DIGEST_LENGTH	64
+#define DIGEST_BLOCK_SIZE (512 * 1024)
+
+enum sec_digestz_state {
+	SEC_DIGEST_INIT,
+	SEC_DIGEST_FIRST_UPDATING,
+	SEC_DIGEST_DOING,
+	SEC_DIGEST_FINAL
+};
 
 struct digest_threshold_table {
 	int nid;
@@ -72,21 +80,19 @@ struct evp_md_ctx_st {
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 };
 
-#define DIGEST_BLOCK_SIZE 4096
-
 struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
 	unsigned char *data;
 	unsigned char out[MAX_DIGEST_LENGTH];
-	size_t tail;
-	size_t last_update_bufflen;
-	bool copy;
-	uint32_t e_nid;
 	EVP_MD_CTX *soft_ctx;
-	size_t switch_threshold;
+	size_t last_update_bufflen;
+	uint32_t e_nid;
+	uint32_t state;
+	uint32_t switch_threshold;
 	int switch_flag;
+	bool copy;
 };
 
 static int digest_nids[] = {
@@ -150,7 +156,7 @@ static const EVP_MD *uadk_e_digests_soft_md(uint32_t e_nid)
 	return digest_md;
 }
 
-static int sec_digest_get_sw_threshold(int n_id)
+static uint32_t sec_digest_get_sw_threshold(int n_id)
 {
 	int threshold_table_size = ARRAY_SIZE(digest_pkt_threshold_table);
 	int i = 0;
@@ -464,6 +470,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		priv->soft_ctx = EVP_MD_CTX_new();
 	priv->e_nid = nid;
 
+	priv->state = SEC_DIGEST_INIT;
 	ret = uadk_e_init_digest();
 	if (!ret) {
 		priv->switch_flag = UADK_DO_SOFT;
@@ -504,7 +511,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 
 	priv->data = malloc(DIGEST_BLOCK_SIZE);
-	if (priv->data == NULL) {
+	if (!priv->data) {
 		wd_digest_free_sess(priv->sess);
 		return 0;
 	}
@@ -540,9 +547,16 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		left_len -= copy_to_bufflen;
 		tmpdata += copy_to_bufflen;
 
+		if (priv->state == SEC_DIGEST_INIT)
+			priv->state = SEC_DIGEST_FIRST_UPDATING;
+		else if (priv->state == SEC_DIGEST_FIRST_UPDATING)
+			priv->state = SEC_DIGEST_DOING;
+
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
-		if (ret)
-			return 0;
+		if (ret) {
+			fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
+			goto do_soft_digest;
+		}
 
 		priv->last_update_bufflen = 0;
 		memset(priv->data, 0, DIGEST_BLOCK_SIZE);
@@ -551,10 +565,26 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 			memcpy(priv->data, tmpdata, priv->last_update_bufflen);
 			break;
 		}
-
 	}
 
-		return 1;
+	return 1;
+do_soft_digest:
+	if (priv->state == SEC_DIGEST_FIRST_UPDATING
+			&& priv->data
+			&& priv->last_update_bufflen != 0) {
+		priv->switch_flag = UADK_DO_SOFT;
+		digest_soft_init(priv->soft_ctx, priv->e_nid);
+		ret = digest_soft_update(priv->soft_ctx, priv->e_nid,
+			priv->data, priv->last_update_bufflen);
+		if (ret != 1)
+			return ret;
+
+		return digest_soft_update(priv->soft_ctx, priv->e_nid,
+			tmpdata, left_len);
+	}
+
+	fprintf(stderr, "do soft digest failed during updating!\n");
+	return 0;
 }
 
 static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
@@ -681,11 +711,17 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 			goto clear;
 	}
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
+	priv->last_update_bufflen = 0;
 
 	return 1;
 
 sync_err:
-	ret = uadk_e_digest_soft_work(priv, priv->tail, digest);
+	if (priv->state == SEC_DIGEST_INIT) {
+		ret = uadk_e_digest_soft_work(priv, priv->req.in_bytes, digest);
+	} else {
+		ret = 0;
+		fprintf(stderr, "do sec digest stream mode failed.\n");
+	}
 clear:
 	async_clear_async_event_notification();
 	return ret;
