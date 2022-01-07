@@ -95,6 +95,13 @@ struct digest_priv_ctx {
 	bool copy;
 };
 
+struct digest_info {
+	int nid;
+	enum wd_digest_mode mode;
+	enum wd_digest_type alg;
+	__u32 out_len;
+};
+
 static int digest_nids[] = {
 	NID_md5,
 	NID_sm3,
@@ -114,6 +121,16 @@ static struct digest_threshold_table digest_pkt_threshold_table[] = {
 	{ NID_sha256, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
 	{ NID_sha384, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
 	{ NID_sha512, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
+};
+
+static struct digest_info digest_info_table[] = {
+	{NID_md5, WD_DIGEST_NORMAL, WD_DIGEST_MD5, 16},
+	{NID_sm3, WD_DIGEST_NORMAL, WD_DIGEST_SM3, 32},
+	{NID_sha1, WD_DIGEST_NORMAL, WD_DIGEST_SHA1, 20},
+	{NID_sha224, WD_DIGEST_NORMAL, WD_DIGEST_SHA224, 28},
+	{NID_sha256, WD_DIGEST_NORMAL, WD_DIGEST_SHA256, 32},
+	{NID_sha384, WD_DIGEST_NORMAL, WD_DIGEST_SHA384, 48},
+	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512, 64},
 };
 
 static EVP_MD *uadk_md5;
@@ -451,8 +468,8 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 			enum wd_digest_type alg, enum wd_digest_mode mode,
 			 __u32 out_len)
 {
-	priv->setup.mode = alg;
-	priv->setup.alg = mode;
+	priv->setup.alg = alg;
+	priv->setup.mode = mode;
 	priv->req.out_buf_bytes = out_len;
 	priv->req.out_bytes = out_len;
 }
@@ -461,9 +478,10 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+	int digest_counts = ARRAY_SIZE(digest_info_table);
 	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 	struct sched_params params = {0};
-	int ret;
+	int ret, i;
 
 	/* Allocate a soft ctx for hardware engine */
 	if (priv->soft_ctx == NULL)
@@ -478,29 +496,16 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		goto soft_init;
 	}
 
-	switch (nid) {
-	case NID_md5:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_MD5, 16);
-		break;
-	case NID_sm3:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SM3, 32);
-		break;
-	case NID_sha1:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SHA1, 20);
-		break;
-	case NID_sha224:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SHA224, 28);
-		break;
-	case NID_sha256:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SHA256, 32);
-		break;
-	case NID_sha384:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SHA384, 48);
-		break;
-	case NID_sha512:
-		digest_priv_ctx_setup(priv, WD_DIGEST_NORMAL, WD_DIGEST_SHA512, 64);
-		break;
-	default:
+	for (i = 0; i < digest_counts; i++) {
+		if (nid == digest_info_table[i].nid) {
+			digest_priv_ctx_setup(priv, digest_info_table[i].alg,
+			digest_info_table[i].mode, digest_info_table[i].out_len);
+			break;
+		}
+	}
+
+	if (i == digest_counts) {
+		fprintf(stderr, "failed to setup the private ctx.\n");
 		return 0;
 	}
 
