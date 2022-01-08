@@ -189,7 +189,7 @@ static int uadk_e_wd_ecc_general_init(struct uacce_dev *dev,
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
-		ret = -ENOMEM;
+		return -ENOMEM;
 
 	ecc_res.ctx_res = ctx_cfg;
 	ctx_cfg->ctx_num = CTX_NUM;
