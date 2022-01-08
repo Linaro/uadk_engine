@@ -524,7 +524,7 @@ static int cipher_ber_to_bin(unsigned char *ber, size_t ber_len,
 	len = BN_num_bytes(ctext_struct->C1x);
 	len1 = BN_num_bytes(ctext_struct->C1y);
 	c1->x.data = malloc(len + len1 + ctext_struct->C2->length +
-		ctext_struct->C3->length);
+			    ctext_struct->C3->length);
 	if (!c1->x.data) {
 		ret = -ENOMEM;
 		goto free_ctext;
@@ -547,7 +547,6 @@ free_ctext:
 
 static size_t ec_field_size(const EC_GROUP *group)
 {
-	/* Is there some simpler way to do this? */
 	BIGNUM *p = BN_new();
 	BIGNUM *a = BN_new();
 	BIGNUM *b = BN_new();
@@ -559,7 +558,7 @@ static size_t ec_field_size(const EC_GROUP *group)
 	if (!EC_GROUP_get_curve(group, p, a, b, NULL))
 		goto done;
 
-	/* Pad and convert bits to bytes*/
+	/* Pad and convert bits to bytes */
 	field_size = (BN_num_bits(p) + 7) / 8;
 
 done:
@@ -568,6 +567,22 @@ done:
 	BN_free(b);
 
 	return field_size;
+}
+
+static int sm2_plaintext_size(const unsigned char *ct, size_t ct_size, size_t *pt_size)
+{
+	struct sm2_ciphertext *sm2_ctext;
+
+	sm2_ctext = d2i_SM2_Ciphertext(NULL, &ct, ct_size);
+	if (!sm2_ctext) {
+		fprintf(stderr, "invalid sm2 encoding\n");
+		return 0;
+	}
+
+	*pt_size = sm2_ctext->C2->length;
+	SM2_Ciphertext_free(sm2_ctext);
+
+	return 1;
 }
 
 static int sm2_ciphertext_size(const EC_KEY *key,
@@ -589,6 +604,7 @@ static int sm2_ciphertext_size(const EC_KEY *key,
 		+ ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING)
 		+ ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
 	*ct_size = ASN1_object_size(1, sz, V_ASN1_SEQUENCE);
+
 	return 1;
 }
 
@@ -792,7 +808,7 @@ static int sm2_verify(EVP_PKEY_CTX *ctx,
 	}
 
 	ret = uadk_ecc_crypto(smctx->sess, &req, smctx);
-	if (ret != 1) {
+	if (!ret) {
 		ret = UADK_DO_SOFT;
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
@@ -941,8 +957,6 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 			     const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
-	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
-	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	const EVP_MD *md;
 	int hash_size;
 
@@ -959,7 +973,7 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 	}
 
 	if (!out) {
-		if (!sm2_ciphertext_size(ec, md, inlen, outlen))
+		if (!sm2_plaintext_size(in, inlen, outlen))
 			return -1;
 		else
 			return 1;
@@ -1039,6 +1053,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
+
 	ret = cipher_ber_to_bin((void *)in, inlen, &c1, &c2, &c3);
 	if (ret)
 		goto do_soft;
