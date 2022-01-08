@@ -741,13 +741,12 @@ static int dh_soft_set_pkey(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 	return UADK_E_SUCCESS;
 }
 
-/* Main Phase1: Generate public key */
 static int uadk_e_dh_generate_key(DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
-	int bits = DH_bits(dh);
-	BIGNUM *pub_key = NULL;
 	BIGNUM *priv_key = NULL;
+	BIGNUM *pub_key = NULL;
+	int bits = DH_bits(dh);
 	const BIGNUM *p = NULL;
 	const BIGNUM *g = NULL;
 	const BIGNUM *q = NULL;
@@ -771,7 +770,6 @@ static int uadk_e_dh_generate_key(DH *dh)
 		goto exe_soft;
 	}
 
-	/* Fill request data */
 	ret = dh_fill_genkey_req(g, p, priv_key, dh_sess);
 	if (!ret) {
 		fprintf(stderr, "failed to fill req\n");
@@ -786,7 +784,6 @@ static int uadk_e_dh_generate_key(DH *dh)
 		goto free_sess;
 	}
 
-	/* Get the generated public key from uadk(->hardware) */
 	ret = dh_get_pubkey(dh_sess, &pub_key);
 	if (!ret) {
 		fprintf(stderr, "failed to get public key\n");
@@ -794,7 +791,6 @@ static int uadk_e_dh_generate_key(DH *dh)
 		goto free_sess;
 	}
 
-	/* Set the public key and private key */
 	ret = dh_soft_set_pkey(dh, pub_key, priv_key);
 
 free_sess:
@@ -806,16 +802,15 @@ exe_soft:
 	return uadk_e_dh_soft_generate_key(dh);
 }
 
-/* Main Phase2: Compute shared key */
 static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 				 DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
+	BIGNUM *priv_key = NULL;
 	int bits = DH_bits(dh);
 	const BIGNUM *p = NULL;
 	const BIGNUM *g = NULL;
 	const BIGNUM *q = NULL;
-	BIGNUM *priv_key = NULL;
 	int ret;
 
 	if (!dh || !key || !pub_key || !DH_get0_priv_key(dh))
@@ -845,6 +840,7 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 	ret = dh_do_crypto(dh_sess);
 	if (!ret) {
 		fprintf(stderr, "failed to generate DH shared key\n");
+		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
 
@@ -894,7 +890,6 @@ static void uadk_e_delete_dh_meth(void)
 	uadk_dh_method = NULL;
 }
 
-
 int uadk_e_bind_dh(ENGINE *e)
 {
 	pthread_spin_init(&g_dh_res.lock, PTHREAD_PROCESS_PRIVATE);
@@ -905,7 +900,6 @@ int uadk_e_bind_dh(ENGINE *e)
 void uadk_e_destroy_dh(void)
 {
 	pthread_spin_destroy(&g_dh_res.lock);
-
 	uadk_e_delete_dh_meth();
 	uadk_e_wd_dh_uninit();
 }
