@@ -1781,7 +1781,6 @@ exe_soft:
 
 static RSA_METHOD *uadk_e_get_rsa_sw_methods(void)
 {
-
 	/* meth: default rsa software method */
 	const RSA_METHOD *meth = RSA_PKCS1_OpenSSL();
 
