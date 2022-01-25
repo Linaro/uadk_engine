@@ -373,11 +373,6 @@ static int uadk_e_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 			break;
 	}
 
-	if (i == size) {
-		*cipher = NULL;
-		return 0;
-	}
-
 	switch (nid) {
 	case NID_aes_128_cbc:
 		*cipher = uadk_aes_128_cbc;
