@@ -319,10 +319,15 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
-	if (!uadk_e_bind_ecc(e))
-		fprintf(stderr, "uadk bind ecc failed\n");
-	else
-		uadk_ecc = 1;
+	/* find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
+	dev = wd_get_accel_dev("ecdsa");
+	if (dev) {
+		if (!uadk_e_bind_ecc(e))
+			fprintf(stderr, "uadk bind ecc failed\n");
+		else
+			uadk_ecc = 1;
+		free(dev);
+	}
 }
 
 /*
@@ -349,17 +354,15 @@ static int bind_fn(ENGINE *e, const char *id)
 	    uadk_dh_nosva) {
 		async_module_init_v1();
 		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler_v1);
-		goto set_ctrl_cmd;
 	}
 #endif
-	async_module_init();
-	pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
-
 	bind_fn_uadk_alg(e);
 
-#ifdef KAE
-set_ctrl_cmd:
-#endif
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc) {
+		async_module_init();
+		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
+	}
+
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
 	if (ret != 1) {
 		fprintf(stderr, "failed to set ctrl function\n");
