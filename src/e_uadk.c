@@ -205,6 +205,7 @@ static int uadk_destroy(ENGINE *e)
 		hpre_destroy();
 	if (uadk_dh_nosva)
 		hpre_dh_destroy();
+	kae_debug_close_log();
 #endif
 
 	if (uadk_cipher)
@@ -348,6 +349,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	}
 
 #ifdef KAE
+	kae_debug_init_log();
 	bind_fn_kae_alg(e);
 
 	if (uadk_cipher_nosva || uadk_digest_nosva || uadk_rsa_nosva ||
