@@ -986,7 +986,7 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req,
 	struct wd_dtb wd_dq;
 	struct wd_dtb wd_dp;
 
-	key_bits = wd_rsa_key_bits(ctx);
+	key_bits = wd_rsa_get_key_bits(ctx);
 	key_size = key_bits >> BIT_BYTES_SHIFT;
 	wd_rsa_get_kg_out_params(out, &wd_d, &wd_n);
 	wd_rsa_get_kg_out_crt_params(out, &wd_qinv, &wd_dq, &wd_dp);
