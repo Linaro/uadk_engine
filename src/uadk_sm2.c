@@ -422,7 +422,7 @@ static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 	}
 
 	b_s = (void *)ECDSA_SIG_get0_s((const ECDSA_SIG *)e_sig);
-	if (!b_r) {
+	if (!b_s) {
 		fprintf(stderr, "failed to get s\n");
 		ret = -EINVAL;
 		goto free_der;
