@@ -49,7 +49,7 @@
 #define UADK_DO_SOFT			(-0xE0)
 #define UADK_E_POLL_SUCCESS		0
 #define UADK_E_INIT_SUCCESS		0
-#define CHECK_PADDING_FAIL		-1
+#define CHECK_PADDING_FAIL		(-1)
 #define ENV_ENABLED			1
 
 static RSA_METHOD *rsa_hw_meth;
@@ -312,7 +312,6 @@ static int check_rsa_prime_useful(const int *n, struct rsa_prime_param *param,
 		return UADK_E_SUCCESS;
 
 	err = ERR_peek_last_error();
-
 	if (ERR_GET_LIB(err) == ERR_LIB_BN &&
 	    ERR_GET_REASON(err) == BN_R_NO_INVERSE)
 		ERR_pop_to_mark();
@@ -500,18 +499,13 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
-		ret = RSA_padding_add_PKCS1_OAEP(buf, num, from, flen,
-						 NULL, 0);
+		ret = RSA_padding_add_PKCS1_OAEP(buf, num, from, flen, NULL, 0);
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
 	}
-	if (ret <= 0)
-		ret = UADK_E_FAIL;
-	else
-		ret = UADK_E_SUCCESS;
 
 	return ret;
 }
@@ -530,7 +524,7 @@ static int check_rsa_pridec_padding(unsigned char *to, int num,
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, len, num,
-		      NULL, 0);
+						   NULL, 0);
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
