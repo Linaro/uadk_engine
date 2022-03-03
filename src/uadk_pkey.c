@@ -184,9 +184,6 @@ static int uadk_e_wd_ecc_general_init(struct uacce_dev *dev,
 	struct wd_ctx_config *ctx_cfg;
 	int ret, i;
 
-	if (ecc_res.ctx_res)
-		return 0;
-
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
 		return -ENOMEM;
@@ -256,7 +253,7 @@ static void uadk_wd_ecc_uninit(void)
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
 	int i, ret;
 
-	if (!ctx_cfg)
+	if (ecc_res.pid != getpid())
 		return;
 
 	ret = uadk_e_is_env_enabled("ecc");
