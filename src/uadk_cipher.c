@@ -550,8 +550,9 @@ static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	return async_register_poll_fn(ASYNC_TASK_CIPHER,
-				      uadk_e_cipher_env_poll);
+	async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_e_cipher_env_poll);
+
+	return 0;
 }
 
 static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
@@ -596,7 +597,9 @@ static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 	if (ret)
 		goto err_freectx;
 
-	return async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_e_cipher_poll);
+	async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_e_cipher_poll);
+
+	return 0;
 
 err_freectx:
 	for (j = 0; j < i; j++)

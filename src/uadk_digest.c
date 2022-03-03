@@ -374,8 +374,9 @@ static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	return async_register_poll_fn(ASYNC_TASK_DIGEST,
-				      uadk_e_digest_env_poll);
+	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_env_poll);
+
+	return 0;
 }
 
 static int uadk_e_wd_digest_init(struct uacce_dev *dev)
@@ -415,7 +416,9 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 	if (ret)
 		goto err_freectx;
 
-	return async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_poll);
+	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_poll);
+
+	return 0;
 
 err_freectx:
 	for (j = 0; j < i; j++)

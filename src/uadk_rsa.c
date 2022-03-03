@@ -713,7 +713,9 @@ static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	return async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_env_poll);
+	async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_env_poll);
+
+	return 0;
 }
 
 static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
@@ -753,7 +755,9 @@ static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
 	if (ret)
 		goto free_ctx;
 
-	return async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_poll);
+	async_register_poll_fn(ASYNC_TASK_RSA, uadk_e_rsa_poll);
+
+	return 0;
 
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
