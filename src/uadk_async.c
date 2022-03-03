@@ -22,11 +22,9 @@
 #include "uadk.h"
 #include "uadk_async.h"
 
-#define MAX_ALG_SIZE 6
-
 static struct async_poll_queue poll_queue;
 
-static async_recv_t async_recv_func[MAX_ALG_SIZE];
+static async_recv_t async_recv_func[ASYNC_TASK_MAX];
 
 static void async_fd_cleanup(ASYNC_WAIT_CTX *ctx, const void *key,
 			     OSSL_ASYNC_FD readfd, void *custom)
@@ -292,13 +290,14 @@ int async_wake_job(ASYNC_JOB *job)
 	return ret;
 }
 
-int async_register_poll_fn(int type, async_recv_t func)
+void async_register_poll_fn(int type, async_recv_t func)
 {
-	if (type < 0 || type >= MAX_ALG_SIZE)
-		return -1;
+	if (type < 0 || type >= ASYNC_TASK_MAX) {
+		fprintf(stderr, "alg type is error, type= %d.\n", type);
+		return;
+	}
 
 	async_recv_func[type] = func;
-	return 0;
 }
 
 static void *async_poll_process_func(void *args)

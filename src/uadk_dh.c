@@ -296,7 +296,9 @@ static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)
 	if (ret)
 		return ret;
 
-	return async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_env_poll);
+	async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_env_poll);
+
+	return 0;
 }
 
 static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev)
@@ -335,7 +337,9 @@ static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev
 	if (ret)
 		goto free_ctx;
 
-	return async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_poll);
+	async_register_poll_fn(ASYNC_TASK_DH, uadk_e_dh_poll);
+
+	return 0;
 
 free_ctx:
 	for (i = 0; i < CTX_NUM; i++) {
