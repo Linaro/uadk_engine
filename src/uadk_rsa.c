@@ -902,7 +902,6 @@ static int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 	if (!rsa_sess->is_pubkey_ready) {
 		wd_rsa_get_pubkey(rsa_sess->sess, &pubkey);
 		wd_rsa_get_pubkey_params(pubkey, &wd_e, &wd_n);
-		memcpy(rsa_sess->req.src, in_buf, rsa_sess->req.src_bytes);
 		wd_e->dsize = BN_bn2bin(pubkey_param->e,
 					(unsigned char *)wd_e->data);
 		wd_n->dsize = BN_bn2bin(pubkey_param->n,
