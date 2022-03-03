@@ -572,7 +572,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_SM2:
 		ret = uadk_sm2_create_pmeth(&pkey_meth);
 		if (!ret) {
-			fprintf(stderr, "failed to register sm2 pmeth");
+			fprintf(stderr, "failed to register sm2 pmeth.\n");
 			return 0;
 		}
 		*pmeth = pkey_meth.sm2;
@@ -580,7 +580,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_EC:
 		ret = uadk_ec_create_pmeth(&pkey_meth);
 		if (!ret) {
-			fprintf(stderr, "failed to register ec pmeth");
+			fprintf(stderr, "failed to register ec pmeth.\n");
 			return 0;
 		}
 		*pmeth = pkey_meth.ec;
@@ -588,7 +588,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_X448:
 		ret = uadk_x448_create_pmeth(&pkey_meth);
 		if (!ret) {
-			fprintf(stderr, "failed to register x448 pmeth");
+			fprintf(stderr, "failed to register x448 pmeth.\n");
 			return 0;
 		}
 		*pmeth = pkey_meth.x448;
@@ -596,7 +596,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	case EVP_PKEY_X25519:
 		ret = uadk_x25519_create_pmeth(&pkey_meth);
 		if (!ret) {
-			fprintf(stderr, "failed to register x25519 pmeth");
+			fprintf(stderr, "failed to register x25519 pmeth.\n");
 			return 0;
 		}
 		*pmeth = pkey_meth.x25519;
