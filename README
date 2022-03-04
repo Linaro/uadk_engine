@@ -67,60 +67,60 @@ Testing
 ```
 1. Cipher
 ```
-openssl enc -aes-128-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-128-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-128-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-128-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-128-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-128-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-192-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -aes-256-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -sm4-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -sm4-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -sm4-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -sm4-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -des-ede3-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -des-ede3-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -des-ede3-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl enc -des-ede3-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk -p
-openssl speed -engine uadk -async_jobs 1 -evp aes-128-cbc
-openssl speed -engine uadk -async_jobs 1 -evp sm4-cbc
-openssl speed -engine uadk -async_jobs 1 -evp des-ede3-cbc
+openssl enc -aes-128-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-128-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-128-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-128-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-128-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-128-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-192-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-ctr -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -aes-256-ctr -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -sm4-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -sm4-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -sm4-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -sm4-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -des-ede3-cbc -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -des-ede3-cbc -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -des-ede3-ecb -a -in data -out data.en -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl enc -des-ede3-ecb -a -d -in data.en -out data.de -pass pass:123456  -K abc -iv abc -engine uadk_engine -p
+openssl speed -engine uadk_engine -async_jobs 1 -evp aes-128-cbc
+openssl speed -engine uadk_engine -async_jobs 1 -evp sm4-cbc
+openssl speed -engine uadk_engine -async_jobs 1 -evp des-ede3-cbc
 ```
 2. RSA
 ```
-openssl genrsa -out prikey.pem -engine uadk 2048
-openssl rsa -in prikey.pem -pubout -out pubkey.pem -engine uadk
-openssl rsautl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt -engine uadk
-openssl rsautl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt -engine uadk
-openssl rsautl -sign -in msg.txt -inkey prikey.pem -out signed.txt -engine uadk
-openssl rsautl -verify -in signed.txt -inkey pubkey.pem -pubin -out verified.txt -engine uadk
-openssl speed -elapsed -engine uadk rsa2048
-openssl speed -elapsed -engine uadk -async_jobs 10 rsa2048
+openssl genrsa -out prikey.pem -engine uadk_engine 2048
+openssl rsa -in prikey.pem -pubout -out pubkey.pem -engine uadk_engine
+openssl rsautl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt -engine uadk_engine
+openssl rsautl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt -engine uadk_engine
+openssl rsautl -sign -in msg.txt -inkey prikey.pem -out signed.txt -engine uadk_engine
+openssl rsautl -verify -in signed.txt -inkey pubkey.pem -pubin -out verified.txt -engine uadk_engine
+openssl speed -elapsed -engine uadk_engine rsa2048
+openssl speed -elapsed -engine uadk_engine -async_jobs 10 rsa2048
 ```
 3. SM3
 ```
-openssl sm3 -engine uadk data
+openssl sm3 -engine uadk_engine data
 ```
 4. MD5
 ```
-openssl speed -engine uadk -async_jobs 1 -evp md5
+openssl speed -engine uadk_engine -async_jobs 1 -evp md5
 ```
 5. SHA
 ```
-openssl sha1 -engine uadk data
-openssl sha256 -engine uadk data
-openssl sha512 -engine uadk data
+openssl sha1 -engine uadk_engine data
+openssl sha256 -engine uadk_engine data
+openssl sha512 -engine uadk_engine data
 ```
 6. DH
 
@@ -142,9 +142,9 @@ openssl pkey -in privatekey2.pem -pubout -out publickey2.pem -engine uadk
 [step 4] After exchanging public key, each user can derive the shared secret:
 ```
 openssl pkeyutl -derive -inkey privatekey1.pem -peerkey publickey2.pem -out
-secret1.bin -engine uadk
+secret1.bin -engine uadk_engine
 openssl pkeyutl -derive -inkey privatekey2.pem -peerkey publickey1.pem -out
-secret2.bin -engine uadk
+secret2.bin -engine uadk_engine
 ```
 [step 5] Check secret1.bin and secret2.bin:
 ```
@@ -156,15 +156,15 @@ secret1.bin and secret2.bin should be the same.
 
 7. SM2
 ```
-openssl speed -elapsed -engine uadk sm2
-openssl speed -elapsed -engine uadk -async_jobs 1 sm2
+openssl speed -elapsed -engine uadk_engine sm2
+openssl speed -elapsed -engine uadk_engine -async_jobs 1 sm2
 openssl ecparam -genkey -name SM2 -out SM2PrivateKey.pem
 openssl ec -in SM2PrivateKey.pem -pubout -out SM2PublicKey.pem
 ```
 8. ECDSA
 ```
-openssl speed -elapsed -engine uadk ecdsap256
-openssl speed -elapsed -engine uadk -async_jobs 1 ecdsap256
+openssl speed -elapsed -engine uadk_engine ecdsap256
+openssl speed -elapsed -engine uadk_engine -async_jobs 1 ecdsap256
 ```
 
 Environment variable of uadk engine
@@ -184,7 +184,7 @@ openssl_cnf = openssl_def
 [openssl_def]
 engines = engine_section
 [engine_section]
-uadk = uadk_section
+uadk_engine = uadk_section
 [uadk_section]
 UADK_CMD_ENABLE_RSA_ENV = 1
 UADK_CMD_ENABLE_DH_ENV = 1
