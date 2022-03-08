@@ -87,6 +87,7 @@ static int cipher_920_nids[] = {
 	NID_sm4_cbc,
 	NID_des_ede3_cbc,
 	NID_des_ede3_ecb,
+	NID_sm4_ecb,
 	0,
 };
 
@@ -103,7 +104,6 @@ static int cipher_930_nids[] = {
 	NID_aes_128_xts,
 	NID_aes_256_xts,
 	NID_sm4_cbc,
-	NID_sm4_ecb,
 	NID_des_ede3_cbc,
 	NID_des_ede3_ecb,
 	NID_aes_128_cfb128,
@@ -984,6 +984,11 @@ static int bind_v2_cipher(void)
 			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
 			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+	UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
+			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
+			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+
 	return 0;
 }
 
@@ -1037,10 +1042,6 @@ static int bind_v3_cipher(void)
 			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
 			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
 			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 16, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
 
 	return 0;
 }
@@ -1088,6 +1089,8 @@ static void destroy_v2_cipher(void)
 	uadk_des_ede3_cbc = 0;
 	EVP_CIPHER_meth_free(uadk_des_ede3_ecb);
 	uadk_des_ede3_ecb = 0;
+	EVP_CIPHER_meth_free(uadk_sm4_ecb);
+	uadk_sm4_ecb = 0;
 }
 
 static void destroy_v3_cipher(void)
@@ -1116,8 +1119,6 @@ static void destroy_v3_cipher(void)
 	uadk_sm4_ofb128 = 0;
 	EVP_CIPHER_meth_free(uadk_sm4_ctr);
 	uadk_sm4_ctr = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_ecb);
-	uadk_sm4_ecb = 0;
 }
 
 void uadk_e_destroy_cipher(void)

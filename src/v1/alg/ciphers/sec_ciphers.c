@@ -85,6 +85,7 @@ static int g_known_cipher_nids[CIPHERS_COUNT] = {
 	NID_sm4_ctr,
 	NID_sm4_cbc,
 	NID_sm4_ofb128,
+	NID_sm4_ecb,
 };
 
 #define SEC_CIPHERS_RETURN_FAIL_IF(cond, mesg, ret) \
