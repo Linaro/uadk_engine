@@ -493,7 +493,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 
 	priv->state = SEC_DIGEST_INIT;
 	ret = uadk_e_init_digest();
-	if (!ret) {
+	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
 		fprintf(stderr, "uadk failed to initialize digest.\n");
 		goto soft_init;
@@ -507,7 +507,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		}
 	}
 
-	if (i == digest_counts) {
+	if (unlikely(i == digest_counts)) {
 		fprintf(stderr, "failed to setup the private ctx.\n");
 		return 0;
 	}
@@ -519,11 +519,10 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 
 	priv->data = malloc(DIGEST_BLOCK_SIZE);
-	if (!priv->data) {
+	if (unlikely(!priv->data)) {
 		wd_digest_free_sess(priv->sess);
 		return 0;
 	}
-	memset(priv->data, 0, DIGEST_BLOCK_SIZE);
 
 	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
 
@@ -546,7 +545,8 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 
 	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
 		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
-		memcpy(priv->data + priv->last_update_bufflen, tmpdata, copy_to_bufflen);
+		uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
+			    copy_to_bufflen);
 
 		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
 		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
@@ -567,10 +567,9 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		}
 
 		priv->last_update_bufflen = 0;
-		memset(priv->data, 0, DIGEST_BLOCK_SIZE);
 		if (left_len <= DIGEST_BLOCK_SIZE) {
 			priv->last_update_bufflen = left_len;
-			memcpy(priv->data, tmpdata, priv->last_update_bufflen);
+			uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
 			break;
 		}
 	}
@@ -604,7 +603,7 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 		goto soft_update;
 
 	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
-		memcpy(priv->data + priv->last_update_bufflen, data, data_len);
+		uadk_memcpy(priv->data + priv->last_update_bufflen, data, data_len);
 		priv->last_update_bufflen += data_len;
 		return 1;
 	}
@@ -697,7 +696,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	ret = async_setup_async_event_notification(&op);
-	if (!ret) {
+	if (unlikely(!ret)) {
 		fprintf(stderr, "failed to setup async event notification.\n");
 		return 0;
 	}
