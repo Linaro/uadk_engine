@@ -846,14 +846,15 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	struct sched_params params = {0};
 	int ret;
 
+	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
+	priv->req.iv = priv->iv;
+
 	ret = uadk_e_init_cipher();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
 		fprintf(stderr, "uadk failed to init cipher HW!\n");
+		return;
 	}
-
-	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
-	priv->req.iv = priv->iv;
 
 	/*
 	 * The internal RR scheduler used by environment variables,
