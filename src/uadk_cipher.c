@@ -104,6 +104,7 @@ static int cipher_930_nids[] = {
 	NID_aes_128_xts,
 	NID_aes_256_xts,
 	NID_sm4_cbc,
+	NID_sm4_ecb,
 	NID_des_ede3_cbc,
 	NID_des_ede3_ecb,
 	NID_aes_128_cfb128,
