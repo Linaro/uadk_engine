@@ -1,6 +1,6 @@
 #!/bin/bash
 
-chmod 666 /dev/hisi_*
+sudo chmod 666 /dev/hisi_*
 
 if [ ! -n "$1" ]; then
 	engine_id=uadk_engine
@@ -22,6 +22,12 @@ if [[ $algs =~ "SM3" ]]; then
 	echo "testing SM3"
 	openssl speed -engine $engine_id -evp sm3
 	openssl speed -engine $engine_id -async_jobs 1 -evp sm3
+fi
+
+if [[ $algs =~ "SM2" ]]; then
+	echo "testing SM2"
+	openssl speed -engine $engine_id -evp sm2
+	openssl speed -engine $engine_id -async_jobs 1 -evp sm2
 fi
 
 if [[ $algs =~ "SHA" ]]; then
@@ -58,6 +64,12 @@ if [[ $algs =~ "AES" ]]; then
 	openssl speed -engine $engine_id -async_jobs 1 -evp aes-128-xts
 	openssl speed -engine $engine_id -evp aes-256-xts
 	openssl speed -engine $engine_id -async_jobs 1 -evp aes-256-xts
+	openssl speed -engine $engine_id -evp aes-128-ctr
+	openssl speed -engine $engine_id -async_jobs 1 -evp aes-128-ctr
+	openssl speed -engine $engine_id -evp aes-192-ctr
+	openssl speed -engine $engine_id -async_jobs 1 -evp aes-192-ctr
+	openssl speed -engine $engine_id -evp aes-256-ctr
+	openssl speed -engine $engine_id -async_jobs 1 -evp aes-256-ctr
 fi
 
 if [[ $algs =~ "SM4-CBC" ]]; then
@@ -133,4 +145,29 @@ if [[ $algs =~ "id-ecPublicKey" ]]; then
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhp521
 	openssl speed -elapsed -engine $engine_id ecdhbrp384r1
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhbrp384r1
+fi
+
+#DH
+if [[ $algs =~ "DH" ]]; then
+	echo "testing DH"
+	#1. Generate global public parameters, and save them in the file dhparam.pem:
+	openssl dhparam -out dhparam.pem 2048
+
+	#2. Generate own private key:
+	openssl genpkey -paramfile dhparam.pem -out privatekey1.pem
+	openssl genpkey -paramfile dhparam.pem -out privatekey2.pem
+
+	#3. Generate public key:
+	openssl pkey -in privatekey1.pem -pubout -out publickey1.pem -engine $engine_id
+	openssl pkey -in privatekey2.pem -pubout -out publickey2.pem -engine $engine_id
+
+	#4. After exchanging public key, each user can derive the shared secret:
+	openssl pkeyutl -derive -inkey privatekey1.pem -peerkey publickey2.pem -out secret1.bin -engine $engine_id
+	openssl pkeyutl -derive -inkey privatekey2.pem -peerkey publickey1.pem -out secret2.bin -engine $engine_id
+
+	#5. Check secret1.bin and secret2.bin:
+	cmp secret1.bin secret2.bin
+	xxd secret1.bin
+	xxd secret2.bin
+	#secret1.bin and secret2.bin should be same.
 fi
