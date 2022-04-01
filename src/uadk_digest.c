@@ -537,7 +537,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
-	const unsigned char *tmpdata = (const unsigned char *)data;
+	unsigned char *tmpdata = (unsigned char *)data;
 	size_t left_len = data_len;
 	int copy_to_bufflen;
 	int ret;
@@ -545,13 +545,17 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 	priv->req.has_next = DIGEST_DOING;
 
 	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
-		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
-		uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
-			    copy_to_bufflen);
+		if (priv->last_update_bufflen > 0) {
+			copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
+			memcpy(priv->data + priv->last_update_bufflen, tmpdata,
+					copy_to_bufflen);
+			priv->req.in = priv->data;
+		} else {
+			copy_to_bufflen = DIGEST_BLOCK_SIZE;
+			priv->req.in = tmpdata;
+		}
 
-		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
 		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
-		priv->req.in = priv->data;
 		priv->req.out = priv->out;
 		left_len -= copy_to_bufflen;
 		tmpdata += copy_to_bufflen;
@@ -570,7 +574,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		priv->last_update_bufflen = 0;
 		if (left_len <= DIGEST_BLOCK_SIZE) {
 			priv->last_update_bufflen = left_len;
-			uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
+			memcpy(priv->data, tmpdata, priv->last_update_bufflen);
 			break;
 		}
 	}
@@ -604,7 +608,7 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 		goto soft_update;
 
 	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
-		uadk_memcpy(priv->data + priv->last_update_bufflen, data, data_len);
+		memcpy(priv->data + priv->last_update_bufflen, data, data_len);
 		priv->last_update_bufflen += data_len;
 		return 1;
 	}
