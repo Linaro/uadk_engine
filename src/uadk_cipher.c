@@ -851,6 +851,9 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
 
+	if (priv->switch_flag == UADK_DO_SOFT)
+		return;
+
 	ret = uadk_e_init_cipher();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
