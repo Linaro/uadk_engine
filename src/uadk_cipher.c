@@ -763,10 +763,13 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 
 	switch (priv->setup.mode) {
 	case WD_CIPHER_CBC:
-		if (priv->req.op_type == WD_CIPHER_ENCRYPTION) {
-			priv->req.dst += priv->req.in_bytes;
-			memcpy(priv->iv, priv->req.dst - iv_bytes, iv_bytes);
-		}
+		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
+			memcpy(priv->iv, priv->req.dst + priv->req.in_bytes - iv_bytes,
+			       iv_bytes);
+		else
+			memcpy(priv->iv, priv->req.src  + priv->req.in_bytes - iv_bytes,
+			       iv_bytes);
+
 		break;
 	case WD_CIPHER_OFB:
 		for (i = 0; i < IV_LEN; i++) {
@@ -776,13 +779,13 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 		memcpy(priv->iv, K, iv_bytes);
 		break;
 	case WD_CIPHER_CFB:
-		if (priv->req.op_type == WD_CIPHER_ENCRYPTION) {
-			priv->req.dst += priv->req.in_bytes;
-			memcpy(priv->iv, priv->req.dst - iv_bytes, iv_bytes);
-		} else {
-			priv->req.src += priv->req.in_bytes;
-			memcpy(priv->iv, priv->req.src - iv_bytes, iv_bytes);
-		}
+		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
+			memcpy(priv->iv, priv->req.dst + priv->req.in_bytes - iv_bytes,
+			       iv_bytes);
+		else
+			memcpy(priv->iv, priv->req.src + priv->req.in_bytes - iv_bytes,
+			       iv_bytes);
+
 		break;
 	case WD_CIPHER_CTR:
 		ctr_iv_inc(priv->iv, priv->req.in_bytes >> CTR_MODE_LEN_SHIFT);
