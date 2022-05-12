@@ -36,6 +36,7 @@
 #define BYTE_BITS		8
 #define IV_LEN			16
 #define ENV_ENABLED		1
+#define MAX_KEY_LEN		64
 
 struct cipher_engine {
 	struct wd_ctx_config ctx_cfg;
@@ -57,7 +58,7 @@ struct cipher_priv_ctx {
 	struct wd_cipher_sess_setup setup;
 	struct wd_cipher_req req;
 	unsigned char iv[IV_LEN];
-	const unsigned char *key;
+	unsigned char key[MAX_KEY_LEN];
 	int switch_flag;
 	void *sw_ctx_data;
 	/* Crypto small packet offload threshold */
@@ -694,7 +695,7 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	if (unlikely(ret != 1))
 		return 0;
 
-	priv->key = key;
+	memcpy(priv->key, key, EVP_CIPHER_CTX_key_length(ctx));
 	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
 
 	return 1;
