@@ -240,6 +240,10 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 {
 	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
 
+	/* Prevent double-free after the copy is used */
+	if (md_ctx->copy)
+		return;
+
 	if (ctx != NULL) {
 		if (ctx->md_data) {
 			OPENSSL_free(ctx->md_data);
@@ -641,7 +645,9 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 {
 	int ret;
 
-	/* Fix me: not support switch the soft work as input is lower  */
+	if (priv->req.in_bytes <= priv->switch_threshold &&
+		priv->state == SEC_DIGEST_INIT)
+		return 0;
 
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
 	if (ret) {
@@ -743,6 +749,7 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 
+	/* Prevent double-free after the copy is used */
 	if (!priv || priv->copy)
 		return 1;
 
