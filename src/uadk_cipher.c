@@ -504,6 +504,7 @@ static int sched_single_poll_policy(handle_t h_sched_ctx,
 static int uadk_e_cipher_poll(void *ctx)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *) ctx;
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	/* Poll one packet currently */
 	int expt = 1;
@@ -520,9 +521,11 @@ static int uadk_e_cipher_poll(void *ctx)
 			return 0;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
 
-	return ret;
+	fprintf(stderr, "failed to recv msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static int uadk_e_cipher_env_poll(void *ctx)

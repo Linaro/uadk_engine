@@ -204,6 +204,7 @@ static __u32 dh_pick_next_ctx(handle_t sched_ctx,
 
 static int uadk_e_dh_poll(void *ctx)
 {
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	int expect = 1;
 	int idx = 1;
@@ -215,9 +216,11 @@ static int uadk_e_dh_poll(void *ctx)
 			return UADK_E_POLL_SUCCESS;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
 
-	return ret;
+	fprintf(stderr, "failed to recv msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static void uadk_e_dh_cb(void *req_t)

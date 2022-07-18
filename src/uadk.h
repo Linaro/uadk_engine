@@ -22,8 +22,9 @@
 #include <uadk/wd_sched.h>
 #include "uadk_utils.h"
 
-#define ARRAY_SIZE(x)	(sizeof(x) / sizeof((x)[0]))
-#define ENV_STRING_LEN	256
+#define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
+#define ENV_STRING_LEN		256
+#define ENGINE_RECV_MAX_CNT	60000000
 
 enum {
 	KUNPENG920,

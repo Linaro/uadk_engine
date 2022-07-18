@@ -656,6 +656,7 @@ static int rsa_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 
 static int uadk_e_rsa_poll(void *ctx)
 {
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	int expt = 1;
 	int ret;
@@ -666,9 +667,11 @@ static int uadk_e_rsa_poll(void *ctx)
 			return UADK_E_POLL_SUCCESS;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
 
-	return ret;
+	fprintf(stderr, "failed to recv msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static struct rsa_res_config rsa_res_config = {
