@@ -113,6 +113,7 @@ void uadk_ecc_cb(void *req_t)
 static int uadk_ecc_poll(void *ctx)
 {
 	unsigned int recv = 0;
+	__u64 rx_cnt = 0;
 	int expt = 1;
 	int ret;
 
@@ -122,9 +123,11 @@ static int uadk_ecc_poll(void *ctx)
 			return 0;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
-	} while (ret == -EAGAIN);
+	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
 
-	return ret;
+	fprintf(stderr, "failed to recv msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 /* make resource configure static */
