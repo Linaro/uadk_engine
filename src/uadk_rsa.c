@@ -663,7 +663,7 @@ static int uadk_e_rsa_poll(void *ctx)
 
 	do {
 		ret = wd_rsa_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (recv >= expt)
+		if (recv == expt)
 			return UADK_E_POLL_SUCCESS;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
@@ -689,6 +689,7 @@ static struct rsa_res_config rsa_res_config = {
 
 static int uadk_e_rsa_env_poll(void *ctx)
 {
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	/* Poll one packet currently */
 	int expt = 1;
@@ -696,11 +697,13 @@ static int uadk_e_rsa_env_poll(void *ctx)
 
 	do {
 		ret = wd_rsa_poll(expt, &recv);
-		if (ret < 0)
+		if (ret < 0 || recv == expt)
 			return ret;
-	} while (recv < expt);
+	} while (rx_cnt++ < ENGINE_RECV_MAX_CNT);
 
-	return ret;
+	fprintf(stderr, "failed to poll msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static int uadk_e_wd_rsa_env_init(struct uacce_dev *dev)
