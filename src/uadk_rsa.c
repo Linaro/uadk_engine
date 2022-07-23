@@ -53,7 +53,6 @@
 #define ENV_ENABLED			1
 
 static RSA_METHOD *rsa_hw_meth;
-static RSA_METHOD *rsa_sw_meth;
 
 struct bignum_st {
 	BN_ULONG *d;
@@ -1737,25 +1736,11 @@ exe_soft:
 				   (flen, from, to, rsa, padding);
 }
 
-static RSA_METHOD *uadk_e_get_rsa_sw_methods(void)
-{
-	/* meth: default rsa software method */
-	const RSA_METHOD *meth = RSA_PKCS1_OpenSSL();
-
-	rsa_sw_meth = RSA_meth_new("rsa soft method", 0);
-	(void)RSA_meth_set_pub_enc(rsa_sw_meth, RSA_meth_get_pub_enc(meth));
-	(void)RSA_meth_set_priv_enc(rsa_sw_meth, RSA_meth_get_priv_enc(meth));
-	(void)RSA_meth_set_pub_dec(rsa_sw_meth, RSA_meth_get_pub_dec(meth));
-	(void)RSA_meth_set_priv_dec(rsa_sw_meth, RSA_meth_get_priv_dec(meth));
-	(void)RSA_meth_set_keygen(rsa_sw_meth, uadk_e_soft_rsa_keygen);
-	(void)RSA_meth_set_mod_exp(rsa_sw_meth, RSA_meth_get_mod_exp(meth));
-	(void)RSA_meth_set_bn_mod_exp(rsa_sw_meth,
-				      RSA_meth_get_bn_mod_exp(meth));
-
-	return rsa_sw_meth;
-}
-
-static RSA_METHOD *uadk_e_get_rsa_hw_methods(void)
+/**
+ * uadk_get_rsa_method() - Set rsa hardware methods of the RSA implementation which
+ * can be called from ENGINE structure.
+ */
+static RSA_METHOD *uadk_e_get_rsa_methods(void)
 {
 	if (rsa_hw_meth)
 		return rsa_hw_meth;
@@ -1780,35 +1765,11 @@ static RSA_METHOD *uadk_e_get_rsa_hw_methods(void)
 	return rsa_hw_meth;
 }
 
-/**
- * uadk_get_rsa_method() - Set rsa methods of the RSA implementation which
- * can be called from ENGINE structure.
- */
-static RSA_METHOD *uadk_e_get_rsa_methods(void)
-{
-	struct uacce_dev *dev;
-
-	dev = wd_get_accel_dev("rsa");
-	if (!dev)
-		return uadk_e_get_rsa_sw_methods();
-
-	free(dev);
-	return uadk_e_get_rsa_hw_methods();
-}
-
 static void uadk_e_delete_rsa_meth(void)
 {
-	if (!rsa_hw_meth && !rsa_sw_meth)
-		return;
-
 	if (rsa_hw_meth) {
 		RSA_meth_free(rsa_hw_meth);
 		rsa_hw_meth = NULL;
-	}
-
-	if (rsa_sw_meth) {
-		RSA_meth_free(rsa_sw_meth);
-		rsa_sw_meth = NULL;
 	}
 }
 
