@@ -32,16 +32,16 @@ enum {
 };
 
 extern const char *engine_uadk_id;
-extern int uadk_e_bind_cipher(ENGINE *e);
-extern void uadk_e_destroy_cipher(void);
-extern int uadk_e_bind_digest(ENGINE *e);
-extern void uadk_e_destroy_digest(void);
-extern int uadk_e_bind_rsa(ENGINE *e);
-extern void uadk_e_destroy_rsa(void);
-extern int uadk_e_bind_dh(ENGINE *e);
-extern void uadk_e_destroy_dh(void);
-extern int uadk_e_bind_ecc(ENGINE *e);
-extern void uadk_e_destroy_ecc(void);
-extern int uadk_e_is_env_enabled(const char *alg_name);
-extern int uadk_e_set_env(const char *var_name, int numa_id);
+int uadk_e_bind_cipher(ENGINE *e);
+void uadk_e_destroy_cipher(void);
+int uadk_e_bind_digest(ENGINE *e);
+void uadk_e_destroy_digest(void);
+int uadk_e_bind_rsa(ENGINE *e);
+void uadk_e_destroy_rsa(void);
+int uadk_e_bind_dh(ENGINE *e);
+void uadk_e_destroy_dh(void);
+int uadk_e_bind_ecc(ENGINE *e);
+void uadk_e_destroy_ecc(void);
+int uadk_e_is_env_enabled(const char *alg_name);
+int uadk_e_set_env(const char *var_name, int numa_id);
 #endif
