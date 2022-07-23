@@ -212,7 +212,7 @@ static int uadk_e_dh_poll(void *ctx)
 
 	do {
 		ret = wd_dh_poll_ctx(idx, expect, &recv);
-		if (recv >= expect)
+		if (recv == expect)
 			return UADK_E_POLL_SUCCESS;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
@@ -273,6 +273,7 @@ static struct dh_res_config dh_res_config = {
 
 static int uadk_e_dh_env_poll(void *ctx)
 {
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	/* Poll one packet currently */
 	int expt = 1;
@@ -280,11 +281,13 @@ static int uadk_e_dh_env_poll(void *ctx)
 
 	do {
 		ret = wd_dh_poll(expt, &recv);
-		if (ret < 0)
+		if (ret < 0 || recv == expt)
 			return ret;
-	} while (recv < expt);
+	} while (rx_cnt++ < ENGINE_RECV_MAX_CNT);
 
-	return ret;
+	fprintf(stderr, "failed to poll msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static int uadk_e_wd_dh_env_init(struct uacce_dev *dev)

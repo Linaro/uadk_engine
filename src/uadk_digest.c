@@ -343,7 +343,7 @@ static int uadk_e_digest_poll(void *ctx)
 
 	do {
 		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (recv >= expt)
+		if (recv == expt)
 			return 0;
 		else if (ret < 0 && ret != -EAGAIN)
 			return ret;
@@ -356,6 +356,7 @@ static int uadk_e_digest_poll(void *ctx)
 
 static int uadk_e_digest_env_poll(void *ctx)
 {
+	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	/* Poll one packet currently */
 	int expt = 1;
@@ -363,11 +364,13 @@ static int uadk_e_digest_env_poll(void *ctx)
 
 	do {
 		ret = wd_digest_poll(expt, &recv);
-		if (ret < 0)
+		if (ret < 0 || recv == expt)
 			return ret;
-	} while (recv < expt);
+	} while (rx_cnt++ < ENGINE_RECV_MAX_CNT);
 
-	return ret;
+	fprintf(stderr, "failed to poll msg: timeout!\n");
+
+	return -ETIMEDOUT;
 }
 
 static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
