@@ -44,15 +44,6 @@ struct ecc_res_config {
 	int numa_id;
 };
 
-typedef struct uadk_ecc_sess {
-	handle_t sess;
-	struct wd_ecc_sess_setup setup;
-	struct wd_ecc_req req;
-	int is_pubkey_ready;
-	int is_privkey_ready;
-	int key_size;
-} uadk_ecc_sess_t;
-
 /* ecc global hardware resource is saved here */
 struct ecc_res {
 	struct wd_ctx_config *ctx_res;

@@ -129,18 +129,18 @@ err:
 static int get_smallest_hw_keybits(int bits)
 {
 	/* ec curve order width */
-	if (bits > 384)
-		return 521;
-	else if (bits > 320)
-		return 384;
-	else if (bits > 256)
-		return 320;
-	else if (bits > 192)
-		return 256;
-	else if (bits > 128)
-		return 192;
+	if (bits > ECC384BITS)
+		return ECC521BITS;
+	else if (bits > ECC320BITS)
+		return ECC384BITS;
+	else if (bits > ECC256BITS)
+		return ECC320BITS;
+	else if (bits > ECC192BITS)
+		return ECC256BITS;
+	else if (bits > ECC128BITS)
+		return ECC192BITS;
 	else
-		return 128;
+		return ECC128BITS;
 }
 
 static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
