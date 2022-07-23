@@ -34,6 +34,19 @@
 #define ECC384BITS      384
 #define ECC521BITS      521
 
+struct curve_param {
+	/* prime */
+	BIGNUM *p;
+	/* ecc coefficient 'a' */
+	BIGNUM *a;
+	/* ecc coefficient 'b' */
+	BIGNUM *b;
+	/* base point */
+	const EC_POINT *g;
+	/* order of base point */
+	const BIGNUM *order;
+};
+
 typedef ECDSA_SIG* (*PFUNC_SIGN_SIG)(const unsigned char *,
 				     int,
 				     const BIGNUM *,
@@ -70,58 +83,92 @@ static void init_dtb_param(void *dtb, char *start,
 	}
 }
 
-static int set_sess_setup_cv(const EC_GROUP *group,
-			     struct wd_ecc_curve_cfg *cv)
+static void fill_ecc_cv_param(struct wd_ecc_curve *pparam,
+			      struct curve_param *cv_param,
+			      BIGNUM *g_x, BIGNUM *g_y)
 {
-	struct wd_ecc_curve *pparam = cv->cfg.pparam;
-	BIGNUM *p, *a, *b, *xg, *yg, *order;
-	const EC_POINT *g;
-	BN_CTX *ctx;
-	int ret;
-
-	ctx = BN_CTX_new();
-	if (!ctx)
-		return -ENOMEM;
-
-	BN_CTX_start(ctx);
-	p = BN_CTX_get(ctx);
-	a = BN_CTX_get(ctx);
-	b = BN_CTX_get(ctx);
-	xg = BN_CTX_get(ctx);
-	yg = BN_CTX_get(ctx);
-
-	ret = uadk_get_curve(group, p, a, b, ctx);
-	if (ret)
-		goto err;
-
-	g = EC_GROUP_get0_generator(group);
-	ret = uadk_get_affine_coordinates(group, g, xg, yg, ctx);
-	if (ret)
-		goto err;
-
-	order = (BIGNUM *)EC_GROUP_get0_order(group);
-	pparam->p.dsize = BN_bn2bin(p, (void *)pparam->p.data);
-	pparam->a.dsize = BN_bn2bin(a, (void *)pparam->a.data);
-	/* a or b is all zero, but uadk not allow parameter length is zero */
+	pparam->p.dsize = BN_bn2bin(cv_param->p, (void *)pparam->p.data);
+	pparam->a.dsize = BN_bn2bin(cv_param->a, (void *)pparam->a.data);
 	if (!pparam->a.dsize) {
 		pparam->a.dsize = 1;
 		pparam->a.data[0] = 0;
 	}
-	pparam->b.dsize = BN_bn2bin(b, (void *)pparam->b.data);
+
+	pparam->b.dsize = BN_bn2bin(cv_param->b, (void *)pparam->b.data);
 	if (!pparam->b.dsize) {
 		pparam->b.dsize = 1;
 		pparam->b.data[0] = 0;
 	}
-	pparam->g.x.dsize = BN_bn2bin(xg, (void *)pparam->g.x.data);
-	pparam->g.y.dsize = BN_bn2bin(yg, (void *)pparam->g.y.data);
-	pparam->n.dsize = BN_bn2bin(order, (void *)pparam->n.data);
+
+	pparam->g.x.dsize = BN_bn2bin(g_x, (void *)pparam->g.x.data);
+	pparam->g.y.dsize = BN_bn2bin(g_y, (void *)pparam->g.y.data);
+	pparam->n.dsize = BN_bn2bin(cv_param->order, (void *)pparam->n.data);
+}
+
+static int set_sess_setup_cv(const EC_GROUP *group,
+			     struct wd_ecc_curve_cfg *cv)
+{
+	struct wd_ecc_curve *pparam = cv->cfg.pparam;
+	struct curve_param *cv_param;
+	BIGNUM *g_x, *g_y;
+	int ret = -1;
+	BN_CTX *ctx;
+
+	ctx = BN_CTX_new();
+	if (!ctx)
+		return ret;
+
+	BN_CTX_start(ctx);
+
+	cv_param = OPENSSL_malloc(sizeof(struct curve_param));
+	if (!cv_param)
+		goto free_ctx;
+
+	cv_param->p = BN_CTX_get(ctx);
+	if (!cv_param->p)
+		goto free_cv;
+
+	cv_param->a = BN_CTX_get(ctx);
+	if (!cv_param->a)
+		goto free_cv;
+
+	cv_param->b = BN_CTX_get(ctx);
+	if (!cv_param->b)
+		goto free_cv;
+
+	g_x = BN_CTX_get(ctx);
+	if (!g_x)
+		goto free_cv;
+
+	g_y = BN_CTX_get(ctx);
+	if (!g_y)
+		goto free_cv;
+
+	ret = uadk_get_curve(group, cv_param->p, cv_param->a, cv_param->b, ctx);
+	if (ret)
+		goto free_cv;
+
+	cv_param->g = EC_GROUP_get0_generator(group);
+	if (!cv_param->g)
+		goto free_cv;
+
+	ret = uadk_get_affine_coordinates(group, cv_param->g, g_x, g_y, ctx);
+	if (ret)
+		goto free_cv;
+
+	cv_param->order = EC_GROUP_get0_order(group);
+	if (!cv_param->order)
+		goto free_cv;
+
+	fill_ecc_cv_param(pparam, cv_param, g_x, g_y);
 	cv->type = WD_CV_CFG_PARAM;
 	ret = 0;
-err:
-	if (ctx) {
-		BN_CTX_end(ctx);
-		BN_CTX_free(ctx);
-	}
+
+free_cv:
+	OPENSSL_free(cv_param);
+free_ctx:
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
 
 	return ret;
 }
@@ -166,12 +213,13 @@ static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	sp.cv.cfg.pparam = &param;
 	group = EC_KEY_get0_group(eckey);
 	ret = set_sess_setup_cv(group, &sp.cv);
-	if (ret) {
-		free(dev);
-		return (handle_t)0;
-	}
+	if (ret)
+		goto free_dev;
 
 	order = EC_GROUP_get0_order(group);
+	if (!order)
+		goto free_dev;
+
 	key_bits = BN_num_bits(order);
 	sp.alg = alg;
 	sp.key_bits = get_smallest_hw_keybits(key_bits);
@@ -184,8 +232,11 @@ static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 		fprintf(stderr, "failed to alloc ecc sess\n");
 
 	free(dev);
-
 	return sess;
+
+free_dev:
+	free(dev);
+	return (handle_t)0;
 }
 
 static int check_ecc_bit_useful(const int bits)
@@ -506,6 +557,10 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 	const BIGNUM *order;
 	int ret;
 
+	ret = eckey_check(eckey);
+	if (ret)
+		return ret;
+
 	if (!dgst) {
 		fprintf(stderr, "dgst is NULL\n");
 		return -1;
@@ -515,10 +570,6 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 		fprintf(stderr, "digest len error, dlen = %d", dlen);
 		return -1;
 	}
-
-	ret = eckey_check(eckey);
-	if (ret)
-		return ret;
 
 	pub_key = EC_KEY_get0_public_key(eckey);
 	if (!pub_key) {
@@ -957,10 +1008,20 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	ctx = BN_CTX_new();
 	if (!ctx)
 		return -ENOMEM;
+
+	BN_CTX_start(ctx);
 	pkey_x = BN_CTX_get(ctx);
+	if (!pkey_x)
+		goto free_ctx;
+
 	pkey_y = BN_CTX_get(ctx);
+	if (!pkey_y)
+		goto free_ctx;
 
 	group = EC_KEY_get0_group(ecdh);
+	if (!group)
+		goto free_ctx;
+
 	uadk_get_affine_coordinates(group, pubkey, pkey_x, pkey_y, ctx);
 	in_pkey.x.data = buf_x;
 	in_pkey.y.data = buf_y;
@@ -986,13 +1047,9 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	ret = 1;
 
 free_ctx:
-	if (ctx) {
-		if (pkey_x)
-			BN_clear(pkey_x);
-		if (pkey_y)
-			BN_clear(pkey_y);
-		BN_CTX_free(ctx);
-	}
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
+
 	return ret;
 }
 
