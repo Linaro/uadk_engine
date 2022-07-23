@@ -31,14 +31,14 @@
 #define X448_KEYLEN		56
 #define X25519_KEYBITS		256
 #define X448_KEYBITS		448
-#define MAX_KEYLEN		57
+#define ECX_MAX_KEYLEN		57
 #define UADK_E_SUCCESS		1
 #define UADK_E_FAIL		0
 
-typedef struct {
-	unsigned char pubkey[MAX_KEYLEN];
+struct ecx_key {
+	unsigned char pubkey[ECX_MAX_KEYLEN];
 	unsigned char *privkey;
-} ECX_KEY;
+};
 
 struct ecx_ctx {
 	handle_t sess;
@@ -224,12 +224,12 @@ static int ecx_get_nid(EVP_PKEY_CTX *ctx)
 	return nid;
 }
 
-static int ecx_create_privkey(ECX_KEY **ecx_key, int key_size)
+static int ecx_create_privkey(struct ecx_key **ecx_key, int key_size)
 {
 	unsigned char *privkey;
 	int ret;
 
-	*ecx_key = OPENSSL_zalloc(sizeof(ECX_KEY));
+	*ecx_key = OPENSSL_zalloc(sizeof(struct ecx_key));
 	if (!(*ecx_key)) {
 		fprintf(stderr, "failed to alloc ecx_key\n");
 		return UADK_E_FAIL;
@@ -259,7 +259,8 @@ free_ecx_key:
 	return UADK_E_FAIL;
 }
 
-static int ecx_keygen_set_private_key(struct ecx_ctx *ecx_ctx, ECX_KEY *ecx_key)
+static int ecx_keygen_set_private_key(struct ecx_ctx *ecx_ctx,
+				      struct ecx_key *ecx_key)
 {
 	handle_t sess = ecx_ctx->sess;
 	struct wd_ecc_key *ecc_key;
@@ -280,14 +281,14 @@ static int ecx_keygen_set_private_key(struct ecx_ctx *ecx_ctx, ECX_KEY *ecx_key)
 }
 
 static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
-			       struct wd_ecc_req *req, ECX_KEY *ecx_key)
+			       struct wd_ecc_req *req, struct ecx_key *ecx_key)
 {
 	struct wd_ecc_point *pubkey = NULL;
 	int key_size = ecx_ctx->key_size;
 	int ret;
 
 	wd_ecxdh_get_out_params(req->dst, &pubkey);
-	if (key_size > MAX_KEYLEN) {
+	if (key_size > ECX_MAX_KEYLEN) {
 		fprintf(stderr, "invalid key size, key_size = %d\n", key_size);
 		return UADK_E_FAIL;
 	}
@@ -368,8 +369,8 @@ static int openssl_do_ecx_genkey(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 {
 	struct ecx_ctx *keygen_ctx = NULL;
+	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
-	ECX_KEY *ecx_key = NULL;
 	int ret;
 
 	ret = ecx_genkey_check(ctx, pkey);
@@ -426,8 +427,8 @@ do_soft:
 static int x448_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 {
 	struct ecx_ctx *keygen_ctx = NULL;
+	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
-	ECX_KEY *ecx_key = NULL;
 	int ret;
 
 	ret = ecx_genkey_check(ctx, pkey);
@@ -482,12 +483,13 @@ do_soft:
 }
 
 static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx, struct wd_ecc_req *req,
-				ECX_KEY *peer_ecx_key, ECX_KEY *ecx_key)
+				struct ecx_key *peer_ecx_key,
+				struct ecx_key *ecx_key)
 {
 	int key_size = ecx_ctx->key_size;
+	char buf_y[ECX_MAX_KEYLEN] = {0};
 	handle_t sess = ecx_ctx->sess;
 	struct wd_ecc_point in_pubkey;
-	char buf_y[MAX_KEYLEN] = {0};
 	struct wd_ecc_out *ecx_out;
 	struct wd_ecc_in *ecx_in;
 	int ret;
@@ -542,7 +544,8 @@ static void ecx_compkey_uninit_iot(handle_t sess, struct wd_ecc_req *req)
 	wd_ecc_del_in(sess, req->src);
 }
 
-static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx, ECX_KEY *ecx_key)
+static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx,
+				      struct ecx_key *ecx_key)
 {
 	int key_size = ecx_ctx->key_size;
 	handle_t sess = ecx_ctx->sess;
@@ -576,8 +579,8 @@ static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx, ECX_KEY *ecx_key)
 	return UADK_E_SUCCESS;
 }
 
-static int ecx_get_key(EVP_PKEY_CTX *ctx, ECX_KEY **ecx_key,
-		       ECX_KEY **peer_ecx_key)
+static int ecx_get_key(EVP_PKEY_CTX *ctx, struct ecx_key **ecx_key,
+		       struct ecx_key **peer_ecx_key)
 {
 	EVP_PKEY *pkey, *peer_key;
 
@@ -623,11 +626,11 @@ static void x25519_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
 static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 			 size_t *keylen)
 {
+	struct ecx_key *peer_ecx_key = NULL;
 	struct wd_ecc_point *s_key = NULL;
 	struct ecx_ctx *derive_ctx = NULL;
-	ECX_KEY *peer_ecx_key = NULL;
+	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
-	ECX_KEY *ecx_key = NULL;
 	int ret;
 
 	ret = x25519_init(ctx);
@@ -709,11 +712,11 @@ static void x448_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
 static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 		       size_t *keylen)
 {
+	struct ecx_key *peer_ecx_key = NULL;
 	struct wd_ecc_point *s_key = NULL;
 	struct ecx_ctx *derive_ctx = NULL;
-	ECX_KEY *peer_ecx_key = NULL;
+	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
-	ECX_KEY *ecx_key = NULL;
 	int ret;
 
 	ret = x448_init(ctx);
