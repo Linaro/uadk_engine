@@ -333,8 +333,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 }
 
 /*
- * This stuff is needed if this ENGINE is being
- * compiled into a self-contained shared-library.
+ * Connect uadk_engine to OpenSSL engine library.
  */
 static int bind_fn(ENGINE *e, const char *id)
 {
