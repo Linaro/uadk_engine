@@ -28,5 +28,5 @@ sudo test/sanity_test.sh
 ```
 Zhangfei Gao <zhangfei.gao@linaro.org>
 Zhou Wang <wangzhou1@hisilicon.com>
-Hui Tang <tanghui20@huawei.com>
+Zhiqi Song <songzhiqi1@huawei.com>
 ```
