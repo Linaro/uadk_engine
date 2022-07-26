@@ -140,6 +140,8 @@ enum {
 	MAX_CODE,
 };
 
+static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb);
+
 static int rsa_check_bit_useful(const int bits, int flen)
 {
 	if (flen > bits)
@@ -1100,10 +1102,19 @@ err:
 
 static int uadk_e_soft_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
+	const RSA_METHOD *default_meth = RSA_PKCS1_OpenSSL();
 	int ret;
 
+	if (!default_meth) {
+		fprintf(stderr, "failed to get soft method.\n");
+		return UADK_E_FAIL;
+	}
+
 	UNUSED(cb);
+	(void)RSA_meth_set_keygen(rsa_hw_meth,
+				  RSA_meth_get_keygen(default_meth));
 	ret = RSA_generate_key_ex(rsa, bits, e, NULL);
+	(void)RSA_meth_set_keygen(rsa_hw_meth, uadk_e_rsa_keygen);
 
 	return ret;
 }
