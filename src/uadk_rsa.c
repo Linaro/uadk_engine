@@ -1790,8 +1790,6 @@ static void uadk_e_delete_rsa_meth(void)
  */
 int uadk_e_bind_rsa(ENGINE *e)
 {
-	pthread_spin_init(&g_rsa_res.lock, PTHREAD_PROCESS_PRIVATE);
-
 	return ENGINE_set_RSA(e, uadk_e_get_rsa_methods());
 }
 
@@ -1802,3 +1800,7 @@ void uadk_e_destroy_rsa(void)
 	uadk_e_rsa_uninit();
 }
 
+void uadk_e_rsa_lock_init(void)
+{
+	pthread_spin_init(&g_rsa_res.lock, PTHREAD_PROCESS_PRIVATE);
+}

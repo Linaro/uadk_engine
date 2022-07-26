@@ -902,8 +902,6 @@ static void uadk_e_delete_dh_meth(void)
 
 int uadk_e_bind_dh(ENGINE *e)
 {
-	pthread_spin_init(&g_dh_res.lock, PTHREAD_PROCESS_PRIVATE);
-
 	return ENGINE_set_DH(e, uadk_e_get_dh_methods());
 }
 
@@ -912,4 +910,9 @@ void uadk_e_destroy_dh(void)
 	pthread_spin_destroy(&g_dh_res.lock);
 	uadk_e_delete_dh_meth();
 	uadk_e_wd_dh_uninit();
+}
+
+void uadk_e_dh_lock_init(void)
+{
+	pthread_spin_init(&g_dh_res.lock, PTHREAD_PROCESS_PRIVATE);
 }

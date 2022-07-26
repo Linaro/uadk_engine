@@ -804,6 +804,11 @@ do { \
 		return 0; \
 } while (0)
 
+void uadk_e_digest_lock_init(void)
+{
+	pthread_spin_init(&engine.lock, PTHREAD_PROCESS_PRIVATE);
+}
+
 int uadk_e_bind_digest(ENGINE *e)
 {
 	UADK_DIGEST_DESCR(md5, md5WithRSAEncryption, MD5_DIGEST_LENGTH,
@@ -848,8 +853,6 @@ int uadk_e_bind_digest(ENGINE *e)
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-
-	pthread_spin_init(&engine.lock, PTHREAD_PROCESS_PRIVATE);
 
 	return ENGINE_set_digests(e, uadk_engine_digests);
 }
