@@ -69,7 +69,7 @@ int async_setup_async_event_notification(struct async_op *op);
 int async_clear_async_event_notification(void);
 int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id);
 void async_register_poll_fn(int type, async_recv_t func);
-void async_module_init(void);
+int async_module_init(void);
 int async_wake_job(ASYNC_JOB *job);
 void async_free_poll_task(int id, bool is_cb);
 int async_get_free_task(int *id);
