@@ -615,6 +615,11 @@ static int uadk_ecc_bind_pmeth(ENGINE *e)
 	return ENGINE_set_pkey_meths(e, get_pkey_meths);
 }
 
+void uadk_e_ecc_lock_init(void)
+{
+	pthread_spin_init(&ecc_res.lock, PTHREAD_PROCESS_PRIVATE);
+}
+
 int uadk_e_bind_ecc(ENGINE *e)
 {
 	int ret;
@@ -630,8 +635,6 @@ int uadk_e_bind_ecc(ENGINE *e)
 		fprintf(stderr, "failed to bind ec\n");
 		return ret;
 	}
-
-	pthread_spin_init(&ecc_res.lock, PTHREAD_PROCESS_PRIVATE);
 
 	return ret;
 }

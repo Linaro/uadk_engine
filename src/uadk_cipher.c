@@ -1076,8 +1076,6 @@ int uadk_e_bind_cipher(ENGINE *e)
 	if (platform > KUNPENG920)
 		bind_v3_cipher();
 
-	pthread_spin_init(&engine.lock, PTHREAD_PROCESS_PRIVATE);
-
 	return ENGINE_set_ciphers(e, uadk_e_engine_ciphers);
 }
 
@@ -1159,4 +1157,9 @@ void uadk_e_destroy_cipher(void)
 	destroy_v2_cipher();
 	if (platform > KUNPENG920)
 		destroy_v3_cipher();
+}
+
+void uadk_e_cipher_lock_init(void)
+{
+	pthread_spin_init(&engine.lock, PTHREAD_PROCESS_PRIVATE);
 }

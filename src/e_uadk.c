@@ -43,6 +43,8 @@ static int uadk_digest;
 static int uadk_rsa;
 static int uadk_dh;
 static int uadk_ecc;
+static int uadk_inited;
+static pthread_mutex_t uadk_engine_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef KAE
 static int uadk_cipher_nosva;
@@ -219,12 +221,41 @@ static int uadk_destroy(ENGINE *e)
 		uadk_e_destroy_ecc();
 	if (uadk_dh)
 		uadk_e_destroy_dh();
+
+	pthread_mutex_lock(&uadk_engine_mutex);
+	uadk_inited = 0;
+	pthread_mutex_unlock(&uadk_engine_mutex);
+
 	return 1;
 }
 
-
 static int uadk_init(ENGINE *e)
 {
+	int ret;
+
+	pthread_mutex_lock(&uadk_engine_mutex);
+	if (uadk_inited) {
+		pthread_mutex_unlock(&uadk_engine_mutex);
+		return 1;
+	}
+
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
+		async_module_init();
+
+	if (uadk_digest)
+		uadk_e_digest_lock_init();
+	if (uadk_cipher)
+		uadk_e_cipher_lock_init();
+	if (uadk_rsa)
+		uadk_e_rsa_lock_init();
+	if (uadk_dh)
+		uadk_e_dh_lock_init();
+	if (uadk_ecc)
+		uadk_e_ecc_lock_init();
+
+	uadk_inited = 1;
+	pthread_mutex_unlock(&uadk_engine_mutex);
+
 	return 1;
 }
 
@@ -360,10 +391,8 @@ static int bind_fn(ENGINE *e, const char *id)
 #endif
 	bind_fn_uadk_alg(e);
 
-	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc) {
-		async_module_init();
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
 		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
-	}
 
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
 	if (ret != 1) {

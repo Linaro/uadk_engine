@@ -44,4 +44,9 @@ int uadk_e_bind_ecc(ENGINE *e);
 void uadk_e_destroy_ecc(void);
 int uadk_e_is_env_enabled(const char *alg_name);
 int uadk_e_set_env(const char *var_name, int numa_id);
+void uadk_e_ecc_lock_init(void);
+void uadk_e_rsa_lock_init(void);
+void uadk_e_dh_lock_init(void);
+void uadk_e_cipher_lock_init(void);
+void uadk_e_digest_lock_init(void);
 #endif
