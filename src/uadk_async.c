@@ -336,7 +336,7 @@ static void *async_poll_process_func(void *args)
 	return NULL;
 }
 
-void async_module_init(void)
+int async_module_init(void)
 {
 	pthread_t thread_id;
 	pthread_attr_t thread_attr;
@@ -344,11 +344,11 @@ void async_module_init(void)
 	memset(&poll_queue, 0, sizeof(struct async_poll_queue));
 
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
-		return;
+		return 0;
 
 	poll_queue.head = malloc(sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
 	if (poll_queue.head == NULL)
-		return;
+		return 0;
 
 	memset(poll_queue.head, 0,
 	       sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
@@ -368,8 +368,9 @@ void async_module_init(void)
 	poll_queue.thread_id = thread_id;
 	OPENSSL_atexit(async_poll_task_free);
 
-	return;
+	return 1;
 
 err:
 	async_poll_task_free();
+	return 0;
 }

@@ -239,8 +239,14 @@ static int uadk_init(ENGINE *e)
 		return 1;
 	}
 
-	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
-		async_module_init();
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc) {
+		ret = async_module_init();
+		if (!ret) {
+			pthread_mutex_unlock(&uadk_engine_mutex);
+			fprintf(stderr, "failed to init async module!\n");
+			return 0;
+		}
+	}
 
 	if (uadk_digest)
 		uadk_e_digest_lock_init();
@@ -266,7 +272,11 @@ static int uadk_finish(ENGINE *e)
 
 static void engine_init_child_at_fork_handler(void)
 {
-	async_module_init();
+	int ret;
+
+	ret = async_module_init();
+	if (!ret)
+		fprintf(stderr, "failed to init child async module!\n");
 }
 
 #ifdef KAE
