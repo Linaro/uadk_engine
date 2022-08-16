@@ -484,7 +484,7 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 {
 	priv->setup.alg = alg;
 	priv->setup.mode = mode;
-	priv->req.out_buf_bytes = out_len;
+	priv->req.out_buf_bytes = MAX_DIGEST_LENGTH;
 	priv->req.out_bytes = out_len;
 }
 
@@ -543,14 +543,29 @@ soft_init:
 	return digest_soft_init(priv->soft_ctx, priv->e_nid);
 }
 
+static void digest_update_out_length(EVP_MD_CTX *ctx)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+
+	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
+	if (priv->e_nid == NID_sha224)
+		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
+
+	if (priv->e_nid == NID_sha384)
+		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
+}
+
 static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_len)
 {
 	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
 	int copy_to_bufflen;
 	int ret;
+
+	digest_update_out_length(ctx);
 
 	priv->req.has_next = DIGEST_DOING;
 
@@ -707,6 +722,12 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
+
+	if (priv->e_nid == NID_sha224)
+		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
+
+	if (priv->e_nid == NID_sha384)
+		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
