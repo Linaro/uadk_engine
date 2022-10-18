@@ -16,6 +16,8 @@
  */
 #include "uadk_utils.h"
 
+#if defined(__AARCH64_CMODEL_SMALL__) && __AARCH64_CMODEL_SMALL__
+
 #define  UADK_MEM_IMPROVE_THRESHOLD 1024
 
 static void *memcpy_large(void *dstpp, const void *srcpp, size_t len)
@@ -61,3 +63,12 @@ void *uadk_memcpy(void *dstpp, const void *srcpp, size_t len)
 	else
 		return memcpy(dstpp, srcpp, len);
 }
+
+#else
+
+void *uadk_memcpy(void *dstpp, const void *srcpp, size_t len)
+{
+	return memcpy(dstpp, srcpp, len);
+}
+
+#endif
