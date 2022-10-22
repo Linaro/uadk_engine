@@ -48,6 +48,7 @@
 #define UADK_E_SUCCESS		1
 #define UADK_E_FAIL		0
 #define UADK_E_POLL_SUCCESS	0
+#define UADK_E_POLL_FAIL	(-1)
 #define UADK_E_INIT_SUCCESS	0
 #define ENV_ENABLED		1
 
@@ -206,17 +207,19 @@ static int uadk_e_dh_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expect = 1;
+	int expt = 1;
 	int idx = 1;
 	int ret;
 
 	do {
-		ret = wd_dh_poll_ctx(idx, expect, &recv);
-		if (recv == expect)
+		ret = wd_dh_poll_ctx(idx, expt, &recv);
+		if (!ret && recv == expt)
 			return UADK_E_POLL_SUCCESS;
-		else if (ret < 0 && ret != -EAGAIN)
-			return ret;
-	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
+		else if (ret == -EAGAIN)
+			rx_cnt++;
+		else
+			return UADK_E_POLL_FAIL;
+	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
 
@@ -283,7 +286,8 @@ static int uadk_e_dh_env_poll(void *ctx)
 		ret = wd_dh_poll(expt, &recv);
 		if (ret < 0 || recv == expt)
 			return ret;
-	} while (rx_cnt++ < ENGINE_RECV_MAX_CNT);
+		rx_cnt++;
+	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll msg: timeout!\n");
 

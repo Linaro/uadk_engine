@@ -516,11 +516,13 @@ static int uadk_e_cipher_poll(void *ctx)
 
 	do {
 		ret = wd_cipher_poll_ctx(idx, expt, &recv);
-		if (recv == expt)
+		if (!ret && recv == expt)
 			return 0;
-		else if (ret < 0 && ret != -EAGAIN)
-			return ret;
-	} while (ret == -EAGAIN && (rx_cnt++ < ENGINE_RECV_MAX_CNT));
+		else if (ret == -EAGAIN)
+			rx_cnt++;
+		else
+			return -1;
+	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
 
@@ -539,7 +541,8 @@ static int uadk_e_cipher_env_poll(void *ctx)
 		ret = wd_cipher_poll(expt, &recv);
 		if (ret < 0 || recv == expt)
 			return ret;
-	} while (rx_cnt++ < ENGINE_RECV_MAX_CNT);
+		rx_cnt++;
+	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll msg: timeout!\n");
 
