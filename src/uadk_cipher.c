@@ -469,7 +469,6 @@ static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 		return (handle_t)0;
 	}
 
-	skey->numa_id = param->numa_id;
 	skey->type = param->type;
 
 	return (handle_t)skey;
@@ -881,7 +880,8 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	if (ret)
 		params.type = 0;
 
-	params.numa_id = engine.numa_id;
+	/* Use the default numa parameters */
+	params.numa_id = -1;
 	priv->setup.sched_param = &params;
 	if (!priv->sess) {
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);

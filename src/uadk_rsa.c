@@ -881,7 +881,9 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 
 	rsa_sess->key_size = key_size;
 	rsa_sess->setup.key_bits = key_size << BIT_BYTES_SHIFT;
-	params.numa_id = g_rsa_res.numa_id;
+
+	/* Use the default numa parameters */
+	params.numa_id = -1;
 	rsa_sess->setup.sched_param = &params;
 	rsa_sess->setup.is_crt = is_crt;
 
