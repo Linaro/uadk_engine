@@ -72,14 +72,15 @@ static void init_dtb_param(void *dtb, char *start,
 			   __u32 dsz, __u32 bsz, __u32 num)
 {
 	struct wd_dtb *tmp = dtb;
+	char *buff = start;
 	int i = 0;
 
 	while (i++ < num) {
-		tmp->data = start;
+		tmp->data = buff;
 		tmp->dsize = dsz;
 		tmp->bsize = bsz;
 		tmp += 1;
-		start += bsz;
+		buff += bsz;
 	}
 }
 

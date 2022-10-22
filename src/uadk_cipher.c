@@ -749,17 +749,18 @@ static void ctr_iv_inc(uint8_t *counter, __u32 c)
 {
 	uint32_t n = CTR_128BIT_COUNTER;
 	uint8_t *counter1 = counter;
+	__u32 c_value = c;
 
 	/*
 	 * Since the counter has been increased 1 by the hardware,
 	 * so the c need to  decrease 1.
 	 */
-	c = c - 1;
+	c_value -= 1;
 	do {
 		--n;
-		c += counter1[n];
-		counter1[n] = (uint8_t)c;
-		c >>= BYTE_BITS;
+		c_value += counter1[n];
+		counter1[n] = (uint8_t)c_value;
+		c_value >>= BYTE_BITS;
 	} while (n);
 }
 

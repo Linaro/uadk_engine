@@ -89,13 +89,11 @@ static const ENGINE_CMD_DEFN g_uadk_cmd_defns[] = {
 	}
 };
 
-__attribute__((constructor))
-static void uadk_constructor(void)
+static void __attribute__((constructor)) uadk_constructor(void)
 {
 }
 
-__attribute__((destructor))
-static void uadk_destructor(void)
+static void __attribute__((destructor)) uadk_destructor(void)
 {
 }
 

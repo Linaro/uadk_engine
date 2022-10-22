@@ -932,14 +932,14 @@ static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 			   struct rsa_prikey_param *pri,
 			   unsigned char *in_buf, unsigned char *to)
 {
-	struct wd_rsa_prikey *prikey;
-	struct wd_dtb *wd_dq;
-	struct wd_dtb *wd_dp;
-	struct wd_dtb *wd_q;
-	struct wd_dtb *wd_p;
-	struct wd_dtb *wd_qinv;
-	struct wd_dtb *wd_d;
-	struct wd_dtb *wd_n;
+	struct wd_rsa_prikey *prikey = NULL;
+	struct wd_dtb *wd_qinv = NULL;
+	struct wd_dtb *wd_dq = NULL;
+	struct wd_dtb *wd_dp = NULL;
+	struct wd_dtb *wd_q = NULL;
+	struct wd_dtb *wd_p = NULL;
+	struct wd_dtb *wd_d = NULL;
+	struct wd_dtb *wd_n = NULL;
 
 	if (!(rsa_sess->is_prikey_ready) && (pri->is_crt)) {
 		wd_rsa_get_prikey(rsa_sess->sess, &prikey);
