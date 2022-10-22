@@ -27,23 +27,23 @@
 #include "uadk.h"
 
 #define ECC128BITS	128
-#define ECC192BITS      192
-#define ECC224BITS      224
-#define ECC256BITS      256
-#define ECC320BITS      320
-#define ECC384BITS      384
-#define ECC521BITS      521
+#define ECC192BITS	192
+#define ECC224BITS	224
+#define ECC256BITS	256
+#define ECC320BITS	320
+#define ECC384BITS	384
+#define ECC521BITS	521
 
 struct curve_param {
-	/* prime */
+	/* Prime */
 	BIGNUM *p;
-	/* ecc coefficient 'a' */
+	/* ECC coefficient 'a' */
 	BIGNUM *a;
-	/* ecc coefficient 'b' */
+	/* ECC coefficient 'b' */
 	BIGNUM *b;
-	/* base point */
+	/* Base point */
 	const EC_POINT *g;
-	/* order of base point */
+	/* Order of base point */
 	const BIGNUM *order;
 };
 
@@ -176,7 +176,6 @@ free_ctx:
 
 static int get_smallest_hw_keybits(int bits)
 {
-	/* ec curve order width */
 	if (bits > ECC384BITS)
 		return ECC521BITS;
 	else if (bits > ECC320BITS)
@@ -283,7 +282,7 @@ static int eckey_check(const EC_KEY *eckey)
 		return -1;
 	}
 
-	/* field GF(2m) is not supported by uadk */
+	/* Field GF(2m) is not supported by uadk */
 	if (!uadk_prime_field(group))
 		return UADK_DO_SOFT;
 
@@ -336,22 +335,25 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 	unsigned int dlen = sdgst->dsize;
 	BIGNUM *m;
 
-	if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits) {
+	if (dlen << TRANS_BITS_BYTES_SHIFT > order_bits) {
 		m = BN_new();
 
 		/* Need to truncate digest if it is too long: first truncate
 		 * whole bytes
 		 */
-		dlen = (order_bits + 7) >> UADK_BITS_2_BYTES_SHIFT;
+		dlen = BITS_TO_BYTES(order_bits);
 		if (!BN_bin2bn(dgst, dlen, m)) {
 			fprintf(stderr, "failed to BN_bin2bn digest\n");
 			BN_free(m);
 			return -1;
 		}
 
-		/* If still too long, truncate remaining bits with a shift */
-		if (dlen << UADK_BITS_2_BYTES_SHIFT > order_bits &&
-		    !BN_rshift(m, m, 8 - (order_bits & 0x7))) {
+		/* If the length of digest is still longer than the length
+		 * of the base point order, truncate remaining bits with a
+		 * shift to that length
+		 */
+		if (dlen << TRANS_BITS_BYTES_SHIFT > order_bits &&
+		    !BN_rshift(m, m, DGST_SHIFT_NUM(order_bits))) {
 			fprintf(stderr, "failed to truncate input digest\n");
 			BN_free(m);
 			return -1;
@@ -743,7 +745,7 @@ err:
 
 static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 {
-	unsigned char buff[SM2_KEY_BYTES * 2 + 1] = {UADK_OCTET_STRING};
+	unsigned char buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {UADK_OCTET_STRING};
 	struct wd_ecc_point *pubkey = NULL;
 	struct wd_dtb *privkey = NULL;
 	const EC_GROUP *group;
@@ -768,8 +770,8 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 		return -ENOMEM;
 	}
 
-	memcpy(buff + 1, pubkey->x.data, SM2_KEY_BYTES * 2);
-	tmp = BN_bin2bn(buff, SM2_KEY_BYTES * 2 + 1, NULL);
+	memcpy(buff + 1, pubkey->x.data, ECC_POINT_SIZE(SM2_KEY_BYTES));
+	tmp = BN_bin2bn(buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
 	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
 	BN_free(tmp);
 	if (!ptr) {
@@ -1029,7 +1031,7 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	in_pkey.x.dsize = BN_bn2bin(pkey_x, (unsigned char *)in_pkey.x.data);
 	in_pkey.y.dsize = BN_bn2bin(pkey_y, (unsigned char *)in_pkey.y.data);
 
-	/* set public key */
+	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);
 	if (!ecdh_in) {
 		fprintf(stderr, "failed to new ecxdh in\n");
@@ -1075,7 +1077,7 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 	}
 
 	key_size_std = (unsigned int)(EC_GROUP_get_degree(group) +
-			UADK_ECC_PADDING) >> UADK_BITS_2_BYTES_SHIFT;
+			UADK_ECC_PADDING) >> TRANS_BITS_BYTES_SHIFT;
 	key_size_x = pubkey->x.dsize;
 	key_size_y = pubkey->y.dsize;
 	if ((key_size_x > key_size_std) || (key_size_y > key_size_std)) {
@@ -1088,9 +1090,8 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 	 * tag - 1 byte
 	 * point_x - [key_size_std] bytes
 	 * point_y - [key_size_std] bytes
-	 * so the malloc size is: key_size_std * 2 + 1
 	 */
-	buff_size = key_size_std * 2 + 1;
+	buff_size = ECC_POINT_SIZE(key_size_std) + 1;
 	x_shift = key_size_std - key_size_x + 1;
 	y_shift = buff_size - key_size_y;
 	buff = (unsigned char *)OPENSSL_malloc(buff_size);

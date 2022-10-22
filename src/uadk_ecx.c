@@ -295,33 +295,39 @@ static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 
 	memcpy(ecx_key->pubkey, (const unsigned char *)pubkey->x.data,
 	       key_size);
-	/* trans public key from big-endian to little-endian */
+	/* Trans public key from big-endian to little-endian */
 	ret = reverse_bytes(ecx_key->pubkey, key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans public key\n");
 		return UADK_E_FAIL;
 	}
-	/* trans private key from big-endian to little-endian */
+	/* Trans private key from big-endian to little-endian */
 	ret = reverse_bytes(ecx_key->privkey, key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans private key\n");
 		return UADK_E_FAIL;
 	}
 	/*
-	 * This is a pretreatment of X25519/X448, as described in RFC 7748:
-	 * For X25519, in order to decode 32 random bytes as an integer
-	 * scaler, set the three LSB of the first byte and MSB of the last
-	 * to zero, set the second MSB of the last byte to 1.
-	 * For X448, set the two LSB of the first byte to 0, and MSB of the
-	 * last byte to 1. Decode in little-endian mode.
+	 * This is a pretreatment of X25519/X448 described in RFC 7748.
+	 * In order to decode the random bytes as an integer scaler, there
+	 * are some special data processing. And use little-endian mode for
+	 * decoding.
 	 */
 	if (ecx_ctx->nid == EVP_PKEY_X25519) {
-		ecx_key->privkey[0] &= 248;
-		ecx_key->privkey[X25519_KEYLEN - 1] &= 127;
-		ecx_key->privkey[X25519_KEYLEN - 1] |= 64;
+		/* Set the three LSB of the first byte to 0 */
+		ecx_key->privkey[0] &= 0xF8;
+
+		/* Set the MSB of the last byte to 0 */
+		ecx_key->privkey[X25519_KEYLEN - 1] &= 0x7F;
+
+		/* Set the second MSB of the last byte to 1 */
+		ecx_key->privkey[X25519_KEYLEN - 1] |= 0x40;
 	} else if (ecx_ctx->nid == EVP_PKEY_X448) {
-		ecx_key->privkey[0] &= 252;
-		ecx_key->privkey[X448_KEYLEN - 1] |= 128;
+		/* Set the two LSB of the first byte to 0 */
+		ecx_key->privkey[0] &= 0xFC;
+
+		/* Set the MSB of the last byte to 1 */
+		ecx_key->privkey[X448_KEYLEN - 1] |= 0x80;
 	}
 
 	ret = EVP_PKEY_assign(pkey, ecx_ctx->nid, ecx_key);
@@ -494,7 +500,7 @@ static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx, struct wd_ecc_req *req,
 	struct wd_ecc_in *ecx_in;
 	int ret;
 
-	/* trans public key from little-endian to big-endian */
+	/* Trans public key from little-endian to big-endian */
 	ret = reverse_bytes(peer_ecx_key->pubkey, key_size);
 	if(!ret) {
 		fprintf(stderr, "failed to trans public key\n");
@@ -521,7 +527,7 @@ static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx, struct wd_ecc_req *req,
 
 	uadk_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
 
-	/* trans public key from big-endian to little-endian */
+	/* Trans public key from big-endian to little-endian */
 	ret = reverse_bytes(peer_ecx_key->pubkey, key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans public key\n");
@@ -553,7 +559,7 @@ static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx,
 	struct wd_dtb prikey;
 	int ret;
 
-	/* trans private key from little-endian to big-endian */
+	/* Trans private key from little-endian to big-endian */
 	ret = reverse_bytes(ecx_key->privkey, key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans private key\n");
@@ -569,7 +575,7 @@ static int ecx_derive_set_private_key(struct ecx_ctx *ecx_ctx,
 		return UADK_E_FAIL;
 	}
 
-	/* trans private key from big-endian to little-endian */
+	/* Trans private key from big-endian to little-endian */
 	ret = reverse_bytes(ecx_key->privkey, key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans private key\n");

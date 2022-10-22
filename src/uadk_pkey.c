@@ -44,7 +44,7 @@ struct ecc_res_config {
 	int numa_id;
 };
 
-/* ecc global hardware resource is saved here */
+/* ECC global hardware resource is saved here */
 struct ecc_res {
 	struct wd_ctx_config *ctx_res;
 	int pid;
@@ -123,7 +123,7 @@ static int uadk_ecc_poll(void *ctx)
 	return -ETIMEDOUT;
 }
 
-/* make resource configure static */
+/* Make resource configure static */
 struct ecc_res_config ecc_res_config = {
 	.sched = {
 		.sched_type = -1,
@@ -234,7 +234,7 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 	struct uacce_dev *dev;
 	int ret;
 
-	/* ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
+	/* The ctx is no difference for sm2/ecdsa/ecdh/x25519/x448 */
 	dev = wd_get_accel_dev("ecdsa");
 	if (!dev)
 		return -ENOMEM;
@@ -396,8 +396,7 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 		return -EINVAL;
 	}
 
-	/* pad and convert bits to bytes */
-	buflen = (EC_GROUP_get_degree(group) + 7) / 8;
+	buflen = BITS_TO_BYTES(EC_GROUP_get_degree(group));
 	ecc_key = wd_ecc_get_key(sess);
 	prikey.data = (void *)bin;
 	prikey.dsize = BN_bn2binpad(d, bin, buflen);
