@@ -523,7 +523,8 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 	}
 
-	params.numa_id = engine.numa_id;
+	/* Use the default numa parameters */
+	params.numa_id = -1;
 	priv->setup.sched_param = &params;
 	priv->sess = wd_digest_alloc_sess(&priv->setup);
 	if (unlikely(!priv->sess))
