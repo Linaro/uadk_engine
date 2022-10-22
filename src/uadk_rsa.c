@@ -52,6 +52,9 @@
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		(-1)
 #define ENV_ENABLED			1
+#define PRIME_RETRY_COUNT		4
+#define GENCB_NEXT			2
+#define GENCB_RETRY			3
 
 static RSA_METHOD *rsa_hw_meth;
 
@@ -173,11 +176,7 @@ static int rsa_prime_mul_res(int num, struct rsa_prime_param *param,
 		if (!BN_mul(param->r1, param->rsa_p, param->rsa_q, ctx))
 			return BN_ERR;
 	} else {
-		/*
-		 * Use the number 3 to indicate whether
-		 * the generator has been found.
-		 */
-		if (!BN_GENCB_call(cb, 3, num))
+		if (!BN_GENCB_call(cb, GENCB_RETRY, num))
 			return BN_ERR;
 		return BN_CONTINUE;
 	}
@@ -228,14 +227,11 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 			*bitse -= bitsr[*num];
 		else
 			return -1;
-		/*
-		 * Use the number 2 to indicate whether
-		 * a prime has been found.
-		 */
-		ret = BN_GENCB_call(cb, 2, *n++);
+
+		ret = BN_GENCB_call(cb, GENCB_NEXT, *n++);
 		if (!ret)
 			return -1;
-		if (retries == 4) {
+		if (retries == PRIME_RETRY_COUNT) {
 			*num = -1;
 			*bitse = 0;
 			retries = 0;
@@ -244,8 +240,8 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		retries++;
 		return BN_REDO;
 	}
-	/* Use the number 3 to indicate whether the generator has been found. */
-	ret = BN_GENCB_call(cb, 3, *num);
+
+	ret = BN_GENCB_call(cb, GENCB_RETRY, *num);
 	if (!ret)
 		return BN_ERR;
 	retries = 0;
@@ -320,8 +316,7 @@ static int check_rsa_prime_useful(const int *n, struct rsa_prime_param *param,
 	else
 		return BN_ERR;
 
-	/* Use the number 2 to indicate whether a prime has been found. */
-	if (!BN_GENCB_call(cb, 2, *n++))
+	if (!BN_GENCB_call(cb, GENCB_NEXT, *n++))
 		return BN_ERR;
 
 	return GET_ERR_FINISH;

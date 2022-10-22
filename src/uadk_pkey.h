@@ -26,7 +26,6 @@
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
-#define UADK_BITS_2_BYTES_SHIFT		3
 #define SM2_KEY_BYTES			32
 #define UADK_OCTET_STRING		4
 #define UADK_ECC_PUBKEY_PARAM_NUM	2
@@ -34,6 +33,11 @@
 #define UADK_ECDH_CV_NUM		8
 #define ENV_ENABLED			1
 #define UADK_E_INVALID			(-2)
+#define TRANS_BITS_BYTES_SHIFT		3
+#define ECC_POINT_SIZE(n)		((n) * 2)
+#define GET_MS_BYTE(n)			((n) >> 8)
+#define GET_LS_BYTE(n)			((n) & 0xFF)
+#define DGST_SHIFT_NUM(n)		(8 - ((n) & 0x7))
 
 struct uadk_pkey_meth {
 	EVP_PKEY_METHOD *sm2;

@@ -603,7 +603,7 @@ static int dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p,
 	if (!ag_bin)
 		return UADK_E_FAIL;
 
-	/* malloc a contiguous chunk of memory */
+	/* Malloc a contiguous chunk of memory */
 	apriv_key_bin =  OPENSSL_malloc(key_size * DH_PARAMS_CNT);
 	if (!apriv_key_bin)
 		goto free_ag;
@@ -615,7 +615,7 @@ static int dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p,
 	memset(ap_bin, 0, key_size);
 	memset(out_pri, 0, key_size);
 
-	/* construct data block of g */
+	/* Construct data block of g */
 	ret = dh_set_g(g, key_size, ag_bin, dh_sess);
 	if (!ret)
 		goto free_apriv;
@@ -623,7 +623,6 @@ static int dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p,
 	dh_sess->req.xbytes = BN_bn2bin(priv_key, apriv_key_bin);
 	dh_sess->req.pbytes = BN_bn2bin(p, ap_bin);
 	dh_sess->req.x_p = (void *)apriv_key_bin;
-	/* the output from uadk */
 	dh_sess->req.pri = out_pri;
 	dh_sess->req.pri_bytes = key_size;
 	dh_sess->req.op_type = WD_DH_PHASE1;

@@ -34,12 +34,12 @@ enum {
 typedef struct {
 	/* Key and paramgen group */
 	EC_GROUP *gen_group;
-	/* message digest */
+	/* Message digest */
 	const EVP_MD *md;
 	/* Distinguishing Identifier, ISO/IEC 15946-3 */
 	uint8_t *id;
 	size_t id_len;
-	/* id_set indicates if the 'id' field is set (1) or not (0) */
+	/* Indicates if the 'id' field is set (1) or not (0) */
 	int id_set;
 } SM2_PKEY_CTX;
 
@@ -557,8 +557,7 @@ static size_t ec_field_size(const EC_GROUP *group)
 	if (!EC_GROUP_get_curve(group, p, a, b, NULL))
 		goto done;
 
-	/* Pad and convert bits to bytes */
-	field_size = (BN_num_bits(p) + 7) / 8;
+	field_size = BITS_TO_BYTES(BN_num_bits(p));
 
 done:
 	BN_free(p);
@@ -1172,7 +1171,7 @@ static int sm2_set_ctx_id(struct sm2_ctx *smctx, int p1, const void *p2)
 		OPENSSL_free(smctx->ctx.id);
 		smctx->ctx.id = tmp_id;
 	} else {
-		/* set null-ID */
+		/* Set null-ID */
 		OPENSSL_free(smctx->ctx.id);
 		smctx->ctx.id = NULL;
 	}
@@ -1231,7 +1230,7 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		*(size_t *)p2 = smctx->ctx.id_len;
 		return 1;
 	case EVP_PKEY_CTRL_DIGESTINIT:
-		/* nothing to be inited, this is to suppress the error... */
+		/* Nothing to be inited, for suppress the error */
 		return 1;
 	default:
 		fprintf(stderr, "sm2 ctrl type = %d error\n", type);
@@ -1323,20 +1322,22 @@ static int check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash,
 	}
 
 	/* Z = h(ENTL || ID || a || b || xG || yG || xA || yA) */
-	if (id_len >= (UINT16_MAX / 8)) {
+	if (id_len >= (UINT16_MAX >> TRANS_BITS_BYTES_SHIFT)) {
 		fprintf(stderr, "id too large\n");
 		return 0;
 	}
 
-	entl = (uint16_t)(8 * id_len);
+	entl = (uint16_t)(id_len << TRANS_BITS_BYTES_SHIFT);
 
-	e_byte = entl >> 8;
+	/* Update the most significant (first) byte of 'entl' */
+	e_byte = GET_MS_BYTE(entl);
 	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
 		fprintf(stderr, "error evp lib\n");
 		return 0;
 	}
 
-	e_byte = entl & 0xFF;
+	/* Update the least significant (second) byte of 'entl' */
+	e_byte = GET_LS_BYTE(entl);
 	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
 		fprintf(stderr, "error evp lib\n");
 		return 0;
@@ -1516,7 +1517,7 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 		return 0;
 	}
 
-	/* get hashed prefix 'z' of tbs message */
+	/* Get hashed prefix 'z' of tbs message */
 	if (!sm2_compute_z_digest(z, md, smctx->ctx.id, smctx->ctx.id_len, ec))
 		return 0;
 

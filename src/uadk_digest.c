@@ -71,7 +71,7 @@ static struct digest_engine engine;
 
 struct evp_md_ctx_st {
 	const EVP_MD *digest;
-	/* functional reference if 'digest' is ENGINE-provided */
+	/* Functional reference if 'digest' is ENGINE-provided */
 	ENGINE *engine;
 	unsigned long flags;
 	void *md_data;

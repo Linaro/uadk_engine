@@ -480,13 +480,11 @@ static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
 	struct sched_params *key = (struct sched_params *)sched_key;
 
 	if (sched_mode) {
-		/* async */
 		if (key->type == WD_CIPHER_ENCRYPTION)
 			return CTX_ASYNC_ENC;
 		else
 			return CTX_ASYNC_DEC;
 	} else {
-		/* sync */
 		if (key->type == WD_CIPHER_ENCRYPTION)
 			return CTX_SYNC_ENC;
 		else
@@ -744,7 +742,7 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 	}
 }
 
-/* increment counter (128-bit int) by c */
+/* Increment counter (128-bit int) by c */
 static void ctr_iv_inc(uint8_t *counter, __u32 c)
 {
 	uint32_t n = CTR_128BIT_COUNTER;
