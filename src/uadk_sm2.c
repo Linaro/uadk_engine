@@ -22,6 +22,7 @@
 #include <openssl/ossl_typ.h>
 #include <openssl/err.h>
 #include <uadk/wd_ecc.h>
+#include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_pkey.h"
 
@@ -550,6 +551,7 @@ static size_t ec_field_size(const EC_GROUP *group)
 	BIGNUM *a = BN_new();
 	BIGNUM *b = BN_new();
 	size_t field_size = 0;
+	size_t p_bits;
 
 	if (p == NULL || a == NULL || b == NULL)
 		goto done;
@@ -557,7 +559,8 @@ static size_t ec_field_size(const EC_GROUP *group)
 	if (!EC_GROUP_get_curve(group, p, a, b, NULL))
 		goto done;
 
-	field_size = BITS_TO_BYTES(BN_num_bits(p));
+	p_bits = BN_num_bits(p);
+	field_size = BITS_TO_BYTES(p_bits);
 
 done:
 	BN_free(p);
@@ -598,7 +601,7 @@ static int sm2_ciphertext_size(const EC_KEY *key,
 	 * Integer and string are simple type; set constructed = 0, means
 	 * primitive and definite length encoding.
 	 */
-	sz = 2 * ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER)
+	sz = ECC_POINT_SIZE(ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER))
 		+ ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING)
 		+ ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
 	*ct_size = ASN1_object_size(1, sz, V_ASN1_SEQUENCE);

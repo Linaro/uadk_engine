@@ -17,6 +17,7 @@
 #include <openssl/engine.h>
 #include <uadk/wd.h>
 #include <uadk/wd_ecc.h>
+#include <uadk/wd_sched.h>
 #include "uadk_async.h"
 #include "uadk.h"
 #include "uadk_pkey.h"
@@ -381,6 +382,7 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 	const EC_GROUP *group;
 	struct wd_dtb prikey;
 	const BIGNUM *d;
+	size_t degree;
 	int buflen;
 	int ret;
 
@@ -396,7 +398,8 @@ int uadk_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 		return -EINVAL;
 	}
 
-	buflen = BITS_TO_BYTES(EC_GROUP_get_degree(group));
+	degree = EC_GROUP_get_degree(group);
+	buflen = BITS_TO_BYTES(degree);
 	ecc_key = wd_ecc_get_key(sess);
 	prikey.data = (void *)bin;
 	prikey.dsize = BN_bn2binpad(d, bin, buflen);

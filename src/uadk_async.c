@@ -20,6 +20,7 @@
 #include <string.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
+#include <openssl/async.h>
 #include "uadk.h"
 #include "uadk_async.h"
 

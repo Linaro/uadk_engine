@@ -14,7 +14,6 @@
  * limitations under the License.
  *
  */
-#include <errno.h>
 #include <string.h>
 #include <openssl/bn.h>
 #include <openssl/engine.h>
@@ -24,6 +23,7 @@
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <uadk/wd_ecc.h>
+#include <uadk/wd_sched.h>
 #include "uadk_pkey.h"
 #include "uadk.h"
 

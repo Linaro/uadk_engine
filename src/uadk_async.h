@@ -19,8 +19,8 @@
 #define UADK_ASYNC_H
 
 #include <stdbool.h>
-#include <openssl/async.h>
 #include <semaphore.h>
+#include <openssl/async.h>
 
 #define ASYNC_QUEUE_TASK_NUM 1024
 
