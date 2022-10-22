@@ -77,7 +77,7 @@ static int platform;
 
 #define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
 
-static int cipher_920_nids[] = {
+static int cipher_hw_v2_nids[] = {
 	NID_aes_128_cbc,
 	NID_aes_192_cbc,
 	NID_aes_256_cbc,
@@ -93,7 +93,7 @@ static int cipher_920_nids[] = {
 	0,
 };
 
-static int cipher_930_nids[] = {
+static int cipher_hw_v3_nids[] = {
 	NID_aes_128_cbc,
 	NID_aes_192_cbc,
 	NID_aes_256_cbc,
@@ -342,9 +342,9 @@ static int uadk_get_accel_platform(char *alg_name)
 		return 0;
 
 	if (!strcmp(dev->api, "hisi_qm_v2"))
-		platform = KUNPENG920;
+		platform = HW_V2;
 	else
-		platform = KUNPENG930;
+		platform = HW_V3;
 	free(dev);
 
 	return 1;
@@ -358,12 +358,12 @@ static int uadk_e_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 	int size;
 	int i;
 
-	if (platform == KUNPENG920) {
-		size = (sizeof(cipher_920_nids) - 1) / sizeof(int);
-		cipher_nids = cipher_920_nids;
+	if (platform == HW_V2) {
+		size = (sizeof(cipher_hw_v2_nids) - 1) / sizeof(int);
+		cipher_nids = cipher_hw_v2_nids;
 	} else {
-		size = (sizeof(cipher_930_nids) - 1) / sizeof(int);
-		cipher_nids = cipher_930_nids;
+		size = (sizeof(cipher_hw_v3_nids) - 1) / sizeof(int);
+		cipher_nids = cipher_hw_v3_nids;
 	}
 
 	if (!cipher) {
@@ -1073,7 +1073,7 @@ int uadk_e_bind_cipher(ENGINE *e)
 	}
 
 	bind_v2_cipher();
-	if (platform > KUNPENG920)
+	if (platform > HW_V2)
 		bind_v3_cipher();
 
 	return ENGINE_set_ciphers(e, uadk_e_engine_ciphers);
@@ -1155,7 +1155,7 @@ void uadk_e_destroy_cipher(void)
 	pthread_spin_destroy(&engine.lock);
 
 	destroy_v2_cipher();
-	if (platform > KUNPENG920)
+	if (platform > HW_V2)
 		destroy_v3_cipher();
 }
 

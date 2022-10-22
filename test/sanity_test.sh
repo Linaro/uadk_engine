@@ -103,7 +103,7 @@ if [[ $algs =~ "RSA" ]]; then
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 rsa4096
 fi
 
-#ecdsa only supported in Kunpeng930 or later
+#ecdsa only supported in HW_V3 or later
 if [[ $algs =~ "id-ecPublicKey" ]]; then
 	echo "testing ECDSA"
 	openssl speed -elapsed -engine $engine_id ecdsap224
@@ -116,21 +116,21 @@ if [[ $algs =~ "id-ecPublicKey" ]]; then
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdsap521
 fi
 
-#X25519 only supported in Kunpeng930 or later
+#X25519 only supported in HW_V3 or later
 if [[ $algs =~ "X25519" ]]; then
 	echo "testing X25519"
 	openssl speed -elapsed -engine $engine_id ecdhx25519
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhx25519
 fi
 
-#X448 only supported in Kunpeng930 or later
+#X448 only supported in HW_V3 or later
 if [[ $algs =~ "X448" ]]; then
 	echo "testing X448"
 	openssl speed -elapsed -engine $engine_id ecdhx448
 	openssl speed -elapsed -engine $engine_id -async_jobs 1 ecdhx448
 fi
 
-#ecdh only supported in Kunpeng930 or later
+#ecdh only supported in HW_V3 or later
 if [[ $algs =~ "id-ecPublicKey" ]]; then
 	echo "testing ECDH"
 	openssl speed -elapsed -engine $engine_id ecdhp192
