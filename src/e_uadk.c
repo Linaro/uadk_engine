@@ -116,7 +116,7 @@ int uadk_e_is_env_enabled(const char *alg_name)
 	int i = 0;
 
 	while (i < len) {
-		if (strcmp(uadk_env_enabled[i].alg_name, alg_name))
+		if (!strcmp(uadk_env_enabled[i].alg_name, alg_name))
 			return uadk_env_enabled[i].env_enabled;
 		i++;
 	}
@@ -130,7 +130,7 @@ static void uadk_e_set_env_enabled(const char *alg_name, __u8 value)
 	int i = 0;
 
 	while (i < len) {
-		if (strcmp(uadk_env_enabled[i].alg_name, alg_name)) {
+		if (!strcmp(uadk_env_enabled[i].alg_name, alg_name)) {
 			uadk_env_enabled[i].env_enabled = value;
 			return;
 		}
