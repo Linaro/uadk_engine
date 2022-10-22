@@ -18,9 +18,6 @@
 #ifndef UADK_H
 #define UADK_H
 #include <openssl/engine.h>
-#include <uadk/wd.h>
-#include <uadk/wd_sched.h>
-#include "uadk_utils.h"
 
 #define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
 #define ENV_STRING_LEN		256

@@ -23,6 +23,7 @@
 #include <openssl/err.h>
 #include <openssl/ec.h>
 #include <uadk/wd_ecc.h>
+#include <uadk/wd_sched.h>
 #include "uadk_pkey.h"
 #include "uadk.h"
 

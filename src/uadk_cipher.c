@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #include <openssl/engine.h>
 #include <uadk/wd_cipher.h>
+#include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
 

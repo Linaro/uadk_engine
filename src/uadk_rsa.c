@@ -20,6 +20,7 @@
 #include <openssl/ossl_typ.h>
 #include <openssl/rsa.h>
 #include <uadk/wd_rsa.h>
+#include <uadk/wd_sched.h>
 #include "uadk_async.h"
 #include "uadk.h"
 
@@ -55,6 +56,7 @@
 #define PRIME_RETRY_COUNT		4
 #define GENCB_NEXT			2
 #define GENCB_RETRY			3
+#define PRIME_CHECK_BIT_NUM		4
 
 static RSA_METHOD *rsa_hw_meth;
 
@@ -210,7 +212,7 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 	 * key by using the modulus in a certificate. This is also covered
 	 * by checking the length should not be less than 0x9.
 	 */
-	if (!BN_rshift(param->r2, param->r1, *bitse - 4))
+	if (!BN_rshift(param->r2, param->r1, *bitse - PRIME_CHECK_BIT_NUM))
 		return BN_ERR;
 
 	bitst = BN_get_word(param->r2);
@@ -231,6 +233,7 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		ret = BN_GENCB_call(cb, GENCB_NEXT, *n++);
 		if (!ret)
 			return -1;
+
 		if (retries == PRIME_RETRY_COUNT) {
 			*num = -1;
 			*bitse = 0;
@@ -288,6 +291,7 @@ static int check_rsa_prime_useful(const int *n, struct rsa_prime_param *param,
 				  BIGNUM *e_pub, BN_CTX *ctx, BN_GENCB *cb)
 {
 	unsigned long err;
+
 	/*
 	 * BN_sub(r,a,b) substracts b from a and place the result in r,
 	 * r = a-b.
