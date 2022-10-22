@@ -27,8 +27,8 @@
 #define ENGINE_RECV_MAX_CNT	60000000
 
 enum {
-	KUNPENG920,
-	KUNPENG930,
+	HW_V2,
+	HW_V3,
 };
 
 extern const char *engine_uadk_id;
