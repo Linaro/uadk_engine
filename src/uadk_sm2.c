@@ -25,6 +25,12 @@
 #include "uadk.h"
 #include "uadk_pkey.h"
 
+enum {
+	CTX_INIT_FAIL = -1,
+	CTX_UNINIT,
+	CTX_INIT_SUCC
+};
+
 typedef struct {
 	/* Key and paramgen group */
 	EC_GROUP *gen_group;
@@ -43,7 +49,7 @@ struct sm2_ctx {
 	const BIGNUM *prikey;
 	const EC_POINT *pubkey;
 	BIGNUM *order;
-	bool is_init;
+	int init_status;
 };
 
 typedef struct sm2_ciphertext {
@@ -165,6 +171,7 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 
 	memset(&setup, 0, sizeof(setup));
 	setup.alg = "sm2";
+
 	if (smctx->ctx.md) {
 		setup.hash.cb = compute_hash;
 		setup.hash.usr = (void *)smctx->ctx.md;
@@ -189,6 +196,7 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 
 	if (smctx->sess)
 		wd_ecc_free_sess(smctx->sess);
+
 	smctx->sess = sess;
 	smctx->prikey = NULL;
 	smctx->pubkey = NULL;
@@ -636,7 +644,7 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 
 	if (!smctx || !smctx->sess) {
 		fprintf(stderr, "smctx or sess NULL\n");
-		return -EINVAL;
+		return UADK_DO_SOFT;
 	}
 
 	if (sig_sz <= 0) {
@@ -676,7 +684,7 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	if (ret)
 		goto do_soft;
 
-	if (!smctx->is_init) {
+	if (smctx->init_status != CTX_INIT_SUCC) {
 		ret = UADK_DO_SOFT;
 		goto do_soft;
 	}
@@ -744,6 +752,13 @@ static int sm2_verify_check(EVP_PKEY_CTX *ctx,
 			    const unsigned char *tbs,
 			    size_t tbslen)
 {
+	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+
+	if (!smctx || !smctx->sess) {
+		fprintf(stderr, "smctx or sess NULL\n");
+		return UADK_DO_SOFT;
+	}
+
 	if (tbslen > SM2_KEY_BYTES)
 		return UADK_DO_SOFT;
 
@@ -772,7 +787,7 @@ static int sm2_verify(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto do_soft;
 
-	if (!smctx->is_init) {
+	if (smctx->init_status != CTX_INIT_SUCC) {
 		ret = UADK_DO_SOFT;
 		goto do_soft;
 	}
@@ -853,7 +868,7 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 
 	if (!smctx || !smctx->sess) {
 		fprintf(stderr, "smctx or sess NULL\n");
-		return 0;
+		return UADK_DO_SOFT;
 	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
@@ -897,7 +912,7 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto do_soft;
 
-	if (!smctx->is_init) {
+	if (smctx->init_status != CTX_INIT_SUCC) {
 		ret = UADK_DO_SOFT;
 		goto do_soft;
 	}
@@ -953,7 +968,7 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 
 	if (!smctx || !smctx->sess) {
 		fprintf(stderr, "smctx or sess NULL\n");
-		return -EINVAL;
+		return UADK_DO_SOFT;
 	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
@@ -1038,7 +1053,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto do_soft;
 
-	if (!smctx->is_init) {
+	if (smctx->init_status != CTX_INIT_SUCC) {
 		ret = UADK_DO_SOFT;
 		goto do_soft;
 	}
@@ -1124,18 +1139,18 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	ret = uadk_init_ecc();
 	if (ret) {
 		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
-		smctx->is_init = false;
+		smctx->init_status = CTX_INIT_FAIL;
 		goto end;
 	}
 
 	ret = sm2_update_sess(smctx);
 	if (ret) {
 		fprintf(stderr, "failed to update sess\n");
-		smctx->is_init = false;
+		smctx->init_status = CTX_INIT_FAIL;
 		goto end;
 	}
 
-	smctx->is_init = true;
+	smctx->init_status = CTX_INIT_SUCC;
 end:
 	EVP_PKEY_CTX_set_data(ctx, smctx);
 	EVP_PKEY_CTX_set0_keygen_info(ctx, NULL, 0);
@@ -1196,8 +1211,13 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		return 1;
 	case EVP_PKEY_CTRL_MD:
 		smctx->ctx.md = p2;
-		if (sm2_update_sess(smctx))
+		if (smctx->init_status != CTX_INIT_SUCC)
+			return 1;
+
+		if (sm2_update_sess(smctx)) {
+			fprintf(stderr, "failed to set MD\n");
 			return 0;
+		}
 		return 1;
 	case EVP_PKEY_CTRL_GET_MD:
 		*(const EVP_MD **)p2 = smctx->ctx.md;
