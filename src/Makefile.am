@@ -1,16 +1,13 @@
+VERSION = 1:0:1
 ACLOCAL_AMFLAGS = -I m4
-
-MAJOR = 1
-MINOR = 0
-REVISION = 0
-UADK_ENGINE_VERSION = -version-number ${MAJOR}:${MINOR}:${REVISION}
 
 lib_LTLIBRARIES=uadk_engine.la
 
 uadk_engine_la_SOURCES=uadk_utils.c e_uadk.c uadk_cipher.c uadk_digest.c uadk_async.c \
 		uadk_rsa.c uadk_sm2.c uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
-uadk_engine_la_LIBADD=-ldl -lwd -lwd_crypto -lpthread
-uadk_engine_la_LDFLAGS=-module $(UADK_ENGINE_VERSION)
+uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
+uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
+uadk_engine_la_CFLAGS=$(WD_CFLAGS)
 
 AUTOMAKE_OPTIONS = subdir-objects
 
