@@ -23,6 +23,15 @@ linux/scripts/checkpatch.pl *.patch
 sudo test/sanity_test.sh
 ```
 
+## Release
+Basically two releases each year, like in May and November.\
+Tag x.y, and x.y+1 is for release, while x.y.z is for major bug fix.\
+In the meantime, ReleaseNotes is required describing release contents.\
+ReleasesNotes:\
+Generals:\
+Features:\
+Fixes:
+
 ## Main maintainers
 
 ```
