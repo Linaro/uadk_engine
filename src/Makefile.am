@@ -12,7 +12,7 @@ uadk_engine_la_CFLAGS=$(WD_CFLAGS)
 AUTOMAKE_OPTIONS = subdir-objects
 
 if WD_KAE
-AM_CFLAGS = -DKAE
+uadk_engine_la_CFLAGS += -DKAE
 uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/alg/ciphers/sec_ciphers_soft.c \
 		 v1/alg/ciphers/sec_ciphers_utils.c \
