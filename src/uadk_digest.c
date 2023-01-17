@@ -493,6 +493,15 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 	priv->req.out_bytes = out_len;
 }
 
+static void digest_priv_ctx_cleanup(struct digest_priv_ctx *priv)
+{
+	/* Ensure that private variable values are initialized */
+	priv->state = SEC_DIGEST_INIT;
+	priv->last_update_bufflen = 0;
+	priv->switch_threshold = 0;
+	priv->switch_flag = 0;
+}
+
 static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
@@ -507,7 +516,8 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		priv->soft_ctx = EVP_MD_CTX_new();
 	priv->e_nid = nid;
 
-	priv->state = SEC_DIGEST_INIT;
+	digest_priv_ctx_cleanup(priv);
+
 	ret = uadk_e_init_digest();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
@@ -758,7 +768,6 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 			goto clear;
 	}
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
-	priv->last_update_bufflen = 0;
 
 	return 1;
 
