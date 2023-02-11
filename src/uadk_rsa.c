@@ -21,8 +21,9 @@
 #include <openssl/rsa.h>
 #include <uadk/wd_rsa.h>
 #include <uadk/wd_sched.h>
-#include "uadk_async.h"
 #include "uadk.h"
+#include "uadk_async.h"
+#include "uadk_utils.h"
 
 #define UN_SET				0
 #define IS_SET				1

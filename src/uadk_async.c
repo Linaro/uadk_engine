@@ -25,6 +25,7 @@
 #include "uadk_async.h"
 
 static struct async_poll_queue poll_queue;
+static pthread_mutex_t async_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static async_recv_t async_recv_func[ASYNC_TASK_MAX];
 
@@ -342,6 +343,13 @@ int async_module_init(void)
 	pthread_t thread_id;
 	pthread_attr_t thread_attr;
 
+	pthread_mutex_lock(&async_mutex);
+	if (poll_queue.init) {
+		pthread_mutex_unlock(&async_mutex);
+		fprintf(stderr, "async_module_init already happen!\n");
+		return 0;
+	}
+
 	memset(&poll_queue, 0, sizeof(struct async_poll_queue));
 
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
@@ -369,9 +377,13 @@ int async_module_init(void)
 	poll_queue.thread_id = thread_id;
 	OPENSSL_atexit(async_poll_task_free);
 
+	poll_queue.init = true;
+	pthread_mutex_unlock(&async_mutex);
+
 	return 1;
 
 err:
 	async_poll_task_free();
+	pthread_mutex_unlock(&async_mutex);
 	return 0;
 }

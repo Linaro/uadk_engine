@@ -18,9 +18,10 @@
 #include <uadk/wd.h>
 #include <uadk/wd_ecc.h>
 #include <uadk/wd_sched.h>
-#include "uadk_async.h"
 #include "uadk.h"
+#include "uadk_async.h"
 #include "uadk_pkey.h"
+#include "uadk_utils.h"
 
 #define ECC_MAX_DEV_NUM		16
 #define CTX_ASYNC		1

@@ -14,7 +14,76 @@
  * limitations under the License.
  *
  */
+#define _GNU_SOURCE
+#include <stdio.h>
+#include "uadk.h"
 #include "uadk_utils.h"
+
+const char *engine_uadk_id = "uadk_engine";
+
+struct uadk_alg_env_enabled {
+	const char *alg_name;
+	unsigned int env_enabled;
+};
+
+static struct uadk_alg_env_enabled uadk_env_enabled[] = {
+	{ "cipher", 0 },
+	{ "digest", 0 },
+	{ "rsa", 0 },
+	{ "dh", 0 },
+	{ "ecc", 0 }
+};
+
+int uadk_e_is_env_enabled(const char *alg_name)
+{
+	int len = ARRAY_SIZE(uadk_env_enabled);
+	int i = 0;
+
+	while (i < len) {
+		if (!strcmp(uadk_env_enabled[i].alg_name, alg_name))
+			return uadk_env_enabled[i].env_enabled;
+		i++;
+	}
+
+	return 0;
+}
+
+void uadk_e_set_env_enabled(const char *alg_name, unsigned int value)
+{
+	int len = ARRAY_SIZE(uadk_env_enabled);
+	int i = 0;
+
+	while (i < len) {
+		if (!strcmp(uadk_env_enabled[i].alg_name, alg_name)) {
+			uadk_env_enabled[i].env_enabled = value;
+			return;
+		}
+
+		i++;
+	}
+}
+
+int uadk_e_set_env(const char *var_name, int numa_id)
+{
+	char env_string[ENV_STRING_LEN] = {0};
+	const char *var_s;
+	int ret;
+
+	var_s = secure_getenv(var_name);
+	if (!var_s || !strlen(var_s)) {
+		/* uadk will request ctxs from device on specified numa node */
+		ret = snprintf(env_string, ENV_STRING_LEN, "%s%d%s%d",
+			       "sync:2@", numa_id,
+			       ",async:2@", numa_id);
+		if (ret < 0)
+			return ret;
+
+		ret = setenv(var_name, env_string, 1);
+		if (ret < 0)
+			return ret;
+	}
+	return 0;
+}
 
 #if defined(__AARCH64_CMODEL_SMALL__) && __AARCH64_CMODEL_SMALL__
 

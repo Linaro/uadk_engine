@@ -25,6 +25,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_utils.h"
 
 #define UADK_DO_SOFT         (-0xE0)
 #define CTX_SYNC_ENC		0

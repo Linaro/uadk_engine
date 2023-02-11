@@ -1,14 +1,23 @@
 VERSION = 1:1
 ACLOCAL_AMFLAGS = -I m4
 
+if HAVE_WD
+if HAVE_CRYPTO
 lib_LTLIBRARIES=uadk_engine.la
+endif #HAVE_CRYPTO
 
-uadk_engine_la_SOURCES=uadk_utils.c e_uadk.c uadk_cipher.c uadk_digest.c uadk_async.c \
-		uadk_rsa.c uadk_sm2.c uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
+if HAVE_CRYPTO3
+lib_LTLIBRARIES=uadk_provider.la
+endif #HAVE_CRYPTO3
+endif #HAVE_WD
+
+uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
+		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
+		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
 uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
 uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
-uadk_engine_la_CFLAGS=$(WD_CFLAGS)
-
+uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
+uadk_engine_la_CFLAGS+=-DCRYPTO
 AUTOMAKE_OPTIONS = subdir-objects
 
 if WD_KAE
@@ -40,3 +49,10 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/async/async_poll.c \
 		 v1/async/async_task_queue.c
 endif #WD_KAE
+
+uadk_provider_la_SOURCES=uadk_prov_init.c uadk_digest.c uadk_async.c uadk_utils.c
+
+uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
+uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread
+uadk_provider_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
+uadk_provider_la_CFLAGS+=-DCRYPTO3

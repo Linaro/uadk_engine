@@ -30,6 +30,11 @@
 #include "uadk_async.h"
 #include "uadk_utils.h"
 
+#ifdef CRYPTO3
+#include <openssl/core_names.h>
+#include <openssl/proverr.h>
+#endif
+
 #define UADK_DO_SOFT	(-0xE0)
 #define CTX_SYNC	0
 #define CTX_ASYNC	1
@@ -90,12 +95,17 @@ struct digest_priv_ctx {
 	unsigned char *data;
 	unsigned char out[MAX_DIGEST_LENGTH];
 	EVP_MD_CTX *soft_ctx;
+	EVP_MD *soft_md;
+	/* openssl 1.1 requires const */
+	const EVP_MD *digest_md;
 	size_t last_update_bufflen;
 	uint32_t e_nid;
 	uint32_t state;
 	uint32_t switch_threshold;
 	int switch_flag;
 	bool copy;
+	size_t md_size;
+	size_t blk_size;
 };
 
 struct digest_info {
@@ -144,36 +154,74 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
-static const EVP_MD *uadk_e_digests_soft_md(uint32_t e_nid)
+static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 {
-	const EVP_MD *digest_md = NULL;
+#ifdef CRYPTO3
+	if (priv->soft_md)
+		return 1;
 
-	switch (e_nid) {
+	switch (priv->e_nid) {
 	case NID_sm3:
-		digest_md = EVP_sm3();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SM3, "provider=default");
 		break;
 	case NID_md5:
-		digest_md = EVP_md5();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_MD5, "provider=default");
 		break;
 	case NID_sha1:
-		digest_md = EVP_sha1();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA1, "provider=default");
 		break;
 	case NID_sha224:
-		digest_md = EVP_sha224();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_224, "provider=default");
 		break;
 	case NID_sha256:
-		digest_md = EVP_sha256();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_256, "provider=default");
 		break;
 	case NID_sha384:
-		digest_md = EVP_sha384();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_384, "provider=default");
 		break;
 	case NID_sha512:
-		digest_md = EVP_sha512();
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_512, "provider=default");
 		break;
 	default:
 		break;
 	}
-	return digest_md;
+
+	if (unlikely(priv->soft_md == NULL))
+		return 0;
+#else
+	if (priv->digest_md)
+		return 1;
+
+	switch (priv->e_nid) {
+	case NID_sm3:
+		priv->digest_md = EVP_sm3();
+		break;
+	case NID_md5:
+		priv->digest_md = EVP_md5();
+		break;
+	case NID_sha1:
+		priv->digest_md = EVP_sha1();
+		break;
+	case NID_sha224:
+		priv->digest_md = EVP_sha224();
+		break;
+	case NID_sha256:
+		priv->digest_md = EVP_sha256();
+		break;
+	case NID_sha384:
+		priv->digest_md = EVP_sha384();
+		break;
+	case NID_sha512:
+		priv->digest_md = EVP_sha512();
+		break;
+	default:
+		break;
+	}
+
+	if (unlikely(priv->digest_md == NULL))
+		return 0;
+#endif
+	return 1;
 }
 
 static uint32_t sec_digest_get_sw_threshold(int n_id)
@@ -190,60 +238,58 @@ static uint32_t sec_digest_get_sw_threshold(int n_id)
 	return 0;
 }
 
-static int digest_soft_init(EVP_MD_CTX *ctx, uint32_t e_nid)
+static int digest_soft_init(struct digest_priv_ctx *priv)
 {
-	const EVP_MD *digest_md = NULL;
+	EVP_MD_CTX *ctx = priv->soft_ctx;
+	uint32_t e_nid = priv->e_nid;
 	int ctx_len;
 
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "get openssl software digest failed, nid = %u.\n", e_nid);
-		return  0;
+#ifdef CRYPTO3
+	if (EVP_DigestInit(priv->soft_ctx, priv->soft_md) != 1) {
+		fprintf(stderr, "EVP_DigestInit failed.\n");
+		return 0;
 	}
-
-	ctx_len = EVP_MD_meth_get_app_datasize(digest_md);
+#else
+	ctx_len = EVP_MD_meth_get_app_datasize(priv->digest_md);
 	if (ctx->md_data == NULL) {
 		ctx->md_data = OPENSSL_malloc(ctx_len);
 		if (ctx->md_data == NULL)
-			return  0;
+			return 0;
 	}
 
-	return EVP_MD_meth_get_init(digest_md)(ctx);
+	return EVP_MD_meth_get_init(priv->digest_md)(ctx);
+#endif
 }
 
-static int digest_soft_update(EVP_MD_CTX *ctx, uint32_t e_nid,
-				const void *data, size_t len)
+static int digest_soft_update(EVP_MD_CTX *ctx, const void *data, size_t len)
 {
-	const EVP_MD *digest_md = NULL;
+#ifdef CRYPTO3
+	return EVP_DigestUpdate(ctx, data, len);
+#else
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
-		return  0;
-	}
-
-	return EVP_MD_meth_get_update(digest_md)(ctx, data, len);
+	return EVP_MD_meth_get_update(priv->digest_md)(ctx, data, len);
+#endif
 }
 
-static int digest_soft_final(EVP_MD_CTX *ctx, uint32_t e_nid, unsigned char *digest)
+static int digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
-	const EVP_MD *digest_md = NULL;
+#ifdef CRYPTO3
+	unsigned int digest_length = EVP_MD_get_size(priv->soft_md);
 
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
-		return  0;
-	}
-
-	return EVP_MD_meth_get_final(digest_md)(ctx, digest);
+	return EVP_DigestFinal(priv->soft_ctx, digest, &digest_length);
+#else
+	return EVP_MD_meth_get_final(priv->digest_md)(priv->soft_ctx, digest);
+#endif
 }
 
-static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
+static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 {
-	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
+	EVP_MD_CTX *ctx = priv->soft_ctx;
 
 	/* Prevent double-free after the copy is used */
-	if (md_ctx->copy)
+	if (priv->copy)
 		return;
 
 	if (ctx != NULL) {
@@ -254,23 +300,31 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 		EVP_MD_CTX_free(ctx);
 		ctx = NULL;
 	}
+	priv->digest_md = NULL;
+
+#ifdef CRYPTO3
+	if (priv->soft_md) {
+		EVP_MD_free(priv->soft_md);
+		priv->soft_md = NULL;
+	}
+#endif
 }
 
-static int uadk_e_digest_soft_work(struct digest_priv_ctx *md_ctx, int len,
+static int uadk_e_digest_soft_work(struct digest_priv_ctx *priv, int len,
 				   unsigned char *digest)
 {
-	if (md_ctx->soft_ctx == NULL)
-		md_ctx->soft_ctx = EVP_MD_CTX_new();
+	if (priv->soft_ctx == NULL)
+		priv->soft_ctx = EVP_MD_CTX_new();
 
-	(void)digest_soft_init(md_ctx->soft_ctx, md_ctx->e_nid);
+	(void)digest_soft_init(priv);
 
 	if (len != 0)
-		(void)digest_soft_update(md_ctx->soft_ctx, md_ctx->e_nid,
-				md_ctx->data, len);
+		(void)digest_soft_update(priv->soft_ctx,
+				priv->data, len);
 
-	(void)digest_soft_final(md_ctx->soft_ctx, md_ctx->e_nid, digest);
+	(void)digest_soft_final(priv, digest);
 
-	digest_soft_cleanup(md_ctx);
+	digest_soft_cleanup(priv);
 
 	return 1;
 }
@@ -502,12 +556,9 @@ static void digest_priv_ctx_cleanup(struct digest_priv_ctx *priv)
 	priv->switch_flag = 0;
 }
 
-static int uadk_e_digest_init(EVP_MD_CTX *ctx)
+static int uadk_digest_init(struct digest_priv_ctx *priv, int nid)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	int digest_counts = ARRAY_SIZE(digest_info_table);
-	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 	struct sched_params params = {0};
 	int ret, i;
 
@@ -551,19 +602,33 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		return 0;
 	}
 
-	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
+	if (uadk_e_digests_soft_md(priv))
+		priv->switch_threshold = sec_digest_get_sw_threshold(nid);
 
 	return 1;
 
 soft_init:
-	return digest_soft_init(priv->soft_ctx, priv->e_nid);
+	return digest_soft_init(priv);
 }
 
-static void digest_update_out_length(EVP_MD_CTX *ctx)
+#ifdef CRYPTO3
+static int uadk_prov_digest_init(struct digest_priv_ctx *priv)
+{
+	return uadk_digest_init(priv, priv->e_nid);
+}
+#else
+static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
+	uadk_digest_init(priv, nid);
+}
+#endif
+
+static void digest_update_out_length(struct digest_priv_ctx *priv)
+{
 	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
 	if (priv->e_nid == NID_sha224)
 		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
@@ -572,16 +637,14 @@ static void digest_update_out_length(EVP_MD_CTX *ctx)
 		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
 }
 
-static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_len)
+static int digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
 	int copy_to_bufflen;
 	int ret;
 
-	digest_update_out_length(ctx);
+	digest_update_out_length(priv);
 
 	priv->req.has_next = DIGEST_DOING;
 
@@ -596,7 +659,6 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		priv->req.out = priv->out;
 		left_len -= copy_to_bufflen;
 		tmpdata += copy_to_bufflen;
-
 		if (priv->state == SEC_DIGEST_INIT)
 			priv->state = SEC_DIGEST_FIRST_UPDATING;
 		else if (priv->state == SEC_DIGEST_FIRST_UPDATING)
@@ -622,13 +684,13 @@ do_soft_digest:
 			&& priv->data
 			&& priv->last_update_bufflen != 0) {
 		priv->switch_flag = UADK_DO_SOFT;
-		digest_soft_init(priv->soft_ctx, priv->e_nid);
-		ret = digest_soft_update(priv->soft_ctx, priv->e_nid,
+		digest_soft_init(priv);
+		ret = digest_soft_update(priv->soft_ctx,
 			priv->data, priv->last_update_bufflen);
 		if (ret != 1)
 			return ret;
 
-		return digest_soft_update(priv->soft_ctx, priv->e_nid,
+		return digest_soft_update(priv->soft_ctx,
 			tmpdata, left_len);
 	}
 
@@ -636,11 +698,8 @@ do_soft_digest:
 	return 0;
 }
 
-static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
+static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
 
@@ -650,11 +709,26 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 		return 1;
 	}
 
-	return digest_update_inner(ctx, data, data_len);
+	return digest_update_inner(priv, data, data_len);
 
 soft_update:
-	return digest_soft_update(priv->soft_ctx, priv->e_nid, data, data_len);
+	return digest_soft_update(priv->soft_ctx, data, data_len);
 }
+
+#ifdef CRYPTO3
+static int uadk_prov_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
+{
+	return uadk_digest_update(priv, data, data_len);
+}
+#else
+static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+
+	return uadk_digest_update(priv, data, data_len);
+}
+#endif
 
 static void async_cb(struct wd_digest_req *req, void *data)
 {
@@ -727,17 +801,15 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	return 1;
 }
 
-static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
+static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-	int ret = 1;
 	struct async_op op;
+	int ret;
+
 	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
-	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	if (priv->e_nid == NID_sha224)
 		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
@@ -754,7 +826,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	if (op.job == NULL) {
 		/* Synchronous, only the synchronous mode supports soft computing */
 		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = digest_soft_final(priv->soft_ctx, priv->e_nid, digest);
+			ret = digest_soft_final(priv, digest);
 			digest_soft_cleanup(priv);
 			goto clear;
 		}
@@ -783,11 +855,24 @@ clear:
 	return ret;
 }
 
-static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
+#ifdef CRYPTO3
+static int uadk_prov_digest_final(struct digest_priv_ctx *priv,
+				  unsigned char *digest)
+{
+	return uadk_digest_final(priv, digest);
+}
+#else
+static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 {
 	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 
+	return uadk_digest_final(priv, digest);
+}
+#endif
+
+static int uadk_digest_cleanup(struct digest_priv_ctx *priv)
+{
 	/* Prevent double-free after the copy is used */
 	if (!priv || priv->copy)
 		return 1;
@@ -801,6 +886,14 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 		OPENSSL_free(priv->data);
 
 	return 1;
+}
+
+static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+
+	return uadk_digest_cleanup(priv);
 }
 
 static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
@@ -822,7 +915,7 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	return 1;
 }
 
-
+#ifdef CRYPTO
 #define UADK_DIGEST_DESCR(name, pkey_type, md_size, flags,		\
 	block_size, ctx_size, init, update, final, cleanup, copy)	\
 do { \
@@ -927,3 +1020,160 @@ void uadk_e_destroy_digest(void)
 	EVP_MD_meth_free(uadk_sha512);
 	uadk_sha512 = 0;
 }
+#endif
+
+#ifdef CRYPTO3
+/* some params related code is copied from OpenSSL v3.0 prov/digestcommon.h */
+static const OSSL_PARAM uadk_digest_default_known_gettable_params[] = {
+	OSSL_PARAM_size_t(OSSL_DIGEST_PARAM_BLOCK_SIZE, NULL),
+	OSSL_PARAM_size_t(OSSL_DIGEST_PARAM_SIZE, NULL),
+	OSSL_PARAM_int(OSSL_DIGEST_PARAM_XOF, NULL),
+	OSSL_PARAM_int(OSSL_DIGEST_PARAM_ALGID_ABSENT, NULL),
+	OSSL_PARAM_END
+};
+
+static const OSSL_PARAM *uadk_prov_gettable_params(void *provctx)
+{
+	return uadk_digest_default_known_gettable_params;
+}
+
+static int uadk_digest_default_get_params(OSSL_PARAM params[], size_t blksz,
+					  size_t paramsz)
+{
+	OSSL_PARAM *p = NULL;
+
+	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_BLOCK_SIZE);
+	if (p != NULL && !OSSL_PARAM_set_size_t(p, blksz)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return 0;
+	}
+	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_SIZE);
+	if (p != NULL && !OSSL_PARAM_set_size_t(p, paramsz)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return 0;
+	}
+	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_XOF);
+	if (p != NULL
+		&& !OSSL_PARAM_set_int(p, 0)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return 0;
+	}
+	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_ALGID_ABSENT);
+	if (p != NULL
+		&& !OSSL_PARAM_set_int(p, 0)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return 0;
+	}
+
+	return 1;
+}
+
+static void uadk_prov_freectx(void *dctx)
+{
+	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
+
+	uadk_digest_cleanup(priv);
+	OPENSSL_clear_free(priv, sizeof(*priv));
+}
+
+static void *uadk_prov_dupctx(void *dctx)
+{
+	struct digest_priv_ctx *in;
+	struct digest_priv_ctx *ret;
+
+	in = (struct digest_priv_ctx *)dctx;
+	ret = OPENSSL_zalloc(sizeof(struct digest_priv_ctx *));
+
+	if (ret != NULL)
+		*ret = *in;
+	return ret;
+}
+
+static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) dctx;
+
+	return uadk_prov_digest_init(priv);
+}
+
+static int uadk_prov_update(void *dctx, const unsigned char *in, size_t inl)
+{
+	return uadk_prov_digest_update((struct digest_priv_ctx *)dctx,
+				       in, inl);
+}
+
+/*
+ * Note:
+ * The I<dctx> parameter contains a pointer to the provider side context.
+ * The digest should be written to I<*out> and the length of the digest to I<*outl>.
+ * The digest should not exceed I<outsz> bytes.
+ */
+static int uadk_prov_final(void *dctx, unsigned char *out, size_t *outl,
+				  size_t outsz)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) dctx;
+	int ret;
+
+	if (outsz > 0) {
+		ret = uadk_prov_digest_final(priv, out);
+		if (!ret)
+			return ret;
+	}
+
+	if (unlikely(outl != NULL))
+		*outl = priv->md_size;
+
+	return 1;
+}
+
+/* Forward declaration of uadk implementation functions */
+static OSSL_FUNC_digest_freectx_fn	uadk_prov_freectx;
+static OSSL_FUNC_digest_dupctx_fn	uadk_prov_dupctx;
+static OSSL_FUNC_digest_init_fn		uadk_prov_init;
+static OSSL_FUNC_digest_update_fn	uadk_prov_update;
+static OSSL_FUNC_digest_final_fn	uadk_prov_final;
+static OSSL_FUNC_digest_gettable_params_fn
+					uadk_prov_gettable_params;
+
+#define UADK_PROVIDER_IMPLEMENTATION(name, nid, mdsize, blksize)		\
+static OSSL_FUNC_digest_newctx_fn uadk_##name##_newctx;				\
+static void *uadk_##name##_newctx(void *provctx)				\
+{										\
+	struct digest_priv_ctx *ctx = OPENSSL_zalloc(sizeof(*ctx));		\
+										\
+	if (ctx == NULL)							\
+		return NULL;							\
+	ctx->blk_size = blksize;						\
+	ctx->md_size = mdsize;							\
+	ctx->e_nid = nid;							\
+	return ctx;								\
+}										\
+static OSSL_FUNC_digest_get_params_fn uadk_##name##_get_params;			\
+static int uadk_##name##_get_params(OSSL_PARAM params[])			\
+{										\
+	return uadk_digest_default_get_params(params, blksize, mdsize);		\
+}										\
+const OSSL_DISPATCH uadk_##name##_functions[] = {				\
+	{ OSSL_FUNC_DIGEST_NEWCTX, (void (*)(void))uadk_##name##_newctx },	\
+	{ OSSL_FUNC_DIGEST_FREECTX, (void (*)(void))uadk_prov_freectx },	\
+	{ OSSL_FUNC_DIGEST_DUPCTX, (void (*)(void))uadk_prov_dupctx },		\
+	{ OSSL_FUNC_DIGEST_INIT, (void (*)(void))uadk_prov_init },		\
+	{ OSSL_FUNC_DIGEST_UPDATE, (void (*)(void))uadk_prov_update },		\
+	{ OSSL_FUNC_DIGEST_FINAL, (void (*)(void))uadk_prov_final },		\
+	{ OSSL_FUNC_DIGEST_GET_PARAMS,						\
+		(void (*)(void))uadk_##name##_get_params },			\
+	{ OSSL_FUNC_DIGEST_GETTABLE_PARAMS,					\
+		(void (*)(void))uadk_prov_gettable_params },			\
+	{ 0, NULL }								\
+}
+
+UADK_PROVIDER_IMPLEMENTATION(md5, NID_md5, MD5_DIGEST_LENGTH, MD5_CBLOCK);
+UADK_PROVIDER_IMPLEMENTATION(sm3, NID_sm3, SM3_DIGEST_LENGTH, SM3_CBLOCK);
+UADK_PROVIDER_IMPLEMENTATION(sha1, NID_sha1, 20, 64);
+UADK_PROVIDER_IMPLEMENTATION(sha224, NID_sha224, 28, 64);
+UADK_PROVIDER_IMPLEMENTATION(sha256, NID_sha256, 32, 64);
+UADK_PROVIDER_IMPLEMENTATION(sha384, NID_sha384, 48, 128);
+UADK_PROVIDER_IMPLEMENTATION(sha512, NID_sha512, 64, 128);
+#endif

@@ -1,6 +1,5 @@
 AC_PREREQ([2.69])
 AC_INIT([uadk_engine], [1.1])
-AC_CONFIG_SRCDIR([src/e_uadk.c])
 AM_INIT_AUTOMAKE([1.10 no-define])
 
 AC_CONFIG_MACRO_DIR([m4])
@@ -15,14 +14,16 @@ AC_ARG_ENABLE(kae,
 AC_SUBST(enable_kae)
 AM_CONDITIONAL([WD_KAE], [test "$enable_kae" = "yes"])
 
-AC_CHECK_HEADERS([openssl/engine.h])
-
 PKG_CHECK_MODULES(WD, libwd libwd_crypto, [with_wd=yes], [with_wd=no])
 AM_CONDITIONAL(HAVE_WD, [test "$with_wd" != "no"])
 
 PKG_CHECK_MODULES(libcrypto, libcrypto < 3.0 libcrypto >= 1.1,
 		  [with_crypto=yes], [with_crypto=no])
 AM_CONDITIONAL(HAVE_CRYPTO, test "$with_crypto" != "no")
+
+PKG_CHECK_MODULES(libcrypto, libcrypto >= 3.0,
+		  [with_crypto3=yes], [with_crypto3=no])
+AM_CONDITIONAL(HAVE_CRYPTO3, test "$with_crypto3" != "no")
 
 AC_CONFIG_FILES([
 	Makefile
