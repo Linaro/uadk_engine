@@ -13,7 +13,7 @@ OpenSSL engine for uadk
 Prerequisites
 =============
 * CPU: aarch64
-* OpenSSL: 1.1.1f
+* OpenSSL: 1.1.1f or 3.0
 * libnuma
 * zlib
 
@@ -26,8 +26,11 @@ Build and install OpenSSL
 ```
     git clone https://github.com/openssl/openssl.git
     cd openssl
-    git checkout -b OpenSSL_1_1_1f OpenSSL_1_1_1f
-    ./config -Wl,-rpath=/usr/local/lib
+    // For openssl1.1.1f
+    git checkout -b opensssl1.1 OpenSSL_1_1_1f
+    // for openssl 3.0
+    git checkout -b openssl3.0 openssl-3.0.0
+    ./config
     make
     make test
     sudo make install
@@ -51,6 +54,7 @@ Build and install UADK
 
 Build and install UADK Engine
 -----------------------------------
+For openssl 1.1
 ```
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
@@ -60,6 +64,17 @@ Build and install UADK Engine
     sudo make install
 
     Option --enable-kae can be chosen to enable KAE for non-sva version
+```
+
+For openssl 3.0
+```
+    git clone https://github.com/Linaro/uadk_engine.git
+    cd uadk_engine
+    autoreconf -i
+    ./configure --libdir=/usr/local/lib/ossl-modules/
+    make
+    sudo make install
+
 ```
 
 Testing
@@ -93,12 +108,17 @@ Install libraries to the temp folder
     -L/tmp/build/lib -lwd
 
     $ cd uadk_engine
-    $ autoreconf
+    $ autoreconf -i
     $ ./configure --prefix=/tmp/build
     $ make; make install
 
+    // For openssl 1.1
     $ openssl engine -c /tmp/build/lib/uadk_engine.so
     $ ./test/sanity_test.sh /tmp/build/lib/uadk_engine.so
+
+    // For openssl 3.0
+    $ openssl speed -provider /tmp/build/lib/uadk_provider.so -provider default -evp md5
+    $ ./test/sanity_test.sh /tmp/build/lib/uadk_provider.so
 
 ```
 

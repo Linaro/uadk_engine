@@ -2,14 +2,50 @@
 
 sudo chmod 666 /dev/hisi_*
 
-if [ ! -n "$1" ]; then
-	engine_id=uadk_engine
-else
-	engine_id=$1
+
+version=$(openssl version)
+echo $version
+if [[ $version =~ "3.0" ]]; then
+	echo "openssl 3.0"
+	if [ ! -n "$1" ]; then
+		engine_id=uadk_provider
+	else
+		engine_id=$1
+	fi
+
+	digest_algs=$(openssl  list -provider uadk_provider -digest-algorithms)
 fi
 
-algs=$(openssl engine -c $engine_id)
-echo $algs
+if [[ $digest_algs =~ "uadk_provider" ]]; then
+	echo "uadk_provider testing digest"
+	openssl speed -provider $engine_id -provider default -evp md5
+	openssl speed -provider $engine_id -provider default -evp sm3
+	openssl speed -provider $engine_id -provider default -evp sha1
+	openssl speed -provider $engine_id -provider default -evp sha2-224
+	openssl speed -provider $engine_id -provider default -evp sha2-256
+	openssl speed -provider $engine_id -provider default -evp sha2-384
+	openssl speed -provider $engine_id -provider default -evp sha2-512
+
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp md5
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sm3
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha1
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-224
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-256
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-384
+	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-512
+fi
+
+if [[ $version =~ "1.1.1" ]]; then
+	echo "openssl 1.1.1"
+	if [ ! -n "$1" ]; then
+		engine_id=uadk_engine
+	else
+		engine_id=$1
+	fi
+
+	algs=$(openssl engine -c $engine_id)
+	echo $algs
+fi
 
 #digest
 if [[ $algs =~ "MD5" ]]; then
