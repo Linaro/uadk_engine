@@ -18,10 +18,11 @@
 #define UADK_UTILS
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 
 void *uadk_memcpy(void *dstpp, const void *srcpp, size_t len);
-int uadk_e_is_env_enabled(const char *alg_name);
+bool uadk_e_is_env_enabled(const char *alg_name);
 void uadk_e_set_env_enabled(const char *alg_name, unsigned int value);
 int uadk_e_set_env(const char *var_name, int numa_id);
 #endif

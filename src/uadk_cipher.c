@@ -37,7 +37,6 @@
 #define CTR_MODE_LEN_SHIFT	4
 #define BYTE_BITS		8
 #define IV_LEN			16
-#define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
 
 struct cipher_engine {
@@ -572,8 +571,7 @@ static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 
 	engine.numa_id = dev->numa_id;
 
-	ret = uadk_e_is_env_enabled("cipher");
-	if (ret == ENV_ENABLED)
+	if (uadk_e_is_env_enabled("cipher"))
 		return uadk_e_wd_cipher_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
@@ -880,8 +878,7 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	 * encryption and decryption queues
 	 */
 	params.type = priv->req.op_type;
-	ret = uadk_e_is_env_enabled("cipher");
-	if (ret)
+	if (uadk_e_is_env_enabled("cipher"))
 		params.type = 0;
 
 	/* Use the default numa parameters */
@@ -1141,11 +1138,10 @@ static void destroy_v3_cipher(void)
 
 void uadk_e_destroy_cipher(void)
 {
-	int i, ret;
+	int i;
 
 	if (engine.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("cipher");
-		if (ret == ENV_ENABLED) {
+		if (uadk_e_is_env_enabled("cipher")) {
 			wd_cipher_env_uninit();
 		} else {
 			wd_cipher_uninit();

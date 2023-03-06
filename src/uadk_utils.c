@@ -34,10 +34,27 @@ static struct uadk_alg_env_enabled uadk_env_enabled[] = {
 	{ "ecc", 0 }
 };
 
-int uadk_e_is_env_enabled(const char *alg_name)
+bool uadk_e_is_env_enabled(const char *alg_name)
 {
 	int len = ARRAY_SIZE(uadk_env_enabled);
+	char *var_name = NULL;
+	char *var_s;
 	int i = 0;
+
+	if (strcmp(alg_name, "digest") == 0)
+		var_name = "WD_DIGEST_CTX_NUM";
+	if (strcmp(alg_name, "cipher") == 0)
+		var_name = "WD_CIPHER_CTX_NUM";
+	if (strcmp(alg_name, "rsa") == 0)
+		var_name = "WD_RSA_CTX_NUM";
+	if (strcmp(alg_name, "dh") == 0)
+		var_name = "WD_DH_CTX_NUM";
+	if (strcmp(alg_name, "ecc") == 0)
+		var_name = "WD_ECC_CTX_NUM";
+
+	var_s = secure_getenv(var_name);
+	if (var_s)
+		return true;
 
 	while (i < len) {
 		if (!strcmp(uadk_env_enabled[i].alg_name, alg_name))
@@ -45,7 +62,7 @@ int uadk_e_is_env_enabled(const char *alg_name)
 		i++;
 	}
 
-	return 0;
+	return false;
 }
 
 void uadk_e_set_env_enabled(const char *alg_name, unsigned int value)

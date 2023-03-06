@@ -53,7 +53,6 @@
 #define UADK_E_POLL_FAIL		(-1)
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		(-1)
-#define ENV_ENABLED			1
 #define PRIME_RETRY_COUNT		4
 #define GENCB_NEXT			2
 #define GENCB_RETRY			3
@@ -740,8 +739,7 @@ static int uadk_e_wd_rsa_init(struct rsa_res_config *config,
 	int ret;
 	int i;
 
-	ret = uadk_e_is_env_enabled("rsa");
-	if (ret == ENV_ENABLED)
+	if (uadk_e_is_env_enabled("rsa"))
 		return uadk_e_wd_rsa_env_init(dev);
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
@@ -829,11 +827,10 @@ err_unlock:
 static void uadk_e_rsa_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = g_rsa_res.ctx_res;
-	int i, ret;
+	int i;
 
 	if (g_rsa_res.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("rsa");
-		if (ret == ENV_ENABLED) {
+		if (uadk_e_is_env_enabled("rsa")) {
 			wd_rsa_env_uninit();
 		} else {
 			wd_rsa_uninit();

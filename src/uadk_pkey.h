@@ -31,7 +31,6 @@
 #define UADK_ECC_PUBKEY_PARAM_NUM	2
 #define UADK_ECC_PADDING		7
 #define UADK_ECDH_CV_NUM		8
-#define ENV_ENABLED			1
 #define UADK_E_INVALID			(-2)
 #define TRANS_BITS_BYTES_SHIFT		3
 #define ECC_POINT_SIZE(n)		((n) * 2)

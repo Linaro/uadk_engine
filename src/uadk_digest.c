@@ -41,7 +41,6 @@
 #define CTX_NUM		2
 #define DIGEST_DOING	1
 #define DIGEST_END	0
-#define ENV_ENABLED	1
 
 /* The max BD data length is 16M-512B */
 #define BUF_LEN      0xFFFE00
@@ -455,8 +454,7 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 
 	engine.numa_id = dev->numa_id;
 
-	ret = uadk_e_is_env_enabled("digest");
-	if (ret == ENV_ENABLED)
+	if (uadk_e_is_env_enabled("digest"))
 		return uadk_e_wd_digest_env_init(dev);
 
 	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
@@ -988,11 +986,10 @@ int uadk_e_bind_digest(ENGINE *e)
 
 void uadk_e_destroy_digest(void)
 {
-	int i, ret;
+	int i;
 
 	if (engine.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("digest");
-		if (ret == ENV_ENABLED) {
+		if (uadk_e_is_env_enabled("digest")) {
 			wd_digest_env_uninit();
 		} else {
 			wd_digest_uninit();

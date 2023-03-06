@@ -243,8 +243,7 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 
 	config->numa_id = dev->numa_id;
 
-	ret = uadk_e_is_env_enabled("ecc");
-	if (ret)
+	if (uadk_e_is_env_enabled("ecc"))
 		ret = uadk_e_wd_ecc_env_init(dev);
 	else
 		ret = uadk_e_wd_ecc_general_init(dev, sched);
@@ -257,13 +256,12 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config)
 static void uadk_wd_ecc_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
-	int i, ret;
+	int i;
 
 	if (ecc_res.pid != getpid())
 		return;
 
-	ret = uadk_e_is_env_enabled("ecc");
-	if (ret == ENV_ENABLED) {
+	if (uadk_e_is_env_enabled("ecc")) {
 		wd_ecc_env_uninit();
 	} else {
 		wd_ecc_uninit();
