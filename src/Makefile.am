@@ -1,4 +1,4 @@
-VERSION = 1:1
+VERSION = 1:2
 ACLOCAL_AMFLAGS = -I m4
 
 lib_LTLIBRARIES=uadk_engine.la
