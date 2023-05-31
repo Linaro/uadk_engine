@@ -1,4 +1,18 @@
 
+# UADK engine Release v1.2 June 2023
+
+## New Features
+
+## Fixes
+- Fixed the repeated alg device queries of ecc.
+- Improved the performance of digest and ecc algorithms.
+
+## Working combination
+
+- UADK v2.5
+- OpenSSL 1.1.1f
+
+
 # UADK engine Release v1.1 December 2022
 
 ## New Features
