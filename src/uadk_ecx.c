@@ -77,6 +77,12 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 	struct ecx_ctx *x25519_ctx;
 	int ret;
 
+	ret = uadk_e_ecc_get_support_state(X25519_SUPPORT);
+	if (!ret) {
+		fprintf(stderr, "x25519 is not supported\n");
+		return UADK_E_FAIL;
+	}
+
 	ret = uadk_init_ecc();
 	if (ret) {
 		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
@@ -127,6 +133,12 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 	struct sched_params params = {0};
 	struct ecx_ctx *x448_ctx;
 	int ret;
+
+	ret = uadk_e_ecc_get_support_state(X448_SUPPORT);
+	if (!ret) {
+		fprintf(stderr, "x448 is not supported\n");
+		return UADK_E_FAIL;
+	}
 
 	ret = uadk_init_ecc();
 	if (ret) {
@@ -804,7 +816,7 @@ int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
-	if (!uadk_support_algorithm("x25519")) {
+	if (!uadk_e_ecc_get_support_state(X25519_SUPPORT)) {
 		pkey_meth->x25519 = meth;
 		return UADK_E_SUCCESS;
 	}
@@ -845,7 +857,7 @@ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
-	if (!uadk_support_algorithm("x448")) {
+	if (!uadk_e_ecc_get_support_state(X448_SUPPORT)) {
 		pkey_meth->x448 = meth;
 		return UADK_E_SUCCESS;
 	}

@@ -1153,6 +1153,12 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 
 	memset(smctx, 0, sizeof(*smctx));
 
+	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
+	if (!ret) {
+		fprintf(stderr, "sm2 is not supported\n");
+		return 0;
+	}
+
 	ret = uadk_init_ecc();
 	if (ret) {
 		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
@@ -1592,7 +1598,7 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
-	if (!uadk_support_algorithm("sm2")) {
+	if (!uadk_e_ecc_get_support_state(SM2_SUPPORT)) {
 		pkey_meth->sm2 = meth;
 		return 1;
 	}
