@@ -194,10 +194,18 @@ static uint32_t sec_digest_get_sw_threshold(int n_id)
 	return 0;
 }
 
-static int digest_soft_init(EVP_MD_CTX *ctx, uint32_t e_nid)
+static int digest_soft_init(struct digest_priv_ctx *md_ctx)
 {
+	uint32_t e_nid = md_ctx->e_nid;
 	const EVP_MD *digest_md = NULL;
+	EVP_MD_CTX *ctx = NULL;
 	int ctx_len;
+
+	/* Allocate a soft ctx for hardware engine */
+	if (md_ctx->soft_ctx == NULL)
+		md_ctx->soft_ctx = EVP_MD_CTX_new();
+
+	ctx = md_ctx->soft_ctx;
 
 	digest_md = uadk_e_digests_soft_md(e_nid);
 	if (unlikely(digest_md == NULL)) {
@@ -215,23 +223,36 @@ static int digest_soft_init(EVP_MD_CTX *ctx, uint32_t e_nid)
 	return EVP_MD_meth_get_init(digest_md)(ctx);
 }
 
-static int digest_soft_update(EVP_MD_CTX *ctx, uint32_t e_nid,
-				const void *data, size_t len)
+static int digest_soft_update(struct digest_priv_ctx *md_ctx, const void *data, size_t len)
 {
+	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
+	uint32_t e_nid = md_ctx->e_nid;
 	const EVP_MD *digest_md = NULL;
+
+	if (!ctx) {
+		fprintf(stderr, "failed to get soft ctx.\n");
+		return 0;
+	}
 
 	digest_md = uadk_e_digests_soft_md(e_nid);
 	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
+		fprintf(stderr, "switch to soft: don't support by sec engine.\n");
 		return  0;
 	}
 
 	return EVP_MD_meth_get_update(digest_md)(ctx, data, len);
 }
 
-static int digest_soft_final(EVP_MD_CTX *ctx, uint32_t e_nid, unsigned char *digest)
+static int digest_soft_final(struct digest_priv_ctx *md_ctx, unsigned char *digest)
 {
+	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
 	const EVP_MD *digest_md = NULL;
+	uint32_t e_nid = md_ctx->e_nid;
+
+	if (!ctx) {
+		fprintf(stderr, "failed to get soft ctx.\n");
+		return 0;
+	}
 
 	digest_md = uadk_e_digests_soft_md(e_nid);
 	if (unlikely(digest_md == NULL)) {
@@ -263,16 +284,12 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 static int uadk_e_digest_soft_work(struct digest_priv_ctx *md_ctx, int len,
 				   unsigned char *digest)
 {
-	if (md_ctx->soft_ctx == NULL)
-		md_ctx->soft_ctx = EVP_MD_CTX_new();
-
-	(void)digest_soft_init(md_ctx->soft_ctx, md_ctx->e_nid);
+	(void)digest_soft_init(md_ctx);
 
 	if (len != 0)
-		(void)digest_soft_update(md_ctx->soft_ctx, md_ctx->e_nid,
-				md_ctx->data, len);
+		(void)digest_soft_update(md_ctx, md_ctx->data, len);
 
-	(void)digest_soft_final(md_ctx->soft_ctx, md_ctx->e_nid, digest);
+	(void)digest_soft_final(md_ctx, digest);
 
 	digest_soft_cleanup(md_ctx);
 
@@ -515,9 +532,6 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	struct sched_params params = {0};
 	int ret, i;
 
-	/* Allocate a soft ctx for hardware engine */
-	if (priv->soft_ctx == NULL)
-		priv->soft_ctx = EVP_MD_CTX_new();
 	priv->e_nid = nid;
 
 	digest_priv_ctx_cleanup(priv);
@@ -560,7 +574,7 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	return 1;
 
 soft_init:
-	return digest_soft_init(priv->soft_ctx, priv->e_nid);
+	return digest_soft_init(priv);
 }
 
 static void digest_update_out_length(EVP_MD_CTX *ctx)
@@ -626,14 +640,12 @@ do_soft_digest:
 			&& priv->data
 			&& priv->last_update_bufflen != 0) {
 		priv->switch_flag = UADK_DO_SOFT;
-		digest_soft_init(priv->soft_ctx, priv->e_nid);
-		ret = digest_soft_update(priv->soft_ctx, priv->e_nid,
-			priv->data, priv->last_update_bufflen);
+		(void)digest_soft_init(priv);
+		ret = digest_soft_update(priv, priv->data, priv->last_update_bufflen);
 		if (ret != 1)
 			return ret;
 
-		return digest_soft_update(priv->soft_ctx, priv->e_nid,
-			tmpdata, left_len);
+		return digest_soft_update(priv, tmpdata, left_len);
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
@@ -657,7 +669,7 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 	return digest_update_inner(ctx, data, data_len);
 
 soft_update:
-	return digest_soft_update(priv->soft_ctx, priv->e_nid, data, data_len);
+	return digest_soft_update(priv, data, data_len);
 }
 
 static void async_cb(struct wd_digest_req *req, void *data)
@@ -758,7 +770,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	if (op.job == NULL) {
 		/* Synchronous, only the synchronous mode supports soft computing */
 		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = digest_soft_final(priv->soft_ctx, priv->e_nid, digest);
+			ret = digest_soft_final(priv, digest);
 			digest_soft_cleanup(priv);
 			goto clear;
 		}
