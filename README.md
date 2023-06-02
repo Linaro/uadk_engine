@@ -115,17 +115,17 @@ Usage
 #. Firstly, modify the openssl.cnf file, add the following settings at the beginning of this file:
 
 ```
-openssl_cnf = openssl_def
+openssl_cnf=openssl_def
 [openssl_def]
-engines = engine_section
+engines=engine_section
 [engine_section]
-uadk_engine = uadk_section
+uadk_engine=uadk_section
 [uadk_section]
-UADK_CMD_ENABLE_RSA_ENV = 1
-UADK_CMD_ENABLE_DH_ENV = 1
-UADK_CMD_ENABLE_CIPHER_ENV = 1
-UADK_CMD_ENABLE_DIGEST_ENV = 1
-UADK_CMD_ENABLE_ECC_ENV = 1
+UADK_CMD_ENABLE_RSA_ENV=1
+UADK_CMD_ENABLE_DH_ENV=1
+UADK_CMD_ENABLE_CIPHER_ENV=1
+UADK_CMD_ENABLE_DIGEST_ENV=1
+UADK_CMD_ENABLE_ECC_ENV=1
 ```
 Note:
 * The number 1 for enable environment variable, and 0 for disable environment variable.
