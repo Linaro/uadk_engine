@@ -26,7 +26,19 @@
 
 static struct async_poll_queue poll_queue;
 
+static int g_uadk_e_keep_polling;
+
 static async_recv_t async_recv_func[ASYNC_TASK_MAX];
+
+static int uadk_e_get_async_poll_state(void)
+{
+	return g_uadk_e_keep_polling;
+}
+
+static void uadk_e_set_async_poll_state(int state)
+{
+	g_uadk_e_keep_polling = state;
+}
 
 static void async_fd_cleanup(ASYNC_WAIT_CTX *ctx, const void *key,
 			     OSSL_ASYNC_FD readfd, void *custom)
@@ -114,6 +126,9 @@ static void async_poll_task_free(void)
 		OPENSSL_free(task);
 
 	poll_queue.head = NULL;
+
+	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
+
 	pthread_mutex_unlock(&poll_queue.async_task_mutex);
 	sem_destroy(&poll_queue.empty_sem);
 	sem_destroy(&poll_queue.full_sem);
@@ -308,7 +323,7 @@ static void *async_poll_process_func(void *args)
 	struct async_op *op;
 	int ret, idx;
 
-	while (1) {
+	while (uadk_e_get_async_poll_state()) {
 		if (sem_wait(&poll_queue.full_sem) != 0) {
 			if (errno == EINTR) {
 				/* sem_wait is interrupted by interrupt, continue */
@@ -354,12 +369,13 @@ int async_module_init(void)
 	memset(poll_queue.head, 0,
 	       sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
 
-	if (sem_init(&poll_queue.empty_sem, 0,
-		     ASYNC_QUEUE_TASK_NUM) != 0)
+	if (sem_init(&poll_queue.empty_sem, 0, ASYNC_QUEUE_TASK_NUM) != 0)
 		goto err;
 
 	if (sem_init(&poll_queue.full_sem, 0, 0) != 0)
 		goto err;
+
+	uadk_e_set_async_poll_state(ENABLE_ASYNC_POLLING);
 
 	pthread_attr_init(&thread_attr);
 	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);

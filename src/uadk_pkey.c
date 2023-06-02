@@ -128,7 +128,7 @@ static int uadk_ecc_poll(void *ctx)
 }
 
 /* Make resource configure static */
-struct ecc_res_config ecc_res_config = {
+static struct ecc_res_config ecc_res_config = {
 	.sched = {
 		.sched_type = -1,
 		.wd_sched = {
