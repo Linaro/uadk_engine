@@ -197,15 +197,10 @@ static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	struct sched_params sch_p = {0};
 	struct wd_ecc_sess_setup sp;
 	struct wd_ecc_curve param;
-	struct uacce_dev *dev;
 	const EC_GROUP *group;
 	const BIGNUM *order;
 	int ret, key_bits;
 	handle_t sess;
-
-	dev = wd_get_accel_dev(alg);
-	if (!dev)
-		return 0;
 
 	init_dtb_param(&param, buff, 0, UADK_ECC_MAX_KEY_BYTES,
 		       UADK_ECC_CV_PARAM_NUM);
@@ -215,29 +210,24 @@ static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	group = EC_KEY_get0_group(eckey);
 	ret = set_sess_setup_cv(group, &sp.cv);
 	if (ret)
-		goto free_dev;
+		return (handle_t)0;
 
 	order = EC_GROUP_get0_order(group);
 	if (!order)
-		goto free_dev;
+		return (handle_t)0;
 
 	key_bits = BN_num_bits(order);
 	sp.alg = alg;
 	sp.key_bits = get_smallest_hw_keybits(key_bits);
 	sp.rand.cb = uadk_ecc_get_rand;
 	sp.rand.usr = (void *)order;
-	sch_p.numa_id = dev->numa_id;
+	sch_p.numa_id = uadk_e_ecc_get_numa_id();
 	sp.sched_param = &sch_p;
 	sess = wd_ecc_alloc_sess(&sp);
 	if (!sess)
 		fprintf(stderr, "failed to alloc ecc sess\n");
 
-	free(dev);
 	return sess;
-
-free_dev:
-	free(dev);
-	return (handle_t)0;
 }
 
 static int check_ecc_bit_useful(const int bits)
@@ -486,6 +476,10 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 	if (ret)
 		goto do_soft;
 
+	ret = uadk_e_ecc_get_support_state(ECDSA_SUPPORT);
+	if (!ret)
+		goto do_soft;
+
 	ret = uadk_init_ecc();
 	if (ret)
 		goto do_soft;
@@ -673,6 +667,10 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 
 	ret = ecdsa_do_verify_check(eckey, dgst, dlen, sig);
 	if (ret)
+		goto do_soft;
+
+	ret = uadk_e_ecc_get_support_state(ECDSA_SUPPORT);
+	if (!ret)
 		goto do_soft;
 
 	ret = uadk_init_ecc();
@@ -953,6 +951,10 @@ static int sm2_generate_key(EC_KEY *eckey)
 	if (!ret)
 		goto do_soft;
 
+	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
+	if (!ret)
+		goto do_soft;
+
 	ret = uadk_init_ecc();
 	if (ret)
 		goto do_soft;
@@ -1180,6 +1182,10 @@ static int ecdh_generate_key(EC_KEY *ecdh)
 	if (!ret)
 		goto do_soft;
 
+	ret = uadk_e_ecc_get_support_state(ECDH_SUPPORT);
+	if (!ret)
+		goto do_soft;
+
 	ret = uadk_init_ecc();
 	if (ret)
 		goto do_soft;
@@ -1285,6 +1291,10 @@ static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 	if (!ret)
 		goto do_soft;
 
+	ret = uadk_e_ecc_get_support_state(ECDH_SUPPORT);
+	if (!ret)
+		goto do_soft;
+
 	ret = uadk_init_ecc();
 	if (ret)
 		goto do_soft;
@@ -1332,7 +1342,7 @@ do_soft:
 
 static void ec_key_meth_set_ecdsa(EC_KEY_METHOD *meth)
 {
-	if (!uadk_support_algorithm("ecdsa"))
+	if (!uadk_e_ecc_get_support_state(ECDSA_SUPPORT))
 		return;
 
 	EC_KEY_METHOD_set_sign(meth,
@@ -1346,8 +1356,8 @@ static void ec_key_meth_set_ecdsa(EC_KEY_METHOD *meth)
 
 static void ec_key_meth_set_ecdh(EC_KEY_METHOD *meth)
 {
-	if (!uadk_support_algorithm("ecdh") &&
-	    !uadk_support_algorithm("sm2"))
+	if (!uadk_e_ecc_get_support_state(ECDH_SUPPORT) &&
+	    !uadk_e_ecc_get_support_state(SM2_SUPPORT))
 		return;
 
 	EC_KEY_METHOD_set_keygen(meth, ecc_generate_key);
