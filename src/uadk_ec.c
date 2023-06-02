@@ -747,19 +747,24 @@ err:
 	return ret;
 }
 
-static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
+static int sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 {
-	unsigned char buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {UADK_OCTET_STRING};
+	unsigned char buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {0};
 	struct wd_ecc_point *pubkey = NULL;
 	struct wd_dtb *privkey = NULL;
+	int x_offset, y_offset, ret;
 	const EC_GROUP *group;
 	EC_POINT *point, *ptr;
 	BIGNUM *tmp;
-	int ret;
 
 	wd_sm2_get_kg_out_params(req->dst, &privkey, &pubkey);
 	if (!privkey || !pubkey) {
 		fprintf(stderr, "failed to get privkey or pubkey\n");
+		return -EINVAL;
+	}
+
+	if (pubkey->x.dsize > SM2_KEY_BYTES || pubkey->y.dsize > SM2_KEY_BYTES) {
+		fprintf(stderr, "invalid pubkey size: %u, %u\n", pubkey->x.dsize, pubkey->y.dsize);
 		return -EINVAL;
 	}
 
@@ -778,7 +783,12 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 		return -ENOMEM;
 	}
 
-	memcpy(buff + 1, pubkey->x.data, ECC_POINT_SIZE(SM2_KEY_BYTES));
+	buff[0] = UADK_OCTET_STRING;
+	/* The component of sm2 pubkey need a SM2_KEY_BYTES align */
+	x_offset = 1 + SM2_KEY_BYTES - pubkey->x.dsize;
+	y_offset = 1 + ECC_POINT_SIZE(SM2_KEY_BYTES) - pubkey->y.dsize;
+	memcpy(buff + x_offset, pubkey->x.data, pubkey->x.dsize);
+	memcpy(buff + y_offset, pubkey->y.data, pubkey->y.dsize);
 	tmp = BN_bin2bn(buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
 	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
 	BN_free(tmp);
@@ -972,7 +982,7 @@ static int sm2_generate_key(EC_KEY *eckey)
 	if (!ret)
 		goto uninit_iot;
 
-	ret = set_key_to_ec_key(eckey, &req);
+	ret = sm2_set_key_to_ec_key(eckey, &req);
 	if (ret)
 		goto uninit_iot;
 
