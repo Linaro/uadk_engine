@@ -32,6 +32,11 @@ enum {
 	CTX_INIT_SUCC
 };
 
+enum {
+	MD_UNCHANGED,
+	MD_CHANGED
+};
+
 typedef struct {
 	/* Key and paramgen group */
 	EC_GROUP *gen_group;
@@ -51,6 +56,10 @@ struct sm2_ctx {
 	const EC_POINT *pubkey;
 	BIGNUM *order;
 	int init_status;
+	/* The nid of digest method */
+	int md_nid;
+	/* The update status of digest method, changed (1), not changed (0) */
+	int md_update_status;
 };
 
 typedef struct sm2_ciphertext {
@@ -164,7 +173,6 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 		0x72, 0x03, 0xdf, 0x6b, 0x21, 0xc6, 0x05, 0x2b,
 		0x53, 0xbb, 0xf4, 0x09, 0x39, 0xd5, 0x41, 0x23
 	};
-	int nid_hash = smctx->ctx.md ? EVP_MD_type(smctx->ctx.md) : NID_sm3;
 	struct wd_ecc_sess_setup setup;
 	handle_t sess;
 	BIGNUM *order;
@@ -174,12 +182,13 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 	setup.alg = "sm2";
 
 	if (smctx->ctx.md) {
+		/* Set hash method */
 		setup.hash.cb = compute_hash;
 		setup.hash.usr = (void *)smctx->ctx.md;
-		type = get_hash_type(nid_hash);
+		type = get_hash_type(smctx->md_nid);
 		if (type < 0) {
 			fprintf(stderr, "uadk not support hash nid %d\n",
-				nid_hash);
+				smctx->md_nid);
 			return -EINVAL;
 		}
 		setup.hash.type = type;
@@ -192,16 +201,19 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 	if (!sess) {
 		fprintf(stderr, "failed to alloc sess\n");
 		BN_free(order);
+		smctx->init_status = CTX_INIT_FAIL;
 		return -EINVAL;
 	}
 
+	/* Free old session before setting new session */
 	if (smctx->sess)
 		wd_ecc_free_sess(smctx->sess);
-
 	smctx->sess = sess;
+
 	smctx->prikey = NULL;
 	smctx->pubkey = NULL;
 	smctx->order = order;
+
 	return 0;
 }
 
@@ -1142,7 +1154,7 @@ static void sm2_cleanup(EVP_PKEY_CTX *ctx)
 
 static int sm2_init(EVP_PKEY_CTX *ctx)
 {
-	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	struct sm2_ctx *smctx;
 	int ret;
 
 	smctx = malloc(sizeof(*smctx));
@@ -1202,6 +1214,7 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EC_GROUP *group;
+	int md_nid;
 
 	if (!smctx) {
 		fprintf(stderr, "smctx not set.\n");
@@ -1226,7 +1239,18 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		EC_GROUP_set_asn1_flag(smctx->ctx.gen_group, p1);
 		goto set_data;
 	case EVP_PKEY_CTRL_MD:
-		smctx->ctx.md = p2;
+		if (!p2)
+			smctx->ctx.md = EVP_sm3();
+		else
+			smctx->ctx.md = p2;
+
+		md_nid = EVP_MD_type(smctx->ctx.md);
+		if (md_nid == smctx->md_nid) {
+			smctx->md_update_status = MD_UNCHANGED;
+		} else {
+			smctx->md_update_status = MD_CHANGED;
+			smctx->md_nid = md_nid;
+		}
 		goto set_data;
 	case EVP_PKEY_CTRL_GET_MD:
 		*(const EVP_MD **)p2 = smctx->ctx.md;
@@ -1250,11 +1274,10 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 	}
 
 set_data:
-	if (sm2_update_sess(smctx)) {
-		fprintf(stderr, "failed to update sess\n");
-		smctx->init_status = CTX_INIT_FAIL;
-		return 0;
-	}
+	if (smctx->init_status == CTX_INIT_SUCC && smctx->md_update_status)
+		if (sm2_update_sess(smctx))
+			return 0;
+
 	EVP_PKEY_CTX_set_data(ctx, smctx);
 	return 1;
 }
