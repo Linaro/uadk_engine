@@ -453,6 +453,11 @@ static ECDSA_SIG *create_ecdsa_sig(struct wd_ecc_req *req)
 	}
 
 	wd_ecdsa_get_sign_out_params(req->dst, &r, &s);
+	if (!r || !s) {
+		fprintf(stderr, "failed to get r or s\n");
+		goto err;
+	}
+
 	if (!BN_bin2bn((void *)r->data, r->dsize, br) ||
 	    !BN_bin2bn((void *)s->data, s->dsize, bs)) {
 		fprintf(stderr, "failed to BN_bin2bn r or s\n");
@@ -755,6 +760,10 @@ static int set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	int ret;
 
 	wd_sm2_get_kg_out_params(req->dst, &privkey, &pubkey);
+	if (!privkey || !pubkey) {
+		fprintf(stderr, "failed to get privkey or pubkey\n");
+		return -EINVAL;
+	}
 
 	tmp = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
 	ret = EC_KEY_set_private_key(ec, tmp);
@@ -1069,6 +1078,10 @@ static int ecdh_set_key_to_ec_key(EC_KEY *ecdh, struct wd_ecc_req *req)
 	int ret = 0;
 
 	wd_ecxdh_get_out_params(req->dst, &pubkey);
+	if (!pubkey) {
+		fprintf(stderr, "failed to get pubkey\n");
+		return ret;
+	}
 
 	group = EC_KEY_get0_group(ecdh);
 	point = EC_POINT_new(group);
@@ -1134,6 +1147,10 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 	struct wd_ecc_point *shared_key = NULL;
 
 	wd_ecxdh_get_out_params(req->dst, &shared_key);
+	if (!shared_key) {
+		fprintf(stderr, "failed to get shared key\n");
+		return 0;
+	}
 
 	*outlen = shared_key->x.dsize;
 

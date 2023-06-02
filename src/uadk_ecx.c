@@ -287,9 +287,14 @@ static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 	int key_size = ecx_ctx->key_size;
 	int ret;
 
-	wd_ecxdh_get_out_params(req->dst, &pubkey);
 	if (key_size > ECX_MAX_KEYLEN) {
 		fprintf(stderr, "invalid key size, key_size = %d\n", key_size);
+		return UADK_E_FAIL;
+	}
+
+	wd_ecxdh_get_out_params(req->dst, &pubkey);
+	if (!pubkey) {
+		fprintf(stderr, "failed to get pubkey\n");
 		return UADK_E_FAIL;
 	}
 

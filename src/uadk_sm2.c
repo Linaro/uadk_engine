@@ -710,6 +710,11 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	}
 
 	wd_sm2_get_sign_out_params(req.dst, &r, &s);
+	if (!r || !s) {
+		ret = UADK_DO_SOFT;
+		goto uninit_iot;
+	}
+
 	ret = sign_bin_to_ber(NULL, r, s, sig, siglen);
 	if (ret)
 		goto uninit_iot;
@@ -939,6 +944,11 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
+	if (!c1 || !c2 || !c3) {
+		ret = UADK_DO_SOFT;
+		goto uninit_iot;
+	}
+
 	ret = cipher_bin_to_ber(md, c1, c2, c3, out, outlen);
 	if (ret)
 		goto uninit_iot;
@@ -1029,6 +1039,11 @@ static int sm2_get_plaintext(struct wd_ecc_req *req,
 	struct wd_dtb *ptext = NULL;
 
 	wd_sm2_get_dec_out_params(req->dst, &ptext);
+	if (!ptext) {
+		fprintf(stderr, "failed to get ptext\n");
+		return -EINVAL;
+	}
+
 	if (*outlen < ptext->dsize) {
 		fprintf(stderr, "outlen(%lu) < (%u)\n", *outlen, ptext->dsize);
 		return -EINVAL;
