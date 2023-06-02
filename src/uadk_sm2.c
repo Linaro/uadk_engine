@@ -1142,7 +1142,7 @@ static void sm2_cleanup(EVP_PKEY_CTX *ctx)
 
 static int sm2_init(EVP_PKEY_CTX *ctx)
 {
-	struct sm2_ctx *smctx;
+	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	int ret;
 
 	smctx = malloc(sizeof(*smctx));
@@ -1162,13 +1162,6 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	ret = uadk_init_ecc();
 	if (ret) {
 		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
-		smctx->init_status = CTX_INIT_FAIL;
-		goto end;
-	}
-
-	ret = sm2_update_sess(smctx);
-	if (ret) {
-		fprintf(stderr, "failed to update sess\n");
 		smctx->init_status = CTX_INIT_FAIL;
 		goto end;
 	}
@@ -1224,29 +1217,24 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		}
 		EC_GROUP_free(smctx->ctx.gen_group);
 		smctx->ctx.gen_group = group;
-		return 1;
+		goto set_data;
 	case EVP_PKEY_CTRL_EC_PARAM_ENC:
 		if (smctx->ctx.gen_group == NULL) {
 			fprintf(stderr, "no parameters set\n");
 			return 0;
 		}
 		EC_GROUP_set_asn1_flag(smctx->ctx.gen_group, p1);
-		return 1;
+		goto set_data;
 	case EVP_PKEY_CTRL_MD:
 		smctx->ctx.md = p2;
-		if (smctx->init_status != CTX_INIT_SUCC)
-			return 1;
-
-		if (sm2_update_sess(smctx)) {
-			fprintf(stderr, "failed to set MD\n");
-			return 0;
-		}
-		return 1;
+		goto set_data;
 	case EVP_PKEY_CTRL_GET_MD:
 		*(const EVP_MD **)p2 = smctx->ctx.md;
 		return 1;
 	case EVP_PKEY_CTRL_SET1_ID:
-		return sm2_set_ctx_id(smctx, p1, p2);
+		if (sm2_set_ctx_id(smctx, p1, p2))
+			goto set_data;
+		return 0;
 	case EVP_PKEY_CTRL_GET1_ID:
 		memcpy(p2, smctx->ctx.id, smctx->ctx.id_len);
 		return 1;
@@ -1260,6 +1248,15 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		fprintf(stderr, "sm2 ctrl type = %d error\n", type);
 		return UADK_E_INVALID;
 	}
+
+set_data:
+	if (sm2_update_sess(smctx)) {
+		fprintf(stderr, "failed to update sess\n");
+		smctx->init_status = CTX_INIT_FAIL;
+		return 0;
+	}
+	EVP_PKEY_CTX_set_data(ctx, smctx);
+	return 1;
 }
 
 static int sm2_ctrl_str(EVP_PKEY_CTX *ctx,
