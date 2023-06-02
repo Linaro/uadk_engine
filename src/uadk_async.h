@@ -22,7 +22,7 @@
 #include <semaphore.h>
 #include <openssl/async.h>
 
-#define ASYNC_QUEUE_TASK_NUM 1024
+#define ASYNC_QUEUE_TASK_NUM	1024
 
 struct async_op {
 	ASYNC_JOB *job;
@@ -45,6 +45,11 @@ enum task_type {
 	ASYNC_TASK_DH,
 	ASYNC_TASK_ECC,
 	ASYNC_TASK_MAX
+};
+
+enum poll_state {
+	DISABLE_ASYNC_POLLING,
+	ENABLE_ASYNC_POLLING
 };
 
 struct async_poll_task {
