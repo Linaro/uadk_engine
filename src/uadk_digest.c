@@ -21,8 +21,9 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <openssl/engine.h>
-#include <openssl/md5.h>
 #include <openssl/evp.h>
+#include <openssl/md5.h>
+#include <openssl/sha.h>
 #include <uadk/wd_cipher.h>
 #include <uadk/wd_digest.h>
 #include <uadk/wd_sched.h>
@@ -43,6 +44,9 @@
 
 #define SM3_DIGEST_LENGTH	32
 #define SM3_CBLOCK		64
+#define SHA1_CBLOCK		64
+#define SHA224_CBLOCK		64
+#define SHA384_CBLOCK		128
 #define SM3_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (8 * 1024)
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
@@ -127,13 +131,13 @@ static struct digest_threshold_table digest_pkt_threshold_table[] = {
 };
 
 static struct digest_info digest_info_table[] = {
-	{NID_md5, WD_DIGEST_NORMAL, WD_DIGEST_MD5, 16},
-	{NID_sm3, WD_DIGEST_NORMAL, WD_DIGEST_SM3, 32},
-	{NID_sha1, WD_DIGEST_NORMAL, WD_DIGEST_SHA1, 20},
-	{NID_sha224, WD_DIGEST_NORMAL, WD_DIGEST_SHA224, 28},
-	{NID_sha256, WD_DIGEST_NORMAL, WD_DIGEST_SHA256, 32},
-	{NID_sha384, WD_DIGEST_NORMAL, WD_DIGEST_SHA384, 48},
-	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512, 64},
+	{NID_md5, WD_DIGEST_NORMAL, WD_DIGEST_MD5, MD5_DIGEST_LENGTH},
+	{NID_sm3, WD_DIGEST_NORMAL, WD_DIGEST_SM3, SM3_DIGEST_LENGTH},
+	{NID_sha1, WD_DIGEST_NORMAL, WD_DIGEST_SHA1, SHA_DIGEST_LENGTH},
+	{NID_sha224, WD_DIGEST_NORMAL, WD_DIGEST_SHA224, SHA224_DIGEST_LENGTH},
+	{NID_sha256, WD_DIGEST_NORMAL, WD_DIGEST_SHA256, SHA256_DIGEST_LENGTH},
+	{NID_sha384, WD_DIGEST_NORMAL, WD_DIGEST_SHA384, SHA384_DIGEST_LENGTH},
+	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512, SHA512_DIGEST_LENGTH},
 };
 
 static EVP_MD *uadk_md5;
@@ -859,32 +863,32 @@ int uadk_e_bind_digest(ENGINE *e)
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-	UADK_DIGEST_DESCR(sha1, sha1WithRSAEncryption, 20,
-			  EVP_MD_FLAG_FIPS, 64,
+	UADK_DIGEST_DESCR(sha1, sha1WithRSAEncryption, SHA_DIGEST_LENGTH,
+			  EVP_MD_FLAG_FIPS, SHA1_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-	UADK_DIGEST_DESCR(sha224, sha224WithRSAEncryption, 28,
-			  EVP_MD_FLAG_FIPS, 64,
+	UADK_DIGEST_DESCR(sha224, sha224WithRSAEncryption, SHA224_DIGEST_LENGTH,
+			  EVP_MD_FLAG_FIPS, SHA224_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-	UADK_DIGEST_DESCR(sha256, sha256WithRSAEncryption, 32,
-			  EVP_MD_FLAG_FIPS, 64,
+	UADK_DIGEST_DESCR(sha256, sha256WithRSAEncryption, SHA256_DIGEST_LENGTH,
+			  EVP_MD_FLAG_FIPS, SHA256_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-	UADK_DIGEST_DESCR(sha384, sha384WithRSAEncryption, 48,
-			  EVP_MD_FLAG_FIPS, 128,
+	UADK_DIGEST_DESCR(sha384, sha384WithRSAEncryption, SHA384_DIGEST_LENGTH,
+			  EVP_MD_FLAG_FIPS, SHA384_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
 			  uadk_e_digest_copy);
-	UADK_DIGEST_DESCR(sha512, sha512WithRSAEncryption, 64,
-			  EVP_MD_FLAG_FIPS, 128,
+	UADK_DIGEST_DESCR(sha512, sha512WithRSAEncryption, SHA512_DIGEST_LENGTH,
+			  EVP_MD_FLAG_FIPS, SHA512_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
