@@ -39,7 +39,6 @@
 #define CHAR_BIT_SIZE		3
 #define DH_PARAMS_CNT		3
 #define CTX_MODE_NUM		2
-#define CTX_MODE_NUM		2
 #define UN_SET			0
 #define IS_SET			1
 #define CTX_ASYNC		1
