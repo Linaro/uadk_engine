@@ -64,7 +64,7 @@ struct cipher_priv_ctx {
 	void *sw_ctx_data;
 	/* Crypto small packet offload threshold */
 	size_t switch_threshold;
-	int update_iv;
+	bool update_iv;
 };
 
 struct cipher_info {
@@ -315,12 +315,6 @@ static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	EVP_CIPHER_CTX_set_cipher_data(ctx, priv);
 
 	return 1;
-}
-
-static int sec_ciphers_is_check_valid(struct cipher_priv_ctx *priv)
-{
-	return priv->req.in_bytes <= priv->switch_threshold ?
-			 0 : 1;
 }
 
 static void uadk_e_cipher_sw_cleanup(EVP_CIPHER_CTX *ctx)
@@ -771,13 +765,12 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 	int i;
 
 	switch (priv->setup.mode) {
+	case WD_CIPHER_CFB:
 	case WD_CIPHER_CBC:
 		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
-			memcpy(priv->iv, priv->req.dst + priv->req.in_bytes - iv_bytes,
-			       iv_bytes);
+			memcpy(priv->iv, priv->req.dst + offset, iv_bytes);
 		else
-			memcpy(priv->iv, priv->req.src  + priv->req.in_bytes - iv_bytes,
-			       iv_bytes);
+			memcpy(priv->iv, priv->req.src + offset, iv_bytes);
 
 		break;
 	case WD_CIPHER_OFB:
@@ -786,15 +779,6 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 			       *((unsigned char *)priv->req.dst + offset + i);
 		}
 		memcpy(priv->iv, K, iv_bytes);
-		break;
-	case WD_CIPHER_CFB:
-		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
-			memcpy(priv->iv, priv->req.dst + priv->req.in_bytes - iv_bytes,
-			       iv_bytes);
-		else
-			memcpy(priv->iv, priv->req.src + priv->req.in_bytes - iv_bytes,
-			       iv_bytes);
-
 		break;
 	case WD_CIPHER_CTR:
 		ctr_iv_inc(priv->iv, priv->req.in_bytes >> CTR_MODE_LEN_SHIFT);
@@ -811,8 +795,7 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		return 0;
 
-	ret = sec_ciphers_is_check_valid(priv);
-	if (!ret)
+	if (priv->switch_threshold >= priv->req.in_bytes)
 		return 0;
 
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
