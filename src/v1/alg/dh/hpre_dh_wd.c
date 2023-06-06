@@ -265,12 +265,11 @@ static hpre_dh_engine_ctx_t *hpre_dh_new_eng_ctx(DH *alg)
 {
 	hpre_dh_engine_ctx_t *eng_ctx = NULL;
 
-	eng_ctx = (hpre_dh_engine_ctx_t *)OPENSSL_malloc(sizeof(hpre_dh_engine_ctx_t));
+	eng_ctx = (hpre_dh_engine_ctx_t *)OPENSSL_calloc(1, sizeof(hpre_dh_engine_ctx_t));
 	if (eng_ctx == NULL) {
 		US_ERR("hpre engine_ctx malloc fail");
 		return NULL;
 	}
-	kae_memset(eng_ctx, 0, sizeof(hpre_dh_engine_ctx_t));
 
 	eng_ctx->priv_ctx.ssl_alg = alg;
 	eng_ctx->qlist = kae_get_node_from_pool(g_hpre_dh_qnode_pool);

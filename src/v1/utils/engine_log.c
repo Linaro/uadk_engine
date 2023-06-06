@@ -60,12 +60,10 @@ static void kae_set_conf_debuglevel(void)
 
 	if (conf_path == NULL || strlen(conf_path) > MAX_CONFIG_LEN)
 		goto err;
-	file_path = (char *)kae_malloc(strlen(conf_path) + strlen(filename) + 1);
-	debuglev = (char *)kae_malloc(MAX_LEVEL_LEN);
+	file_path = (char *)kae_calloc(1, strlen(conf_path) + strlen(filename) + 1);
+	debuglev = (char *)kae_calloc(1, MAX_LEVEL_LEN);
 	if (!file_path || !debuglev)
 		goto err;
-	memset(debuglev, 0, MAX_LEVEL_LEN);
-	memset(file_path, 0, sizeof(conf_path) + sizeof(filename) + 1);
 	strcat(file_path, conf_path);
 	strcat(file_path, filename);
 	ret = kae_drv_get_item(file_path, "LogSection", "debug_level", debuglev);

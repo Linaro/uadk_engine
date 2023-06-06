@@ -89,12 +89,11 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 		return UADK_E_FAIL;
 	}
 
-	x25519_ctx = malloc(sizeof(struct ecx_ctx));
+	x25519_ctx = calloc(1, sizeof(struct ecx_ctx));
 	if (!x25519_ctx) {
 		fprintf(stderr, "failed to alloc x25519 ctx\n");
 		return UADK_E_FAIL;
 	}
-	memset(x25519_ctx, 0, sizeof(struct ecx_ctx));
 
 	setup.alg = "x25519";
 	setup.key_bits = X25519_KEYBITS;
@@ -146,13 +145,12 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 		return UADK_E_FAIL;
 	}
 
-	x448_ctx = malloc(sizeof(struct ecx_ctx));
+	x448_ctx = calloc(1, sizeof(struct ecx_ctx));
 	if (!x448_ctx) {
 		fprintf(stderr, "failed to alloc x448 ctx\n");
 	        return UADK_E_FAIL;
 	}
 
-	memset(x448_ctx, 0, sizeof(struct ecx_ctx));
 	setup.alg = "x448";
 	setup.key_bits = X448_KEYBITS;
 	params.numa_id = uadk_e_ecc_get_numa_id();

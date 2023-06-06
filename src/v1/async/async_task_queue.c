@@ -60,13 +60,11 @@ int async_poll_task_init_v1(void)
 	kae_memset(&g_async_poll_queue, 0, sizeof(g_async_poll_queue));
 
 	g_async_poll_queue.async_poll_task_queue_head =
-		(async_poll_task *)malloc(sizeof(async_poll_task) * ASYNC_POLL_TASK_NUM);
+		(async_poll_task *)calloc(ASYNC_POLL_TASK_NUM, sizeof(async_poll_task));
 	if (g_async_poll_queue.async_poll_task_queue_head == NULL) {
 		US_ERR("no enough memory for task queue, errno=%d", errno);  //lint !e666
 		return 0;
 	}
-	kae_memset(g_async_poll_queue.async_poll_task_queue_head, 0,
-			sizeof(async_poll_task) * ASYNC_POLL_TASK_NUM);
 	g_async_poll_queue.left_task = ASYNC_POLL_TASK_NUM;
 
 	ret = sem_init(&g_async_poll_queue.empty_sem, 0, (unsigned int)g_async_poll_queue.left_task);
