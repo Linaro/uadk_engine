@@ -1157,13 +1157,11 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	struct sm2_ctx *smctx;
 	int ret;
 
-	smctx = malloc(sizeof(*smctx));
+	smctx = calloc(1, sizeof(*smctx));
 	if (!smctx) {
 		fprintf(stderr, "failed to alloc sm2 ctx\n");
 		return 0;
 	}
-
-	memset(smctx, 0, sizeof(*smctx));
 
 	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
 	if (!ret) {

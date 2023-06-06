@@ -62,13 +62,12 @@ struct wd_queue_mempool *wd_queue_mempool_create(struct wd_queue *q, unsigned in
 	kae_memset(addr, 0, rsv_mm_sz);
 
 	bitmap_sz = (block_num / BLOCKS_PER_BITMAP + 1) * sizeof(unsigned int);
-	pool =
-		(struct wd_queue_mempool *)kae_malloc(sizeof(struct wd_queue_mempool) + bitmap_sz);
+	pool = (struct wd_queue_mempool *)kae_calloc(1,
+			sizeof(struct wd_queue_mempool) + bitmap_sz);
 	if (pool == NULL) {
 		US_ERR("Alloc pool handle fail!");
 		return NULL;
 	}
-	kae_memset(pool, 0, sizeof(struct wd_queue_mempool) + bitmap_sz);
 
 	pool->base = addr;
 	sem_init(&pool->mempool_sem, 0, 1);
@@ -190,13 +189,12 @@ KAE_QUEUE_POOL_HEAD_S *kae_init_queue_pool(int algtype)
 
 	/* malloc a pool */
 	kae_pool->kae_queue_pool = (KAE_QUEUE_POOL_NODE_S *)
-		kae_malloc(KAE_QUEUE_POOL_MAX_SIZE * sizeof(KAE_QUEUE_POOL_NODE_S));
+		kae_calloc(KAE_QUEUE_POOL_MAX_SIZE, sizeof(KAE_QUEUE_POOL_NODE_S));
 	if (kae_pool->kae_queue_pool == NULL) {
 		US_ERR("malloc failed");
 		kae_free(kae_pool);
 		return NULL;
 	}
-	kae_memset(kae_pool->kae_queue_pool, 0, KAE_QUEUE_POOL_MAX_SIZE * sizeof(KAE_QUEUE_POOL_NODE_S));
 
 	pthread_mutex_init(&kae_pool->kae_queue_mutex, NULL);
 	pthread_mutex_init(&kae_pool->destroy_mutex, NULL);
@@ -271,12 +269,11 @@ static KAE_QUEUE_DATA_NODE_S *kae_new_wd_queue_memory(int algtype)
 {
 	KAE_QUEUE_DATA_NODE_S *queue_node = NULL;
 
-	queue_node = (KAE_QUEUE_DATA_NODE_S *)kae_malloc(sizeof(KAE_QUEUE_DATA_NODE_S));
+	queue_node = (KAE_QUEUE_DATA_NODE_S *)kae_calloc(1, sizeof(KAE_QUEUE_DATA_NODE_S));
 	if (queue_node == NULL) {
 		US_ERR("malloc failed");
 		return NULL;
 	}
-	kae_memset(queue_node, 0, sizeof(KAE_QUEUE_DATA_NODE_S));
 
 	queue_node->kae_wd_queue = wd_new_queue(algtype);
 	if (queue_node->kae_wd_queue == NULL) {

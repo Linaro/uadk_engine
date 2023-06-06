@@ -362,12 +362,9 @@ int async_module_init(void)
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
 		return 0;
 
-	poll_queue.head = malloc(sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
+	poll_queue.head = calloc(ASYNC_QUEUE_TASK_NUM, sizeof(struct async_poll_task));
 	if (poll_queue.head == NULL)
 		return 0;
-
-	memset(poll_queue.head, 0,
-	       sizeof(struct async_poll_task) * ASYNC_QUEUE_TASK_NUM);
 
 	if (sem_init(&poll_queue.empty_sem, 0, ASYNC_QUEUE_TASK_NUM) != 0)
 		goto err;

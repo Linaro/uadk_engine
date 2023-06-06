@@ -21,15 +21,13 @@
 
 struct wd_queue *wd_new_queue(int algtype)
 {
-	struct wd_queue *queue = (struct wd_queue *)kae_malloc(sizeof(struct wd_queue));
 	int ret;
-
+	struct wd_queue *queue = (struct wd_queue *)kae_calloc(1,
+						sizeof(struct wd_queue));
 	if (queue == NULL) {
 		US_ERR("malloc failed");
 		return NULL;
 	}
-
-	kae_memset(queue, 0, sizeof(struct wd_queue));
 
 	switch (algtype) {
 	case WCRYPTO_RSA:
