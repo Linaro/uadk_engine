@@ -44,10 +44,9 @@ void hpre_free_bn_ctx_buf(BN_CTX *bn_ctx, unsigned char *in_buf, int num)
 int hpre_rsa_check_para(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa)
 {
-	if ((rsa == NULL || from == NULL || to == NULL || flen <= 0)) {
-		US_ERR("RSA key %p, input %p or output %p are NULL, or flen invalid length.\n", rsa, from, to);
+	if ((rsa == NULL || from == NULL || to == NULL || flen <= 0))
 		return HPRE_CRYPTO_FAIL;
-	}
+
 	return HPRE_CRYPTO_SUCC;
 }
 

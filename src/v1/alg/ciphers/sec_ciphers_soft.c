@@ -110,11 +110,11 @@ int sec_ciphers_sw_impl_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	/* allowed iv to be empty. */
 	if (unlikely(key == NULL)) {
-		US_ERR("kae sw init parameter is NULL. key=%p", key);
+		US_ERR("kae sw init parameter is NULL");
 		return KAE_FAIL;
 	}
 	if (unlikely(ctx == NULL)) {
-		US_ERR("kae sw init parameter is NULL. ctx=%p", ctx);
+		US_ERR("kae sw init parameter is NULL");
 		return KAE_FAIL;
 	}
 
@@ -155,11 +155,10 @@ int sec_ciphers_sw_impl_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	ret = EVP_CIPHER_meth_get_init(sw_cipher)(ctx, key, iv, enc);
 	EVP_CIPHER_CTX_set_cipher_data(ctx, priv_ctx);
 	if (ret != OPENSSL_SUCCESS) {
-		US_ERR("OPENSSL init key failed. ctx=%p", ctx);
+		US_ERR("OPENSSL init key failed.");
 		kae_free(priv_ctx->sw_ctx_data);
 		return KAE_FAIL;
 	}
-	US_DEBUG("kae sw init impl success. ctx=%p", ctx);
 
 	return KAE_SUCCESS;
 }
@@ -185,18 +184,14 @@ int sec_ciphers_sw_impl_cleanup(EVP_CIPHER_CTX *ctx)
 
 	kae_free(priv_ctx->sw_ctx_data);
 
-	US_DEBUG("kae sw cleanup impl success, ctx=%p", ctx);
-
 	return KAE_SUCCESS;
 }
 
 static int sec_ciphers_sw_impl_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		const unsigned char *in, size_t inl)
 {
-	if (unlikely((ctx == NULL) || (out == NULL) || (in == NULL))) {
-		US_ERR("kae sw cipher parameter is null.ctx=%p, in=%p, out=%p, inl=%d", ctx, out, in, (int)inl);
+	if (unlikely((ctx == NULL) || (out == NULL) || (in == NULL)))
 		return KAE_FAIL;
-	}
 
 	cipher_priv_ctx_t *priv_ctx = (cipher_priv_ctx_t *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 
@@ -276,8 +271,6 @@ int sec_ciphers_sw_hw_ctx_sync(EVP_CIPHER_CTX *ctx, sec_cipher_priv_ctx_syncto_t
 			EVP_CIPHER_CTX_set_num(ctx, offset);
 		}
 	}
-
-	US_DEBUG("state sync success, direct=%d[1:SW_TO_HW, 2:HW_TO_SW], offset=%d", direction, num);
 
 	return KAE_SUCCESS;
 }
