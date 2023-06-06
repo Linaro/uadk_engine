@@ -67,25 +67,7 @@ RSA_METHOD *hpre_get_rsa_methods(void)
 		return g_hpre_rsa_method;
 	if (g_soft_rsa_method != NULL)
 		return g_soft_rsa_method;
-#if 0
-	if (!kae_get_device(g_hpre_device)) {
-		const RSA_METHOD *default_soft_method = RSA_PKCS1_OpenSSL();
 
-		g_soft_rsa_method = RSA_meth_new("SOFT RSA METHOD", 0);
-		ret &= RSA_meth_set_pub_enc(g_soft_rsa_method, RSA_meth_get_pub_enc(default_soft_method));
-		ret &= RSA_meth_set_priv_enc(g_soft_rsa_method, RSA_meth_get_priv_enc(default_soft_method));
-		ret &= RSA_meth_set_pub_dec(g_soft_rsa_method, RSA_meth_get_pub_dec(default_soft_method));
-		ret &= RSA_meth_set_priv_dec(g_soft_rsa_method, RSA_meth_get_priv_dec(default_soft_method));
-		ret &= RSA_meth_set_keygen(g_soft_rsa_method, hpre_rsa_soft_genkey);
-		ret &= RSA_meth_set_mod_exp(g_soft_rsa_method, RSA_meth_get_mod_exp(default_soft_method));
-		ret &= RSA_meth_set_bn_mod_exp(g_soft_rsa_method, RSA_meth_get_bn_mod_exp(default_soft_method));
-		if (ret == 0) {
-			US_ERR("Failed to set SOFT RSA methods");
-			return NULL;
-		}
-		return g_soft_rsa_method;
-	}
-#endif
 	g_hpre_rsa_method = RSA_meth_new("HPRE RSA method", 0);
 	if (g_hpre_rsa_method == NULL) {
 		KAEerr(KAE_F_HPRE_GET_RSA_METHODS, KAE_R_MALLOC_FAILURE);
