@@ -21,21 +21,32 @@ Installation Instruction
 ========================
 
 Build and install OpenSSL
------------------------
+------------------------
 
 ```
     git clone https://github.com/openssl/openssl.git
     cd openssl
     git checkout -b OpenSSL_1_1_1f OpenSSL_1_1_1f
-    ./config -Wl,-rpath=/usr/local/lib
+    ./config
     make
-    make test
     sudo make install
     openssl version
 ```
 
+Run pkg-config to ensure env is setup correctly
+-----------------------------------------------
+
+```
+    $ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/
+    $ pkg-config libcrypto --libs
+    -L/usr/local/lib -lcrypto
+```
+
+* export ``PKG_CONFIG_PATH`` is required on openEuler,
+  where /usr/local/lib is not set as the default pkgconfig search path.
+
 Build and install UADK
---------------------
+----------------------
 
 ```
     git clone https://github.com/Linaro/uadk.git
@@ -46,16 +57,17 @@ Build and install UADK
     make
     sudo make install
 ```
+
 * If get error:"cannot find -lnuma", please install the libnuma-dev
 * If get error:"fatal error: zlib.h: No such file or directory", please install zlib.
 
 Build and install UADK Engine
------------------------------------
+-----------------------------
 ```
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
     autoreconf -i
-    ./configure --libdir=/usr/local/lib/engines-1.1/ --enable-kae
+    ./configure --libdir=/usr/local/lib/engines-1.1/ [--enable-kae]
     make
     sudo make install
 
@@ -93,7 +105,7 @@ Install libraries to the temp folder
     -L/tmp/build/lib -lwd
 
     $ cd uadk_engine
-    $ autoreconf
+    $ autoreconf -i
     $ ./configure --prefix=/tmp/build
     $ make; make install
 
