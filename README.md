@@ -13,7 +13,7 @@ OpenSSL engine for uadk
 Prerequisites
 =============
 * CPU: aarch64
-* OpenSSL: 1.1.1f
+* OpenSSL: 1.1.1f or 3.0
 * libnuma
 * zlib
 
@@ -26,24 +26,26 @@ Build and install OpenSSL
 ```
     git clone https://github.com/openssl/openssl.git
     cd openssl
-    git checkout -b OpenSSL_1_1_1f OpenSSL_1_1_1f
+    // For openssl1.1.1f
+    git checkout -b opensssl1.1 OpenSSL_1_1_1f
+    // for openssl 3.0
+    git checkout -b openssl3.0 openssl-3.0.0
     ./config
     make
     sudo make install
     openssl version
 ```
 
-Run pkg-config to ensure env is setup correctly
+Setup env on-demand
 -----------------------------------------------
 
 ```
     $ export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/
     $ pkg-config libcrypto --libs
     -L/usr/local/lib -lcrypto
-```
 
-* export ``PKG_CONFIG_PATH`` is required on openEuler,
-  where /usr/local/lib is not set as the default pkgconfig search path.
+    $ export LD_LIBRARY_PATH=/usr/local/lib
+```
 
 Build and install UADK
 ----------------------
@@ -63,6 +65,7 @@ Build and install UADK
 
 Build and install UADK Engine
 -----------------------------
+For openssl 1.1
 ```
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
@@ -72,6 +75,20 @@ Build and install UADK Engine
     sudo make install
 
     Option --enable-kae can be chosen to enable KAE for non-sva version
+```
+
+For openssl 3.0
+```
+    git clone https://github.com/Linaro/uadk_engine.git
+    cd uadk_engine
+    autoreconf -i
+    // openEuler
+    ./configure --libdir=/usr/local/lib/engines-3/
+    // ubuntu
+    ./configure --libdir=/usr/local/lib/ossl-modules/
+    make
+    sudo make install
+
 ```
 
 Testing
@@ -109,8 +126,13 @@ Install libraries to the temp folder
     $ ./configure --prefix=/tmp/build
     $ make; make install
 
+    // For openssl 1.1
     $ openssl engine -c /tmp/build/lib/uadk_engine.so
     $ ./test/sanity_test.sh /tmp/build/lib/uadk_engine.so
+
+    // For openssl 3.0
+    $ openssl speed -provider /tmp/build/lib/uadk_provider.so -provider default -evp md5
+    $ ./test/sanity_test.sh /tmp/build/lib/uadk_provider.so
 
 ```
 
