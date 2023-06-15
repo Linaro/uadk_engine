@@ -67,7 +67,7 @@ struct uadk_dh_sess {
 	struct wd_dh_sess_setup setup;
 	struct wd_dh_req req;
 	DH *alg;
-	uint32_t key_size;
+	__u16 key_size;
 };
 
 struct dh_res {
@@ -316,7 +316,7 @@ static int uadk_e_wd_dh_init(struct dh_res_config *config, struct uacce_dev *dev
 	struct wd_sched *sched = &config->sched.wd_sched;
 	struct wd_ctx_config *ctx_cfg;
 	int ret = 0;
-	int i;
+	__u32 i;
 
 	ret = uadk_e_is_env_enabled("dh");
 	if (ret == ENV_ENABLED)
@@ -406,7 +406,8 @@ err_unlock:
 static void uadk_e_wd_dh_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = g_dh_res.ctx_res;
-	int i, ret;
+	__u32 i;
+	int ret;
 
 	if (g_dh_res.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("dh");
@@ -440,9 +441,9 @@ static struct uadk_dh_sess *dh_new_eng_session(DH *dh_alg)
 }
 
 static int dh_init_eng_session(struct uadk_dh_sess *dh_sess,
-			       int bits, bool is_g2)
+			       __u16 bits, bool is_g2)
 {
-	uint32_t key_size = (uint32_t)bits >> CHAR_BIT_SIZE;
+	__u16 key_size = bits >> CHAR_BIT_SIZE;
 	struct sched_params params = {0};
 
 	if (dh_sess->sess && dh_sess->req.x_p) {
@@ -453,7 +454,7 @@ static int dh_init_eng_session(struct uadk_dh_sess *dh_sess,
 
 	if (!dh_sess->sess) {
 		dh_sess->key_size = key_size;
-		dh_sess->setup.key_bits = dh_sess->key_size << CHAR_BIT_SIZE;
+		dh_sess->setup.key_bits = bits;
 		dh_sess->setup.is_g2 = is_g2;
 		params.numa_id = g_dh_res.numa_id;
 		dh_sess->setup.sched_param = &params;
@@ -482,7 +483,7 @@ static void dh_free_eng_session(struct uadk_dh_sess *dh_sess)
 	OPENSSL_free(dh_sess);
 }
 
-static struct uadk_dh_sess *dh_get_eng_session(DH *dh, int bits,
+static struct uadk_dh_sess *dh_get_eng_session(DH *dh, __u16 bits,
 					       bool is_g2)
 {
 	struct uadk_dh_sess *dh_sess = dh_new_eng_session(dh);
@@ -500,9 +501,10 @@ static struct uadk_dh_sess *dh_get_eng_session(DH *dh, int bits,
 	return dh_sess;
 }
 
-static int check_dh_bit_useful(const int bits)
+static int check_dh_bit_useful(const __u16 bits)
 {
-	/* Check whether bits exceeds the limit.
+	/*
+	 * Check whether bits exceeds the limit.
 	 * The max module bits of openssl soft alg is
 	 * OPENSSL_DH_MAX_MODULUS_BITS, 10000 bits.
 	 * OpenSSL speed tool supports 2048/3072/4096/6144/8192 bits.
@@ -524,7 +526,7 @@ static int check_dh_bit_useful(const int bits)
 	return UADK_E_FAIL;
 }
 
-static int dh_prepare_data(const int bits, const BIGNUM *g, DH *dh,
+static int dh_prepare_data(const __u16 bits, const BIGNUM *g, DH *dh,
 			   struct uadk_dh_sess **dh_sess,
 			   BIGNUM **priv_key)
 {
@@ -552,7 +554,7 @@ static int dh_prepare_data(const int bits, const BIGNUM *g, DH *dh,
 	return ret;
 }
 
-static int dh_set_g(const BIGNUM *g, const int key_size,
+static int dh_set_g(const BIGNUM *g, const __u16 key_size,
 		    unsigned char *ag_bin, struct uadk_dh_sess *dh_sess)
 {
 	struct wd_dtb g_dtb;
@@ -592,7 +594,7 @@ static int dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p,
 			      const BIGNUM *priv_key,
 			      struct uadk_dh_sess *dh_sess)
 {
-	int key_size = dh_sess->key_size;
+	__u16 key_size = dh_sess->key_size;
 	unsigned char *apriv_key_bin;
 	unsigned char *ag_bin;
 	unsigned char *ap_bin;
@@ -642,7 +644,7 @@ static int dh_fill_compkey_req(const BIGNUM *g, const BIGNUM *p,
 			       const BIGNUM *priv_key, const BIGNUM *pub_key,
 			       struct uadk_dh_sess *dh_sess)
 {
-	int key_size = dh_sess->key_size;
+	__u16 key_size = dh_sess->key_size;
 	unsigned char *apriv_key_bin;
 	unsigned char *ap_bin;
 	unsigned char *ag_bin;
@@ -759,10 +761,10 @@ static int uadk_e_dh_generate_key(DH *dh)
 	struct uadk_dh_sess *dh_sess = NULL;
 	BIGNUM *priv_key = NULL;
 	BIGNUM *pub_key = NULL;
-	int bits = DH_bits(dh);
 	const BIGNUM *p = NULL;
 	const BIGNUM *g = NULL;
 	const BIGNUM *q = NULL;
+	__u16 bits;
 	int ret;
 
 	if (!dh)
@@ -775,6 +777,12 @@ static int uadk_e_dh_generate_key(DH *dh)
 	DH_get0_pqg(dh, &p, &q, &g);
 	if (!p || !g || q)
 		goto exe_soft;
+
+	/*
+	 * The max module bits of DH is
+	 * OPENSSL_DH_MAX_MODULUS_BITS, 10000 bits.
+	 */
+	bits = (__u16)DH_bits(dh);
 
 	/* Get session and prepare private key */
 	ret = dh_prepare_data(bits, g, dh, &dh_sess, &priv_key);
@@ -819,8 +827,8 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 				 DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
+	__u16 bits = (__u16)DH_bits(dh);
 	BIGNUM *priv_key = NULL;
-	int bits = DH_bits(dh);
 	const BIGNUM *p = NULL;
 	const BIGNUM *g = NULL;
 	const BIGNUM *q = NULL;
