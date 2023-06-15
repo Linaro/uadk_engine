@@ -828,7 +828,8 @@ err_unlock:
 static void uadk_e_rsa_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = g_rsa_res.ctx_res;
-	int i, ret;
+	__u32 i;
+	int ret;
 
 	if (g_rsa_res.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("rsa");

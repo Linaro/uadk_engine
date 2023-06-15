@@ -203,8 +203,8 @@ static struct cipher_info cipher_info_table[] = {
 
 static const EVP_CIPHER *sec_ciphers_get_cipher_sw_impl(int n_id)
 {
-	int sec_cipher_sw_table_size = ARRAY_SIZE(sec_ciphers_sw_table);
-	int i;
+	__u32 sec_cipher_sw_table_size = ARRAY_SIZE(sec_ciphers_sw_table);
+	__u32 i;
 
 	for (i = 0; i < sec_cipher_sw_table_size; i++) {
 		if (n_id == sec_ciphers_sw_table[i].nid)
@@ -348,10 +348,9 @@ static int uadk_get_accel_platform(char *alg_name)
 static int uadk_e_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
 				 const int **nids, int nid)
 {
-	int ret = 1;
 	int *cipher_nids;
-	int size;
-	int i;
+	__u32 size, i;
+	int ret = 1;
 
 	if (platform == HW_V2) {
 		size = (sizeof(cipher_hw_v2_nids) - 1) / sizeof(int);
@@ -665,8 +664,9 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
-	int cipher_counts = ARRAY_SIZE(cipher_info_table);
-	int nid, ret, i;
+	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
+	int nid, ret;
+	__u32 i;
 
 	if (unlikely(!key)) {
 		fprintf(stderr, "ctx init parameter key is NULL.\n");
@@ -762,7 +762,7 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 	__u16 iv_bytes = priv->req.iv_bytes;
 	int offset = priv->req.in_bytes - iv_bytes;
 	unsigned char K[IV_LEN] = {0};
-	int i;
+	__u32 i;
 
 	switch (priv->setup.mode) {
 	case WD_CIPHER_CFB:
@@ -1150,7 +1150,8 @@ static void destroy_v3_cipher(void)
 
 void uadk_e_destroy_cipher(void)
 {
-	int i, ret;
+	__u32 i;
+	int ret;
 
 	if (engine.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("cipher");

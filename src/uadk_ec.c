@@ -74,7 +74,7 @@ static void init_dtb_param(void *dtb, char *start,
 {
 	struct wd_dtb *tmp = dtb;
 	char *buff = start;
-	int i = 0;
+	__u32 i = 0;
 
 	while (i++ < num) {
 		tmp->data = buff;
