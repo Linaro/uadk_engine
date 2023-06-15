@@ -418,7 +418,8 @@ static int uadk_e_wd_digest_env_init(struct uacce_dev *dev)
 
 static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 {
-	int ret, i, j;
+	__u32 i, j;
+	int ret;
 
 	engine.numa_id = dev->numa_id;
 
@@ -527,10 +528,11 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
-	int digest_counts = ARRAY_SIZE(digest_info_table);
+	__u32 digest_counts = ARRAY_SIZE(digest_info_table);
 	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 	struct sched_params params = {0};
-	int ret, i;
+	__u32 i;
+	int ret;
 
 	priv->e_nid = nid;
 
@@ -911,7 +913,8 @@ int uadk_e_bind_digest(ENGINE *e)
 
 void uadk_e_destroy_digest(void)
 {
-	int i, ret;
+	__u32 i;
+	int ret;
 
 	if (engine.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("digest");

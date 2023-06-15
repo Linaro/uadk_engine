@@ -197,7 +197,8 @@ static int uadk_e_wd_ecc_general_init(struct uacce_dev *dev,
 				      struct wd_sched *sched)
 {
 	struct wd_ctx_config *ctx_cfg;
-	int ret, i;
+	__u32 i;
+	int ret;
 
 	ctx_cfg = calloc(1, sizeof(struct wd_ctx_config));
 	if (!ctx_cfg)
@@ -258,7 +259,8 @@ static int uadk_wd_ecc_init(struct ecc_res_config *config, struct uacce_dev *dev
 static void uadk_wd_ecc_uninit(void)
 {
 	struct wd_ctx_config *ctx_cfg = ecc_res.ctx_res;
-	int i, ret;
+	__u32 i;
+	int ret;
 
 	if (ecc_res.pid != getpid())
 		return;
@@ -328,7 +330,7 @@ err:
 
 bool uadk_is_all_zero(const unsigned char *data, size_t dlen)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < dlen; i++) {
 		if (data[i])
@@ -559,7 +561,7 @@ const EVP_PKEY_METHOD *get_openssl_pkey_meth(int nid)
 	size_t count = EVP_PKEY_meth_get_count();
 	const EVP_PKEY_METHOD *pmeth;
 	int pkey_id = -1;
-	int i;
+	size_t i;
 
 	for (i = 0; i < count; i++) {
 		pmeth = EVP_PKEY_meth_get0(i);
@@ -636,7 +638,8 @@ void uadk_e_ecc_lock_init(void)
 int uadk_e_bind_ecc(ENGINE *e)
 {
 	static const char * const ecc_alg[] = {"sm2", "ecdsa", "ecdh", "x25519", "x448"};
-	int i, size, ret;
+	__u32 i, size;
+	int ret;
 	bool sp;
 
 	/* Enumerate ecc algs to check whether it is supported and set tags */
