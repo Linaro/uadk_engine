@@ -199,7 +199,7 @@ void hpre_dh_free_eng_ctx(hpre_dh_engine_ctx_t *eng_ctx)
 	eng_ctx->opdata.pri = NULL;
 	eng_ctx->opdata.x_p = NULL;
 	eng_ctx->opdata.pv = NULL;
-	OPENSSL_free(eng_ctx);
+	free(eng_ctx);
 	eng_ctx = NULL;
 }
 
@@ -265,7 +265,7 @@ static hpre_dh_engine_ctx_t *hpre_dh_new_eng_ctx(DH *alg)
 {
 	hpre_dh_engine_ctx_t *eng_ctx = NULL;
 
-	eng_ctx = (hpre_dh_engine_ctx_t *)OPENSSL_calloc(1, sizeof(hpre_dh_engine_ctx_t));
+	eng_ctx = (hpre_dh_engine_ctx_t *)calloc(1, sizeof(hpre_dh_engine_ctx_t));
 	if (eng_ctx == NULL) {
 		US_ERR("hpre engine_ctx malloc fail");
 		return NULL;
