@@ -674,23 +674,27 @@ soft_update:
 	return digest_soft_update(priv, data, data_len);
 }
 
-static void async_cb(struct wd_digest_req *req, void *data)
+static void *uadk_e_digest_cb(void *data)
 {
+	struct wd_digest_req *req = (struct wd_digest_req *)data;
 	struct uadk_e_cb_info *cb_param;
 	struct async_op *op;
 
 	if (!req)
-		return;
+		return NULL;
 
 	cb_param = req->cb_param;
 	if (!cb_param)
-		return;
+		return NULL;
+
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
+
+	return NULL;
 }
 
 static int do_digest_sync(struct digest_priv_ctx *priv)
@@ -721,7 +725,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 
 	cb_param.op = op;
 	cb_param.priv = priv;
-	priv->req.cb = (void *)async_cb;
+	priv->req.cb = uadk_e_digest_cb;
 	priv->req.cb_param = &cb_param;
 
 	ret = async_get_free_task(&idx);

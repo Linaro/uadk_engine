@@ -76,7 +76,7 @@ static int ecc_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return 0;
 }
 
-void uadk_ecc_cb(void *req_t)
+void uadk_e_ecc_cb(void *req_t)
 {
 	struct wd_ecc_req *req_new = (struct wd_ecc_req *)req_t;
 	struct uadk_e_cb_info *cb_param;
@@ -296,7 +296,7 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 		cb_param.op = &op;
 		cb_param.priv = req;
 		req->cb_param = &cb_param;
-		req->cb = (void *)uadk_ecc_cb;
+		req->cb = uadk_e_ecc_cb;
 		req->status = -1;
 		ret = async_get_free_task(&idx);
 		if (!ret)

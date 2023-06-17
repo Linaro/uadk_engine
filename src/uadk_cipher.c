@@ -717,17 +717,17 @@ static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 	return 1;
 }
 
-static void uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
+static void *uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
 {
 	struct uadk_e_cb_info *cb_param;
 	struct async_op *op;
 
 	if (!req)
-		return;
+		return NULL;
 
 	cb_param = req->cb_param;
 	if (!cb_param)
-		return;
+		return NULL;
 
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
@@ -735,6 +735,8 @@ static void uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
 		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
 	}
+
+	return NULL;
 }
 
 /* Increment counter (128-bit int) by c */
@@ -822,7 +824,7 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 
 	cb_param.op = op;
 	cb_param.priv = priv;
-	priv->req.cb = (void *)uadk_e_cipher_cb;
+	priv->req.cb = uadk_e_cipher_cb;
 	priv->req.cb_param = &cb_param;
 
 	ret = async_get_free_task(&idx);
