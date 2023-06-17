@@ -405,6 +405,11 @@ static ECDSA_SIG *openssl_do_sign(const unsigned char *dgst, int dlen,
 	EC_KEY_METHOD *openssl_meth;
 
 	openssl_meth = (EC_KEY_METHOD *)EC_KEY_OpenSSL();
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get OpenSSL method\n");
+		return NULL;
+	}
+
 	EC_KEY_METHOD_get_sign(openssl_meth, NULL, NULL,
 			       &sign_sig_pfunc);
 	if (!sign_sig_pfunc) {
@@ -647,6 +652,11 @@ static int openssl_do_verify(const unsigned char *dgst, int dlen,
 	EC_KEY_METHOD *openssl_meth;
 
 	openssl_meth = (EC_KEY_METHOD *)EC_KEY_OpenSSL();
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get OpenSSL method\n");
+		return -1;
+	}
+
 	EC_KEY_METHOD_get_verify(openssl_meth, NULL,
 				 &verify_sig_pfunc);
 	if (!verify_sig_pfunc) {
@@ -814,6 +824,11 @@ static int openssl_do_generate(EC_KEY *eckey)
 	EC_KEY_METHOD *openssl_meth;
 
 	openssl_meth = (EC_KEY_METHOD *)EC_KEY_OpenSSL();
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get OpenSSL method\n");
+		return -1;
+	}
+
 	EC_KEY_METHOD_get_keygen(openssl_meth, &gen_key_pfunc);
 	if (!gen_key_pfunc) {
 		fprintf(stderr, "gen_key_pfunc is NULL\n");
@@ -1255,6 +1270,11 @@ static int openssl_do_compute(unsigned char **pout,
 	EC_KEY_METHOD *openssl_meth;
 
 	openssl_meth = (EC_KEY_METHOD *)EC_KEY_OpenSSL();
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get OpenSSL method\n");
+		return -1;
+	}
+
 	EC_KEY_METHOD_get_compute_key(openssl_meth, &comp_key_pfunc);
 	if (!comp_key_pfunc) {
 		fprintf(stderr, "comp_key_pfunc is NULL\n");
@@ -1420,6 +1440,7 @@ int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_EC);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get ec pkey methods\n");
+		EVP_PKEY_meth_free(meth);
 		return 0;
 	}
 
