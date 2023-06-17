@@ -1643,6 +1643,7 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		EVP_PKEY_meth_free(meth);
 		return -1;
 	}
 
