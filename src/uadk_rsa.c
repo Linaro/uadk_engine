@@ -818,6 +818,7 @@ static int uadk_e_rsa_init(void)
 	return UADK_E_INIT_SUCCESS;
 
 err_unlock:
+	g_rsa_res.ctx_res = NULL;
 	pthread_spin_unlock(&g_rsa_res.lock);
 	free(dev);
 	(void)fprintf(stderr, "failed to init rsa(%d)\n", ret);
@@ -830,6 +831,9 @@ static void uadk_e_rsa_uninit(void)
 	struct wd_ctx_config *ctx_cfg = g_rsa_res.ctx_res;
 	__u32 i;
 	int ret;
+
+	if (!ctx_cfg)
+		return;
 
 	if (g_rsa_res.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("rsa");
