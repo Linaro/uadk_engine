@@ -1101,7 +1101,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	}
 	cb_param.op = &op;
 	cb_param.priv = &(rsa_sess->req);
-	rsa_sess->req.cb = (void *)uadk_e_rsa_cb;
+	rsa_sess->req.cb = uadk_e_rsa_cb;
 	rsa_sess->req.cb_param = &cb_param;
 	rsa_sess->req.status = -1;
 

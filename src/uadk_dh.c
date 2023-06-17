@@ -711,7 +711,7 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 	} else {
 		cb_param.op = &op;
 		cb_param.priv = &dh_sess->req;
-		dh_sess->req.cb = (void *)uadk_e_dh_cb;
+		dh_sess->req.cb = uadk_e_dh_cb;
 		dh_sess->req.cb_param = &cb_param;
 		dh_sess->req.status = -1;
 		ret = async_get_free_task(&idx);
