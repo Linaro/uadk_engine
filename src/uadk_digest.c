@@ -816,7 +816,7 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 	}
 
 	if (priv && priv->data)
-		OPENSSL_free(priv->data);
+		free(priv->data);
 
 	return 1;
 }
