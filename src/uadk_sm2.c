@@ -478,7 +478,7 @@ free_sig:
 	return ret;
 }
 
-static int cipher_bin_to_ber(const EVP_MD *md, struct wd_ecc_point *c1,
+static int cipher_bin_to_ber(struct wd_ecc_point *c1,
 			     struct wd_dtb *c2, struct wd_dtb *c3,
 			     unsigned char *ber, size_t *ber_len)
 {
@@ -507,29 +507,33 @@ static int cipher_bin_to_ber(const EVP_MD *md, struct wd_ecc_point *c1,
 		goto free_y1;
 	}
 
+	ret = ASN1_OCTET_STRING_set(ctext_struct.C3, (void *)c3->data, c3->dsize);
+	if (!ret)
+		goto free_c3;
+
 	ctext_struct.C2 = ASN1_OCTET_STRING_new();
 	if (!ctext_struct.C2) {
 		ret = -ENOMEM;
-		goto free_y1;
+		goto free_c3;
 	}
 
-	if (!ASN1_OCTET_STRING_set(ctext_struct.C3, (void *)c3->data, c3->dsize)
-		|| !ASN1_OCTET_STRING_set(ctext_struct.C2,
-					  (void *)c2->data, c2->dsize)) {
-		fprintf(stderr, "failed to ASN1_OCTET_STRING_set\n");
-		ret = -EINVAL;
-		goto free_y1;
-	}
+	ret = ASN1_OCTET_STRING_set(ctext_struct.C2, (void *)c2->data, c2->dsize);
+	if (!ret)
+		goto free_c2;
 
-	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct,
-					     (unsigned char **)&ber);
+	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct, &ber);
 	/* Ensure cast to size_t is safe */
 	if (ciphertext_leni < 0) {
 		ret = -EINVAL;
-		goto free_y1;
+		goto free_c2;
 	}
 	*ber_len = (size_t)ciphertext_leni;
 	ret = 0;
+
+free_c2:
+	ASN1_OCTET_STRING_free(ctext_struct.C2);
+free_c3:
+	ASN1_OCTET_STRING_free(ctext_struct.C3);
 free_y1:
 	BN_free(y1);
 free_x1:
@@ -538,29 +542,18 @@ free_x1:
 	return ret;
 }
 
-static int cipher_ber_to_bin(unsigned char *ber, size_t ber_len,
-			     struct wd_ecc_point *c1,
-			     struct wd_dtb *c2,
-			     struct wd_dtb *c3)
+static int cipher_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext *ctext_struct,
+			     struct wd_ecc_point *c1, struct wd_dtb *c2, struct wd_dtb *c3)
 {
-	struct sm2_ciphertext *ctext_struct;
-	int ret, len, len1;
-
-	ctext_struct = d2i_SM2_Ciphertext(NULL, (const unsigned char **)&ber,
-					  ber_len);
-	if (!ctext_struct) {
-		fprintf(stderr, "failed to d2i_SM2_Ciphertext\n");
-		return -ENOMEM;
-	}
+	int len, len1, md_size;
 
 	len = BN_num_bytes(ctext_struct->C1x);
 	len1 = BN_num_bytes(ctext_struct->C1y);
 	c1->x.data = malloc(len + len1 + ctext_struct->C2->length +
 			    ctext_struct->C3->length);
-	if (!c1->x.data) {
-		ret = -ENOMEM;
-		goto free_ctext;
-	}
+	if (!c1->x.data)
+		return -ENOMEM;
+
 	c1->y.data = c1->x.data + len;
 	c3->data = c1->y.data + len1;
 	c2->data = c3->data + ctext_struct->C3->length;
@@ -568,13 +561,17 @@ static int cipher_ber_to_bin(unsigned char *ber, size_t ber_len,
 	memcpy(c3->data, ctext_struct->C3->data, ctext_struct->C3->length);
 	c2->dsize = ctext_struct->C2->length;
 	c3->dsize = ctext_struct->C3->length;
+	md_size = EVP_MD_size(md);
+	if (c3->dsize != md_size) {
+		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
+		free(c1->x.data);
+		return -EINVAL;
+	}
+
 	c1->x.dsize = BN_bn2bin(ctext_struct->C1x, (void *)c1->x.data);
 	c1->y.dsize = BN_bn2bin(ctext_struct->C1y, (void *)c1->y.data);
 
 	return 0;
-free_ctext:
-	SM2_Ciphertext_free(ctext_struct);
-	return ret;
 }
 
 static size_t ec_field_size(const EC_GROUP *group)
@@ -681,18 +678,24 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		return UADK_DO_SOFT;
 	}
 
+	if (smctx->init_status != CTX_INIT_SUCC) {
+		fprintf(stderr, "sm2 ctx init failed\n");
+		return UADK_DO_SOFT;
+	}
+
 	if (sig_sz <= 0) {
 		fprintf(stderr, "sig_sz error\n");
 		return -EINVAL;
 	}
 
-	if (sig == NULL) {
-		*siglen = (size_t)sig_sz;
-		return 1;
-	}
-
 	if (*siglen < (size_t)sig_sz) {
 		fprintf(stderr, "siglen(%lu) < sig_sz(%lu)\n", *siglen, (size_t)sig_sz);
+		return -EINVAL;
+	}
+
+	if (!sig) {
+		fprintf(stderr, "invalid: sig is NULL\n");
+		*siglen = (size_t)sig_sz;
 		return -EINVAL;
 	}
 
@@ -709,21 +712,15 @@ static int sm2_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		    const unsigned char *tbs, size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	struct wd_ecc_req req = {0};
 	struct wd_dtb *r = NULL;
 	struct wd_dtb *s = NULL;
-	struct wd_ecc_req req;
 	int ret;
 
 	ret = sm2_sign_check(ctx, sig, siglen, tbs, tbslen);
 	if (ret)
 		goto do_soft;
 
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		ret = UADK_DO_SOFT;
-		goto do_soft;
-	}
-
-	memset(&req, 0, sizeof(req));
 	ret = sm2_sign_init_iot(smctx->sess, &req, (void *)tbs, tbslen);
 	if (ret)
 		goto do_soft;
@@ -798,6 +795,11 @@ static int sm2_verify_check(EVP_PKEY_CTX *ctx,
 		return UADK_DO_SOFT;
 	}
 
+	if (smctx->init_status != CTX_INIT_SUCC) {
+		fprintf(stderr, "sm2 ctx init failed\n");
+		return UADK_DO_SOFT;
+	}
+
 	if (tbslen > SM2_KEY_BYTES)
 		return UADK_DO_SOFT;
 
@@ -816,20 +818,15 @@ static int sm2_verify(EVP_PKEY_CTX *ctx,
 	unsigned char buf_s[UADK_ECC_MAX_KEY_BYTES] = {0};
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
+	struct wd_ecc_req req = {0};
 	struct wd_dtb e = {0};
 	struct wd_dtb r = {0};
 	struct wd_dtb s = {0};
-	struct wd_ecc_req req;
 	int ret;
 
 	ret = sm2_verify_check(ctx, sig, siglen, tbs, tbslen);
 	if (ret)
 		goto do_soft;
-
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		ret = UADK_DO_SOFT;
-		goto do_soft;
-	}
 
 	r.data = (void *)buf_r;
 	s.data = (void *)buf_s;
@@ -841,7 +838,6 @@ static int sm2_verify(EVP_PKEY_CTX *ctx,
 
 	e.data = (void *)tbs;
 	e.dsize = tbslen;
-	memset(&req, 0, sizeof(req));
 	ret = sm2_verify_init_iot(smctx->sess, &req, &e, &r, &s);
 	if (ret)
 		goto do_soft;
@@ -910,6 +906,11 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 		return UADK_DO_SOFT;
 	}
 
+	if (smctx->init_status != CTX_INIT_SUCC) {
+		fprintf(stderr, "sm2 ctx init failed\n");
+		return UADK_DO_SOFT;
+	}
+
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	c3_size = EVP_MD_size(md);
 	if (c3_size <= 0) {
@@ -941,22 +942,16 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	struct wd_ecc_point *c1 = NULL;
+	struct wd_ecc_req req = {0};
 	struct wd_dtb *c2 = NULL;
 	struct wd_dtb *c3 = NULL;
-	struct wd_ecc_req req;
 	const EVP_MD *md;
-	int ret;
+	int md_size, ret;
 
 	ret = sm2_encrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
 		goto do_soft;
 
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		ret = UADK_DO_SOFT;
-		goto do_soft;
-	}
-
-	memset(&req, 0, sizeof(req));
 	ret = sm2_encrypt_init_iot(smctx->sess, &req, (void *)in, inlen);
 	if (ret)
 		goto do_soft;
@@ -974,18 +969,25 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 		goto uninit_iot;
 	}
 
-	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
 	if (!c1 || !c2 || !c3) {
 		ret = UADK_DO_SOFT;
 		goto uninit_iot;
 	}
 
-	ret = cipher_bin_to_ber(md, c1, c2, c3, out, outlen);
+	ret = cipher_bin_to_ber(c1, c2, c3, out, outlen);
 	if (ret)
 		goto uninit_iot;
 
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
+	md_size = EVP_MD_size(md);
+	if (c3->dsize != md_size) {
+		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
+		goto uninit_iot;
+	}
+
 	ret = 1;
+
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
@@ -1012,6 +1014,11 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 
 	if (!smctx || !smctx->sess) {
 		fprintf(stderr, "smctx or sess NULL\n");
+		return UADK_DO_SOFT;
+	}
+
+	if (smctx->init_status != CTX_INIT_SUCC) {
+		fprintf(stderr, "sm2 ctx init failed\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -1092,8 +1099,9 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 		       const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	struct sm2_ciphertext *ctext_struct;
+	struct wd_ecc_req req = {0};
 	struct wd_ecc_point c1;
-	struct wd_ecc_req req;
 	struct wd_dtb c2, c3;
 	const EVP_MD *md;
 	int ret;
@@ -1102,24 +1110,20 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	if (ret)
 		goto do_soft;
 
-	if (smctx->init_status != CTX_INIT_SUCC) {
+	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
+
+	ctext_struct = d2i_SM2_Ciphertext(NULL, &in, inlen);
+	if (!ctext_struct) {
 		ret = UADK_DO_SOFT;
 		goto do_soft;
 	}
 
-	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
-
-	ret = cipher_ber_to_bin((void *)in, inlen, &c1, &c2, &c3);
-	if (ret)
-		goto do_soft;
-
-	if (c3.dsize != EVP_MD_size(md)) {
-		fprintf(stderr, "c3 dsize != hash_size\n");
-		ret = -EINVAL;
-		goto free_c1;
+	ret = cipher_ber_to_bin(md, ctext_struct, &c1, &c2, &c3);
+	if (ret) {
+		ret = UADK_DO_SOFT;
+		goto free_ctext;
 	}
 
-	memset(&req, 0, sizeof(req));
 	ret = sm2_decrypt_init_iot(smctx->sess, &req, &c1, &c2, &c3);
 	if (ret)
 		goto free_c1;
@@ -1142,10 +1146,13 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 		goto uninit_iot;
 
 	ret = 1;
+
 uninit_iot:
 	sm2_decrypt_uninit_iot(smctx->sess, &req);
 free_c1:
 	free(c1.x.data);
+free_ctext:
+	SM2_Ciphertext_free(ctext_struct);
 do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
