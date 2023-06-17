@@ -811,6 +811,10 @@ int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_X25519);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get x25519 pkey methods\n");
+		return UADK_E_FAIL;
+	}
 
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
@@ -852,6 +856,10 @@ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_X448);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get x448 pkey methods\n");
+		return UADK_E_FAIL;
+	}
 
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 

@@ -1418,6 +1418,11 @@ int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_EC);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get ec pkey methods\n");
+		return 0;
+	}
+
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
 	pkey_meth->ec = meth;

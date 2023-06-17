@@ -279,6 +279,11 @@ static int openssl_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	PFUNC_SIGN sign_pfunc = NULL;
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		return -1;
+	}
+
 	EVP_PKEY_meth_get_sign(openssl_meth, NULL, &sign_pfunc);
 	if (!sign_pfunc) {
 		fprintf(stderr, "sign_pfunc is NULL\n");
@@ -296,6 +301,11 @@ static int openssl_verify(EVP_PKEY_CTX *ctx,
 	PFUNC_VERIFY verify_pfunc = NULL;
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		return -1;
+	}
+
 	EVP_PKEY_meth_get_verify(openssl_meth, NULL, &verify_pfunc);
 	if (!verify_pfunc) {
 		fprintf(stderr, "verify_pfunc is NULL\n");
@@ -313,6 +323,11 @@ static int openssl_encrypt(EVP_PKEY_CTX *ctx,
 	PFUNC_DEC enc_pfunc = NULL;
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		return -1;
+	}
+
 	EVP_PKEY_meth_get_encrypt(openssl_meth, NULL, &enc_pfunc);
 	if (!enc_pfunc) {
 		fprintf(stderr, "enc_pfunc is NULL\n");
@@ -330,6 +345,11 @@ static int openssl_decrypt(EVP_PKEY_CTX *ctx,
 	PFUNC_ENC dec_pfunc = NULL;
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		return -1;
+	}
+
 	EVP_PKEY_meth_get_decrypt(openssl_meth, NULL, &dec_pfunc);
 	if (!dec_pfunc) {
 		fprintf(stderr, "dec_pfunc is NULL\n");
@@ -1614,6 +1634,11 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
+	if (!openssl_meth) {
+		fprintf(stderr, "failed to get sm2 pkey methods\n");
+		return -1;
+	}
+
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
 	if (!uadk_e_ecc_get_support_state(SM2_SUPPORT)) {
