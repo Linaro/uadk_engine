@@ -73,7 +73,7 @@ struct digest_engine {
 	pthread_spinlock_t lock;
 };
 
-static struct digest_engine engine;
+static struct digest_engine g_digest_engine;
 
 struct evp_md_ctx_st {
 	const EVP_MD *digest;
@@ -421,36 +421,36 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 	__u32 i, j;
 	int ret;
 
-	engine.numa_id = dev->numa_id;
+	g_digest_engine.numa_id = dev->numa_id;
 
 	ret = uadk_e_is_env_enabled("digest");
 	if (ret == ENV_ENABLED)
 		return uadk_e_wd_digest_env_init(dev);
 
-	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
-	engine.ctx_cfg.ctx_num = CTX_NUM;
-	engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
-	if (!engine.ctx_cfg.ctxs)
+	memset(&g_digest_engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
+	g_digest_engine.ctx_cfg.ctx_num = CTX_NUM;
+	g_digest_engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
+	if (!g_digest_engine.ctx_cfg.ctxs)
 		return -ENOMEM;
 
 	for (i = 0; i < CTX_NUM; i++) {
-		engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
-		if (!engine.ctx_cfg.ctxs[i].ctx) {
+		g_digest_engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
+		if (!g_digest_engine.ctx_cfg.ctxs[i].ctx) {
 			ret = -ENOMEM;
 			goto err_freectx;
 		}
 
-		engine.ctx_cfg.ctxs[i].op_type = CTX_TYPE_ENCRYPT;
-		engine.ctx_cfg.ctxs[i].ctx_mode =
+		g_digest_engine.ctx_cfg.ctxs[i].op_type = CTX_TYPE_ENCRYPT;
+		g_digest_engine.ctx_cfg.ctxs[i].ctx_mode =
 			(i == 0) ? CTX_MODE_SYNC : CTX_MODE_ASYNC;
 	}
 
-	engine.sched.name = "sched_single";
-	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
-	engine.sched.poll_policy = sched_single_poll_policy;
-	engine.sched.sched_init = sched_single_init;
+	g_digest_engine.sched.name = "sched_single";
+	g_digest_engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
+	g_digest_engine.sched.poll_policy = sched_single_poll_policy;
+	g_digest_engine.sched.sched_init = sched_single_init;
 
-	ret = wd_digest_init(&engine.ctx_cfg, &engine.sched);
+	ret = wd_digest_init(&g_digest_engine.ctx_cfg, &g_digest_engine.sched);
 	if (ret)
 		goto err_freectx;
 
@@ -460,9 +460,9 @@ static int uadk_e_wd_digest_init(struct uacce_dev *dev)
 
 err_freectx:
 	for (j = 0; j < i; j++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[j].ctx);
+		wd_release_ctx(g_digest_engine.ctx_cfg.ctxs[j].ctx);
 
-	free(engine.ctx_cfg.ctxs);
+	free(g_digest_engine.ctx_cfg.ctxs);
 
 	return ret;
 }
@@ -472,16 +472,16 @@ static int uadk_e_init_digest(void)
 	struct uacce_dev *dev;
 	int ret;
 
-	if (engine.pid != getpid()) {
-		pthread_spin_lock(&engine.lock);
-		if (engine.pid == getpid()) {
-			pthread_spin_unlock(&engine.lock);
+	if (g_digest_engine.pid != getpid()) {
+		pthread_spin_lock(&g_digest_engine.lock);
+		if (g_digest_engine.pid == getpid()) {
+			pthread_spin_unlock(&g_digest_engine.lock);
 			return 1;
 		}
 
 		dev = wd_get_accel_dev("digest");
 		if (!dev) {
-			pthread_spin_unlock(&engine.lock);
+			pthread_spin_unlock(&g_digest_engine.lock);
 			fprintf(stderr, "failed to get device for digest.\n");
 			return 0;
 		}
@@ -490,15 +490,15 @@ static int uadk_e_init_digest(void)
 		if (ret)
 			goto err_unlock;
 
-		engine.pid = getpid();
-		pthread_spin_unlock(&engine.lock);
+		g_digest_engine.pid = getpid();
+		pthread_spin_unlock(&g_digest_engine.lock);
 		free(dev);
 	}
 
 	return 1;
 
 err_unlock:
-	pthread_spin_unlock(&engine.lock);
+	pthread_spin_unlock(&g_digest_engine.lock);
 	free(dev);
 	fprintf(stderr, "failed to init digest(%d).\n", ret);
 
@@ -860,7 +860,7 @@ do { \
 
 void uadk_e_digest_lock_init(void)
 {
-	pthread_spin_init(&engine.lock, PTHREAD_PROCESS_PRIVATE);
+	pthread_spin_init(&g_digest_engine.lock, PTHREAD_PROCESS_PRIVATE);
 }
 
 int uadk_e_bind_digest(ENGINE *e)
@@ -916,20 +916,20 @@ void uadk_e_destroy_digest(void)
 	__u32 i;
 	int ret;
 
-	if (engine.pid == getpid()) {
+	if (g_digest_engine.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("digest");
 		if (ret == ENV_ENABLED) {
 			wd_digest_env_uninit();
 		} else {
 			wd_digest_uninit();
-			for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-				wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
-			free(engine.ctx_cfg.ctxs);
+			for (i = 0; i < g_digest_engine.ctx_cfg.ctx_num; i++)
+				wd_release_ctx(g_digest_engine.ctx_cfg.ctxs[i].ctx);
+			free(g_digest_engine.ctx_cfg.ctxs);
 		}
-		engine.pid = 0;
+		g_digest_engine.pid = 0;
 	}
 
-	pthread_spin_destroy(&engine.lock);
+	pthread_spin_destroy(&g_digest_engine.lock);
 
 	EVP_MD_meth_free(uadk_md5);
 	uadk_md5 = 0;
