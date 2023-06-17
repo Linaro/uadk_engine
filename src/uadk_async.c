@@ -117,6 +117,9 @@ static void async_poll_task_free(void)
 	int error;
 	struct async_poll_task *task;
 
+	/* Disable async poll state first */
+	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
+
 	error = pthread_mutex_lock(&poll_queue.async_task_mutex);
 	if (error != 0)
 		return;
@@ -126,8 +129,6 @@ static void async_poll_task_free(void)
 		OPENSSL_free(task);
 
 	poll_queue.head = NULL;
-
-	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
 
 	pthread_mutex_unlock(&poll_queue.async_task_mutex);
 	sem_destroy(&poll_queue.empty_sem);
