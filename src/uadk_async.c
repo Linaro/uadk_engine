@@ -223,6 +223,11 @@ int async_get_free_task(int *id)
 	poll_queue.status[idx] = 1;
 	task_queue = poll_queue.head;
 	task = &task_queue[idx];
+	if (!task) {
+		ret = 0;
+		goto out;
+	}
+
 	task->op = NULL;
 	ret = 1;
 
@@ -241,6 +246,9 @@ static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type ty
 
 	task_queue = poll_queue.head;
 	task = &task_queue[id];
+	if (!task)
+		return 0;
+
 	task->ctx = ctx;
 	task->type = type;
 	task->op = op;
