@@ -1188,8 +1188,10 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 		return UADK_E_FAIL;
 
 	rsa_sess->req.dst = wd_rsa_new_kg_out(rsa_sess->sess);
-	if (!rsa_sess->req.dst)
+	if (!rsa_sess->req.dst) {
+		wd_rsa_del_kg_in(rsa_sess->sess, rsa_sess->req.src);
 		return UADK_E_FAIL;
+	}
 
 	return UADK_E_SUCCESS;
 }
