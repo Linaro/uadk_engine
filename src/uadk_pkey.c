@@ -375,7 +375,7 @@ int uadk_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 		ret = UADK_DO_SOFT;
 	}
 
-	free(point_bin);
+	OPENSSL_free(point_bin);
 
 	return ret;
 }
