@@ -158,8 +158,7 @@ void ENGINE_LOG_LIMIT(int level, int times, int limit, const char *fmt, ...)
 		fprintf(g_kae_debug_log_file, "\n");
 		if (ftell(g_kae_debug_log_file) > KAE_LOG_MAX_SIZE) {
 			kae_save_log(g_kae_debug_log_file);
-			if (ftruncate(g_kae_debug_log_file->_fileno, 0))
-				;
+			ftruncate(g_kae_debug_log_file->_fileno, 0);
 			fseek(g_kae_debug_log_file, 0, SEEK_SET);
 		}
 		pthread_mutex_unlock(&g_debug_file_mutex);
