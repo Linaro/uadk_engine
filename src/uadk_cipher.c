@@ -878,6 +878,7 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));
 	if (ret) {
 		wd_cipher_free_sess(priv->sess);
+		priv->sess = 0;
 		fprintf(stderr, "uadk failed to set key!\n");
 	}
 }
