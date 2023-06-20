@@ -927,6 +927,14 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		if (!ret)
 			goto sync_err;
 	} else {
+		/*
+		 * If the length of the input data
+		 * does not reach to hardware computing threshold,
+		 * directly switch to soft cipher.
+		 */
+		if (priv->req.in_bytes <= priv->switch_threshold)
+			goto sync_err;
+
 		ret = do_cipher_async(priv, &op);
 		if (!ret)
 			goto out_notify;
