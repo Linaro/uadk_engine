@@ -840,8 +840,10 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 
 static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 {
+	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
 	struct sched_params params = {0};
-	int ret;
+	int nid, ret;
+	__u32 i;
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
@@ -869,7 +871,23 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	/* Use the default numa parameters */
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
+
 	if (!priv->sess) {
+		nid = EVP_CIPHER_CTX_nid(ctx);
+
+		for (i = 0; i < cipher_counts; i++) {
+			if (nid == cipher_info_table[i].nid) {
+				cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
+					cipher_info_table[i].mode, cipher_info_table[i].out_bytes);
+				break;
+			}
+		}
+
+		if (i == cipher_counts) {
+			fprintf(stderr, "failed to setup the private ctx.\n");
+			return;
+		}
+
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
 		if (!priv->sess)
 			fprintf(stderr, "uadk failed to alloc session!\n");
