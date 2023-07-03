@@ -52,6 +52,34 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ NULL, NULL, NULL }
 };
 
+const OSSL_ALGORITHM uadk_prov_ciphers[] = {
+	{ "AES-128-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_cbc_functions, "uadk_provider aes-128-cbc" },
+	{ "AES-192-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_cbc_functions, "uadk_provider aes-192-cbc" },
+	{ "AES-256-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_cbc_functions, "uadk_provider aes-256-cbc" },
+	{ "AES-128-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_ecb_functions, "uadk_provider aes-128-ecb" },
+	{ "AES-192-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_ecb_functions, "uadk_provider aes-192-ecb" },
+	{ "AES-256-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_ecb_functions, "uadk_provider aes-256-ecb" },
+	{ "AES-128-XTS", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_xts_functions, "uadk_provider aes-128-xts" },
+	{ "AES-256-XTS", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_xts_functions, "uadk_provider aes-256-xts" },
+	{ "SM4-CBC:SM4", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm4_cbc_functions, "uadk_provider sm4-cbc" },
+	{ "SM4-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm4_ecb_functions, "uadk_provider sm4-ecb" },
+	{ "DES-EDE3-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_des_ede3_cbc_functions, "uadk_provider des-ede3-cbc" },
+	{ "DES-EDE3-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_des_ede3_ecb_functions, "uadk_provider des-ede3-ecb" },
+	{ NULL, NULL, NULL }
+};
+
 static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 					  int *no_cache)
 {
@@ -60,6 +88,8 @@ static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 	switch (operation_id) {
 	case OSSL_OP_DIGEST:
 		return uadk_prov_digests;
+	case OSSL_OP_CIPHER:
+		return uadk_prov_ciphers;
 	}
 	return NULL;
 }
@@ -69,6 +99,7 @@ static void p_teardown(void *provctx)
 	struct p_uadk_ctx *ctx = (struct p_uadk_ctx *)provctx;
 
 	uadk_prov_destroy_digest();
+	uadk_prov_destroy_cipher();
 	OPENSSL_free(ctx);
 }
 
