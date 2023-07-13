@@ -50,7 +50,8 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/async/async_task_queue.c
 endif #WD_KAE
 
-uadk_provider_la_SOURCES=uadk_prov_init.c uadk_prov_digest.c uadk_async.c uadk_utils.c
+uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
+			 uadk_prov_digest.c uadk_prov_cipher.c
 
 uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread

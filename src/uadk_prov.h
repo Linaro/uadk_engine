@@ -26,5 +26,19 @@ extern const OSSL_DISPATCH uadk_sha256_functions[];
 extern const OSSL_DISPATCH uadk_sha384_functions[];
 extern const OSSL_DISPATCH uadk_sha512_functions[];
 
+extern const OSSL_DISPATCH uadk_aes_128_cbc_functions[];
+extern const OSSL_DISPATCH uadk_aes_192_cbc_functions[];
+extern const OSSL_DISPATCH uadk_aes_256_cbc_functions[];
+extern const OSSL_DISPATCH uadk_aes_128_ecb_functions[];
+extern const OSSL_DISPATCH uadk_aes_192_ecb_functions[];
+extern const OSSL_DISPATCH uadk_aes_256_ecb_functions[];
+extern const OSSL_DISPATCH uadk_aes_128_xts_functions[];
+extern const OSSL_DISPATCH uadk_aes_256_xts_functions[];
+extern const OSSL_DISPATCH uadk_sm4_cbc_functions[];
+extern const OSSL_DISPATCH uadk_sm4_ecb_functions[];
+extern const OSSL_DISPATCH uadk_des_ede3_cbc_functions[];
+extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[];
+
 void uadk_prov_destroy_digest(void);
+void uadk_prov_destroy_cipher(void);
 #endif

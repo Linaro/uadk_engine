@@ -57,11 +57,6 @@ enum sec_digest_state {
 	SEC_DIGEST_FINAL
 };
 
-struct digest_threshold_table {
-	int nid;
-	int threshold;
-};
-
 struct digest_prov {
 	int pid;
 };
@@ -104,29 +99,27 @@ struct digest_info {
 	enum wd_digest_mode mode;
 	enum wd_digest_type alg;
 	__u32 out_len;
-};
-
-static struct digest_threshold_table digest_pkt_threshold_table[] = {
-	{ NID_sm3, SM3_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_md5, MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_sha1, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_sha224, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_sha256, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_sha384, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
-	{ NID_sha512, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT },
+	__u32 threshold;
 };
 
 static struct digest_info digest_info_table[] = {
-	{NID_md5, WD_DIGEST_NORMAL, WD_DIGEST_MD5, 16},
-	{NID_sm3, WD_DIGEST_NORMAL, WD_DIGEST_SM3, 32},
-	{NID_sha1, WD_DIGEST_NORMAL, WD_DIGEST_SHA1, 20},
-	{NID_sha224, WD_DIGEST_NORMAL, WD_DIGEST_SHA224, 28},
-	{NID_sha256, WD_DIGEST_NORMAL, WD_DIGEST_SHA256, 32},
-	{NID_sha384, WD_DIGEST_NORMAL, WD_DIGEST_SHA384, 48},
-	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512, 64},
+	{NID_md5, WD_DIGEST_NORMAL, WD_DIGEST_MD5,
+	 16, MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sm3, WD_DIGEST_NORMAL, WD_DIGEST_SM3,
+	 32, SM3_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha1, WD_DIGEST_NORMAL, WD_DIGEST_SHA1,
+	 20, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha224, WD_DIGEST_NORMAL, WD_DIGEST_SHA224,
+	 28, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha256, WD_DIGEST_NORMAL, WD_DIGEST_SHA256,
+	 32, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha384, WD_DIGEST_NORMAL, WD_DIGEST_SHA384,
+	 48, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512,
+	 64, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
 };
 
-static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
+static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
 {
 	if (priv->soft_md)
 		return 1;
@@ -163,31 +156,17 @@ static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 	return 1;
 }
 
-static uint32_t sec_digest_get_sw_threshold(int n_id)
-{
-	int threshold_table_size = ARRAY_SIZE(digest_pkt_threshold_table);
-	int i = 0;
-
-	do {
-		if (digest_pkt_threshold_table[i].nid == n_id)
-			return digest_pkt_threshold_table[i].threshold;
-	} while (++i < threshold_table_size);
-
-	fprintf(stderr, "nid %d not found in digest threshold table", n_id);
-	return 0;
-}
-
-static int digest_soft_init(struct digest_priv_ctx *priv)
+static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 {
 	return EVP_DigestInit(priv->soft_ctx, priv->soft_md);
 }
 
-static int digest_soft_update(EVP_MD_CTX *ctx, const void *data, size_t len)
+static int uadk_digest_soft_update(EVP_MD_CTX *ctx, const void *data, size_t len)
 {
 	return EVP_DigestUpdate(ctx, data, len);
 }
 
-static int digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
+static int uadk_digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
 	unsigned int digest_length = EVP_MD_get_size(priv->soft_md);
 
@@ -213,21 +192,21 @@ static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 	}
 }
 
-static int uadk_e_digest_soft_work(struct digest_priv_ctx *priv, int len,
+static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
 				   unsigned char *digest)
 {
-	digest_soft_init(priv);
+	uadk_digest_soft_init(priv);
 
 	if (len != 0)
-		digest_soft_update(priv->soft_ctx, priv->data, len);
+		uadk_digest_soft_update(priv->soft_ctx, priv->data, len);
 
-	digest_soft_final(priv, digest);
+	uadk_digest_soft_final(priv, digest);
 	digest_soft_cleanup(priv);
 
 	return 1;
 }
 
-static int uadk_e_digest_env_poll(void *ctx)
+static int uadk_digest_env_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
@@ -262,7 +241,7 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 			goto soft_init;
 		}
 		prov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_e_digest_env_poll);
+		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_env_poll);
 	}
 	pthread_mutex_unlock(&digest_mutex);
 
@@ -272,6 +251,7 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 			priv->setup.mode = digest_info_table[i].mode;
 			priv->req.out_buf_bytes = MAX_DIGEST_LENGTH;
 			priv->req.out_bytes = digest_info_table[i].out_len;
+			priv->switch_threshold = digest_info_table[i].threshold;
 			break;
 		}
 	}
@@ -294,35 +274,29 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 		return 0;
 	}
 
-	if (uadk_e_digests_soft_md(priv))
-		priv->switch_threshold = sec_digest_get_sw_threshold(nid);
+	uadk_digests_soft_md(priv);
 
 	return 1;
 
 soft_init:
 	pthread_mutex_unlock(&digest_mutex);
 	fprintf(stderr, "uadk failed to initialize digest.\n");
-	return digest_soft_init(priv);
+	return uadk_digest_soft_init(priv);
 }
 
-static void digest_update_out_length(struct digest_priv_ctx *priv)
-{
-	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
-	if (priv->e_nid == NID_sha224)
-		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
-
-	if (priv->e_nid == NID_sha384)
-		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
-}
-
-static int digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
+static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
 	int copy_to_bufflen;
 	int ret;
 
-	digest_update_out_length(priv);
+	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
+	if (priv->e_nid == NID_sha224)
+		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
+
+	if (priv->e_nid == NID_sha384)
+		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
 
 	priv->req.has_next = DIGEST_DOING;
 
@@ -363,13 +337,13 @@ do_soft_digest:
 			&& priv->data
 			&& priv->last_update_bufflen != 0) {
 		priv->switch_flag = UADK_DO_SOFT;
-		digest_soft_init(priv);
-		ret = digest_soft_update(priv->soft_ctx,
+		uadk_digest_soft_init(priv);
+		ret = uadk_digest_soft_update(priv->soft_ctx,
 			priv->data, priv->last_update_bufflen);
 		if (ret != 1)
 			return ret;
 
-		return digest_soft_update(priv->soft_ctx,
+		return uadk_digest_soft_update(priv->soft_ctx,
 			tmpdata, left_len);
 	}
 
@@ -388,13 +362,13 @@ static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, si
 		return 1;
 	}
 
-	return digest_update_inner(priv, data, data_len);
+	return uadk_digest_update_inner(priv, data, data_len);
 
 soft_update:
-	return digest_soft_update(priv->soft_ctx, data, data_len);
+	return uadk_digest_soft_update(priv->soft_ctx, data, data_len);
 }
 
-static void async_cb(struct wd_digest_req *req, void *data)
+static void uadk_async_cb(struct wd_digest_req *req, void *data)
 {
 	struct uadk_e_cb_info *cb_param;
 	struct async_op *op;
@@ -413,7 +387,7 @@ static void async_cb(struct wd_digest_req *req, void *data)
 	}
 }
 
-static int do_digest_sync(struct digest_priv_ctx *priv)
+static int uadk_do_digest_sync(struct digest_priv_ctx *priv)
 {
 	int ret;
 
@@ -429,7 +403,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 	return 1;
 }
 
-static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
+static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 {
 	struct uadk_e_cb_info cb_param;
 	int idx, ret;
@@ -441,7 +415,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 
 	cb_param.op = op;
 	cb_param.priv = priv;
-	priv->req.cb = (void *)async_cb;
+	priv->req.cb = (void *)uadk_async_cb;
 	priv->req.cb_param = &cb_param;
 
 	ret = async_get_free_task(&idx);
@@ -490,16 +464,16 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	if (op.job == NULL) {
 		/* Synchronous, only the synchronous mode supports soft computing */
 		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = digest_soft_final(priv, digest);
+			ret = uadk_digest_soft_final(priv, digest);
 			digest_soft_cleanup(priv);
 			goto clear;
 		}
 
-		ret = do_digest_sync(priv);
+		ret = uadk_do_digest_sync(priv);
 		if (!ret)
 			goto sync_err;
 	} else {
-		ret = do_digest_async(priv, &op);
+		ret = uadk_do_digest_async(priv, &op);
 		if (!ret)
 			goto clear;
 	}
@@ -509,7 +483,7 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 
 sync_err:
 	if (priv->state == SEC_DIGEST_INIT) {
-		ret = uadk_e_digest_soft_work(priv, priv->req.in_bytes, digest);
+		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
 		ret = 0;
 		fprintf(stderr, "do sec digest stream mode failed.\n");
