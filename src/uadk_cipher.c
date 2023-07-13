@@ -717,7 +717,7 @@ static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 	return 1;
 }
 
-static void async_cb(struct wd_cipher_req *req, void *data)
+static void uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
 {
 	struct uadk_e_cb_info *cb_param;
 	struct async_op *op;
@@ -792,10 +792,16 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 {
 	int ret;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		fprintf(stderr, "switch to soft cipher.\n");
 		return 0;
+	}
 
-	if (priv->switch_threshold >= priv->req.in_bytes)
+	/*
+	 * If the length of the input data does not reach to hardware computing threshold,
+	 * directly switch to soft cipher.
+	 */
+	if (priv->req.in_bytes <= priv->switch_threshold)
 		return 0;
 
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
@@ -810,14 +816,15 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	int idx, ret;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "async cipher init failed.\n");
+		fprintf(stderr, "switch to soft cipher.\n");
 		return 0;
 	}
 
 	cb_param.op = op;
 	cb_param.priv = priv;
-	priv->req.cb = (void *)async_cb;
+	priv->req.cb = (void *)uadk_e_cipher_cb;
 	priv->req.cb_param = &cb_param;
+
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		return 0;
@@ -889,8 +896,10 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 		}
 
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
-		if (!priv->sess)
+		if (!priv->sess) {
 			fprintf(stderr, "uadk failed to alloc session!\n");
+			return;
+		}
 	}
 
 	ret = wd_cipher_set_key(priv->sess, priv->key, EVP_CIPHER_CTX_key_length(ctx));
