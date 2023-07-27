@@ -82,9 +82,6 @@ For openssl 3.0
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
     autoreconf -i
-    // openEuler
-    ./configure --libdir=/usr/local/lib/engines-3/
-    // ubuntu
     ./configure --libdir=/usr/local/lib/ossl-modules/
     make
     sudo make install
