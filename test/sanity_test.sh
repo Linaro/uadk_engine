@@ -5,14 +5,18 @@ sudo chmod 666 /dev/hisi_*
 
 version=$(openssl version)
 echo $version
-if [[ $version =~ "3.0" ]]; then
-	echo "openssl 3.0"
+
+# Extract the major version number (e.g., "3") from the version string
+major_version=$(echo $version | awk -F'[ .]' '{print $2}')
+echo "OpenSSL major version is "$major_version
+
+# Check if the major version is equal to or greater than 3
+if ((major_version >= 3)); then
 	if [ ! -n "$1" ]; then
 		engine_id=uadk_provider
 	else
 		engine_id=$1
 	fi
-
 	digest_algs=$(openssl list -provider $engine_id -digest-algorithms)
 	cipher_algs=$(openssl list -provider $engine_id -digest-algorithms)
 fi
