@@ -148,6 +148,78 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
+struct ctx_info {
+	/* Use md_ctx as the key */
+	EVP_MD_CTX *md_ctx;
+	/* Multiple ctxs may share the same session and data */
+	handle_t sess;
+	unsigned char *data;
+	struct ctx_info *next;
+};
+
+/* Global table to record ctx and its session */
+static struct ctx_info *digest_ctx_info;
+/* Lock for global ctx_info table */
+static pthread_mutex_t digest_ctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void find_ctx_info(EVP_MD_CTX *ctx, struct ctx_info **node)
+{
+	struct ctx_info *pnext = digest_ctx_info;
+
+	while (pnext) {
+		if (pnext->md_ctx == ctx) {
+			*node = pnext;
+			return;
+		}
+		pnext = pnext->next;
+	}
+}
+
+static void del_ctx_info(struct ctx_info *node)
+{
+	struct ctx_info *pnext = digest_ctx_info;
+
+	if (pnext == node) {
+		digest_ctx_info = pnext->next;
+		return;
+	}
+
+	while (pnext) {
+		if (pnext->next == node) {
+			pnext->next = pnext->next->next;
+			return;
+		}
+		pnext = pnext->next;
+	}
+}
+
+static void add_ctx_info(struct ctx_info *node)
+{
+	struct ctx_info *pnext = digest_ctx_info;
+
+	if (!pnext) {
+		digest_ctx_info = node;
+		node->next = NULL;
+	} else {
+		node->next = digest_ctx_info;
+		digest_ctx_info = node;
+	}
+}
+
+static bool is_ctx_sess_shared(struct ctx_info *node)
+{
+	struct ctx_info *pnext = digest_ctx_info;
+
+	while (pnext) {
+		if ((pnext != node) && (pnext->sess == node->sess))
+			return true;
+
+		pnext = pnext->next;
+	}
+
+	return false;
+}
+
 static const EVP_MD *uadk_e_digests_soft_md(uint32_t e_nid)
 {
 	const EVP_MD *digest_md = NULL;
@@ -491,6 +563,7 @@ static int uadk_e_init_digest(void)
 			goto err_unlock;
 
 		g_digest_engine.pid = getpid();
+		digest_ctx_info = NULL;
 		pthread_spin_unlock(&g_digest_engine.lock);
 		free(dev);
 	}
@@ -515,7 +588,7 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 	priv->req.out_bytes = out_len;
 }
 
-static void digest_priv_ctx_cleanup(struct digest_priv_ctx *priv)
+static void digest_priv_ctx_reset(struct digest_priv_ctx *priv)
 {
 	/* Ensure that private variable values are initialized */
 	priv->state = SEC_DIGEST_INIT;
@@ -524,29 +597,52 @@ static void digest_priv_ctx_cleanup(struct digest_priv_ctx *priv)
 	priv->switch_flag = 0;
 }
 
+static int alloc_ctx_info(EVP_MD_CTX *ctx)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
+	struct ctx_info *node = NULL;
+
+	pthread_mutex_lock(&digest_ctx_mutex);
+	find_ctx_info(ctx, &node);
+	if (node == NULL) {
+		node = malloc(sizeof(*node));
+		if (node == NULL) {
+			pthread_mutex_unlock(&digest_ctx_mutex);
+			return 0;
+		}
+		node->md_ctx = ctx;
+		add_ctx_info(node);
+	}
+	node->sess = priv->sess;
+	node->data = priv->data;
+	pthread_mutex_unlock(&digest_ctx_mutex);
+
+	return 1;
+}
+
 static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	__u32 digest_counts = ARRAY_SIZE(digest_info_table);
-	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 	struct sched_params params = {0};
 	__u32 i;
 	int ret;
 
-	priv->e_nid = nid;
+	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
-	digest_priv_ctx_cleanup(priv);
+	digest_priv_ctx_reset(priv);
 
 	ret = uadk_e_init_digest();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
 		fprintf(stderr, "uadk failed to initialize digest.\n");
-		goto soft_init;
+		return digest_soft_init(priv);
 	}
 
 	for (i = 0; i < digest_counts; i++) {
-		if (nid == digest_info_table[i].nid) {
+		if (priv->e_nid == digest_info_table[i].nid) {
 			digest_priv_ctx_setup(priv, digest_info_table[i].alg,
 			digest_info_table[i].mode, digest_info_table[i].out_len);
 			break;
@@ -561,22 +657,30 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	/* Use the default numa parameters */
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (unlikely(!priv->sess))
-		return 0;
+	if (!priv->sess) {
+		priv->sess = wd_digest_alloc_sess(&priv->setup);
+		if (unlikely(!priv->sess))
+			return 0;
 
-	priv->data = malloc(DIGEST_BLOCK_SIZE);
-	if (unlikely(!priv->data)) {
-		wd_digest_free_sess(priv->sess);
-		return 0;
+		priv->data = malloc(DIGEST_BLOCK_SIZE);
+		if (unlikely(!priv->data))
+			goto out;
+
+		if (!alloc_ctx_info(ctx)) {
+			free(priv->data);
+			priv->data = NULL;
+			goto out;
+		}
 	}
 
-	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
+	priv->switch_threshold = sec_digest_get_sw_threshold(priv->e_nid);
 
 	return 1;
 
-soft_init:
-	return digest_soft_init(priv);
+out:
+	wd_digest_free_sess(priv->sess);
+	priv->sess = 0;
+	return 0;
 }
 
 static void digest_update_out_length(EVP_MD_CTX *ctx)
@@ -809,19 +913,36 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+	struct ctx_info *node = NULL;
 
-	/* Prevent double-free after the copy is used */
-	if (!priv || priv->copy)
+	if (!priv)
 		return 1;
+
+	pthread_mutex_lock(&digest_ctx_mutex);
+	find_ctx_info(ctx, &node);
+	if (node == NULL) {
+		pthread_mutex_unlock(&digest_ctx_mutex);
+		return 1;
+	}
+
+	/* If another ctx uses the same session, the session is not released */
+	if (is_ctx_sess_shared(node))
+		goto out;
+
+	if (priv->data) {
+		free(priv->data);
+		priv->data = NULL;
+	}
 
 	if (priv->sess) {
 		wd_digest_free_sess(priv->sess);
 		priv->sess = 0;
 	}
 
-	if (priv && priv->data)
-		free(priv->data);
-
+out:
+	del_ctx_info(node);
+	free(node);
+	pthread_mutex_unlock(&digest_ctx_mutex);
 	return 1;
 }
 
@@ -831,14 +952,37 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(from);
 	struct digest_priv_ctx *t =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(to);
+	struct ctx_info *node = NULL;
 
+	if (!f || !t)
+		return 1;
 	/*
 	 * EVP_MD_CTX_copy will copy from->priv to to->priv,
 	 * including data pointer. Instead of coping data contents,
 	 * add a flag to prevent double-free.
 	 */
 
-	if (f && f->data)
+	pthread_mutex_lock(&digest_ctx_mutex);
+	find_ctx_info(to, &node);
+	if (node == NULL) {
+		node = malloc(sizeof(*node));
+		if (node == NULL) {
+			pthread_mutex_unlock(&digest_ctx_mutex);
+			return 0;
+		}
+		node->md_ctx = to;
+		add_ctx_info(node);
+	} else {
+		if (!is_ctx_sess_shared(node)) {
+			wd_digest_free_sess(node->sess);
+			free(node->data);
+		}
+	}
+	node->sess = t->sess;
+	node->data = t->data;
+	pthread_mutex_unlock(&digest_ctx_mutex);
+
+	if (f->data)
 		t->copy = true;
 
 	return 1;
