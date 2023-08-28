@@ -158,19 +158,30 @@ static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
 
 static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 {
-	return EVP_DigestInit(priv->soft_ctx, priv->soft_md);
+	if (priv->soft_md)
+		return EVP_DigestInit_ex(priv->soft_ctx, priv->soft_md, NULL);
+
+	return 0;
 }
 
-static int uadk_digest_soft_update(EVP_MD_CTX *ctx, const void *data, size_t len)
+static int uadk_digest_soft_update(struct digest_priv_ctx *priv,
+				   const void *data, size_t len)
 {
-	return EVP_DigestUpdate(ctx, data, len);
+	if (priv->soft_md)
+		return EVP_DigestUpdate(priv->soft_ctx, data, len);
+
+	return 0;
 }
 
 static int uadk_digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
-	unsigned int digest_length = EVP_MD_get_size(priv->soft_md);
+	if (priv->soft_md) {
+		unsigned int digest_length;
 
-	return EVP_DigestFinal(priv->soft_ctx, digest, &digest_length);
+		return EVP_DigestFinal_ex(priv->soft_ctx, digest, &digest_length);
+	}
+
+	return 0;
 }
 
 static void digest_soft_cleanup(struct digest_priv_ctx *priv)
@@ -195,10 +206,13 @@ static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
 				   unsigned char *digest)
 {
+	if (!priv->soft_md)
+		return 0;
+
 	uadk_digest_soft_init(priv);
 
 	if (len != 0)
-		uadk_digest_soft_update(priv->soft_ctx, priv->data, len);
+		uadk_digest_soft_update(priv, priv->data, len);
 
 	uadk_digest_soft_final(priv, digest);
 	digest_soft_cleanup(priv);
@@ -338,13 +352,11 @@ do_soft_digest:
 			&& priv->last_update_bufflen != 0) {
 		priv->switch_flag = UADK_DO_SOFT;
 		uadk_digest_soft_init(priv);
-		ret = uadk_digest_soft_update(priv->soft_ctx,
-			priv->data, priv->last_update_bufflen);
+		ret = uadk_digest_soft_update(priv, priv->data, priv->last_update_bufflen);
 		if (ret != 1)
 			return ret;
 
-		return uadk_digest_soft_update(priv->soft_ctx,
-			tmpdata, left_len);
+		return uadk_digest_soft_update(priv, tmpdata, left_len);
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
@@ -365,7 +377,7 @@ static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, si
 	return uadk_digest_update_inner(priv, data, data_len);
 
 soft_update:
-	return uadk_digest_soft_update(priv->soft_ctx, data, data_len);
+	return uadk_digest_soft_update(priv, data, data_len);
 }
 
 static void uadk_async_cb(struct wd_digest_req *req, void *data)
