@@ -801,7 +801,7 @@ UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, 0, NID_aes_256_ecb, ecb(aes), EVP_CIPH
 UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, 0, NID_aes_128_xts, xts(aes), EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV);
 UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, 0, NID_aes_256_xts, xts(aes), EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV);
 UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, 0, NID_sm4_cbc, cbc(sm4), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 16, 0, NID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE);
+UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, 0, NID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE);
 UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, 0, NID_des_ede3_cbc, cbc(des), EVP_CIPH_CBC_MODE);
 UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, 0, NID_des_ede3_ecb, ecb(des), EVP_CIPH_ECB_MODE);
 
