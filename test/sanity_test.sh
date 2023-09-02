@@ -1,7 +1,9 @@
 #!/bin/bash
 
+set -x
 sudo chmod 666 /dev/hisi_*
 
+TEST_SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 version=$(openssl version)
 echo $version
@@ -12,13 +14,9 @@ echo "OpenSSL major version is "$major_version
 
 # Check if the major version is equal to or greater than 3
 if ((major_version >= 3)); then
-	if [ ! -n "$1" ]; then
-		engine_id=uadk_provider
-	else
-		engine_id=$1
-	fi
+	engine_id="$TEST_SCRIPT_DIR/../src/.libs/uadk_provider.so"
 	digest_algs=$(openssl list -provider $engine_id -digest-algorithms)
-	cipher_algs=$(openssl list -provider $engine_id -digest-algorithms)
+	cipher_algs=$(openssl list -provider $engine_id -cipher-algorithms)
 fi
 
 if [[ $digest_algs =~ "uadk_provider" ]]; then
@@ -71,12 +69,7 @@ fi
 
 if [[ $version =~ "1.1.1" ]]; then
 	echo "openssl 1.1.1"
-	if [ ! -n "$1" ]; then
-		engine_id=uadk_engine
-	else
-		engine_id=$1
-	fi
-
+	engine_id="$TEST_SCRIPT_DIR/../src/.libs/uadk_engine.so"
 	algs=$(openssl engine -c $engine_id)
 	echo $algs
 fi
