@@ -22,9 +22,13 @@
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <openssl/provider.h>
 
 #include "uadk_async.h"
 #include "uadk_prov.h"
+
+OSSL_PROVIDER *prov = NULL;
 
 struct p_uadk_ctx {
 	const OSSL_CORE_HANDLE *handle;
@@ -83,8 +87,17 @@ const OSSL_ALGORITHM uadk_prov_ciphers[] = {
 static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 					  int *no_cache)
 {
-	*no_cache = 0;
+	static int prov_init = 0;
+	prov = OSSL_PROVIDER_load(NULL, "default");
+	if (!prov_init) {
+	prov_init = 1;
+		/* uadk_provider takes the highest priority
+		 * and overwrite the openssl.cnf property.
+		 */
+		EVP_set_default_properties(NULL, "?provider=uadk_provider");
+	}
 
+	*no_cache = 0;
 	switch (operation_id) {
 	case OSSL_OP_DIGEST:
 		return uadk_prov_digests;
@@ -101,6 +114,7 @@ static void p_teardown(void *provctx)
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
 	OPENSSL_free(ctx);
+    OSSL_PROVIDER_unload(prov);
 }
 
 static const OSSL_DISPATCH p_test_table[] = {
