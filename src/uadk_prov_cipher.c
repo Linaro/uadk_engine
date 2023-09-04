@@ -745,8 +745,8 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
 	return 1;
 }
 
-static int uadk_prov_cipher_final(void *vctx, unsigned char *out,
-				  size_t *outl, size_t outsize)
+static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
+					size_t *outl, size_t outsize)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	size_t blksz = priv->blksize;
@@ -804,9 +804,9 @@ static int uadk_prov_cipher_final(void *vctx, unsigned char *out,
 	return 1;
 }
 
-static int uadk_prov_cipher_update(void *vctx, unsigned char *out,
-				   size_t *outl, size_t outsize,
-				   const unsigned char *in, size_t inl)
+static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
+					 size_t *outl, size_t outsize,
+					 const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
@@ -825,6 +825,65 @@ static int uadk_prov_cipher_update(void *vctx, unsigned char *out,
 	if (ret != 1)
 		return ret;
 
+	return 1;
+}
+
+static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
+					  size_t *outl, size_t outsize,
+					  const unsigned char *in, size_t inl)
+{
+	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
+	int ret;
+
+	if (inl == 0) {
+		*outl = 0;
+		return 1;
+	}
+
+	if (outsize < inl) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		return 0;
+	}
+
+	if (priv->switch_flag == UADK_DO_SOFT ||
+	    (priv->sw_cipher && priv->switch_flag != UADK_DO_HW &&
+	     inl <= priv->switch_threshold)) {
+		int len = 0;
+
+		/* have isseu if both using hw and soft partly */
+		ret = uadk_prov_cipher_soft_work(priv, out, &len, in, inl);
+		if (ret) {
+			*outl = len;
+			return 1;
+		}
+
+		fprintf(stderr, "do soft ciphers failed.\n");
+	}
+
+	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, inl);
+	if (ret != 1)
+		return ret;
+
+	*outl = inl;
+	return 1;
+}
+
+static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
+					 size_t *outl, size_t outsize)
+{
+	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
+	int sw_final_len = 0;
+
+	if (priv->switch_flag == UADK_DO_SOFT) {
+		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
+			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
+			return 0;
+		}
+		*outl = sw_final_len;
+		return 1;
+	}
+
+	*outl = 0;
 	return 1;
 }
 
@@ -1020,7 +1079,7 @@ static void uadk_prov_cipher_freectx(void *ctx)
 }
 
 #define UADK_CIPHER_DESCR(nm, blk_size, key_len, iv_len,			\
-			  flags, e_nid, algnm, mode)				\
+			  flags, e_nid, algnm, mode, typ)			\
 static OSSL_FUNC_cipher_newctx_fn uadk_##nm##_newctx;				\
 static void *uadk_##nm##_newctx(void *provctx)					\
 {										\
@@ -1051,8 +1110,10 @@ const OSSL_DISPATCH uadk_##nm##_functions[] = {					\
 		(void (*)(void))uadk_prov_cipher_einit },			\
 	{ OSSL_FUNC_CIPHER_DECRYPT_INIT,					\
 		(void (*)(void))uadk_prov_cipher_dinit },			\
-	{ OSSL_FUNC_CIPHER_UPDATE, (void (*)(void))uadk_prov_cipher_update },	\
-	{ OSSL_FUNC_CIPHER_FINAL, (void (*)(void))uadk_prov_cipher_final },	\
+	{ OSSL_FUNC_CIPHER_UPDATE,						\
+		(void (*)(void))uadk_prov_cipher_##typ##_update },		\
+	{ OSSL_FUNC_CIPHER_FINAL,						\
+		(void (*)(void))uadk_prov_cipher_##typ##_final },		\
 	{ OSSL_FUNC_CIPHER_CIPHER, (void (*)(void))uadk_prov_cipher_cipher },	\
 	{ OSSL_FUNC_CIPHER_GET_PARAMS,						\
 		(void (*)(void))uadk_##nm##_get_params },			\
@@ -1069,29 +1130,29 @@ const OSSL_DISPATCH uadk_##nm##_functions[] = {					\
 	{ 0, NULL }								\
 }
 
-UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, 0, NID_aes_128_cbc, cbc(aes), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, 0, NID_aes_192_cbc, cbc(aes), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, 0, NID_aes_256_cbc, cbc(aes), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, 0, NID_aes_128_ecb, ecb(aes), EVP_CIPH_ECB_MODE);
-UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, 0, NID_aes_192_ecb, ecb(aes), EVP_CIPH_ECB_MODE);
-UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, 0, NID_aes_256_ecb, ecb(aes), EVP_CIPH_ECB_MODE);
-UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, 0, NID_aes_128_xts, xts(aes), EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV);
-UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, 0, NID_aes_256_xts, xts(aes), EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV);
-UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, 0, NID_sm4_cbc, cbc(sm4), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, 0, NID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE);
-UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, 0, NID_des_ede3_cbc, cbc(des), EVP_CIPH_CBC_MODE);
-UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, 0, NID_des_ede3_ecb, ecb(des), EVP_CIPH_ECB_MODE);
+UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, 0, NID_aes_128_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, 0, NID_aes_192_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, 0, NID_aes_256_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, 0, NID_aes_128_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, 0, NID_aes_192_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, 0, NID_aes_256_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, PROV_CIPHER_FLAG_CUSTOM_IV, NID_aes_128_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, PROV_CIPHER_FLAG_CUSTOM_IV, NID_aes_256_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
+UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, 0, NID_sm4_cbc, cbc(sm4), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, 0, NID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, 0, NID_des_ede3_cbc, cbc(des), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, 0, NID_des_ede3_ecb, ecb(des), EVP_CIPH_ECB_MODE, block);
 
 /* v3 */
-UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, 0, NID_aes_128_ctr, ctr(aes), EVP_CIPH_CTR_MODE);
-UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, 0, NID_aes_192_ctr, ctr(aes), EVP_CIPH_CTR_MODE);
-UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, 0, NID_aes_256_ctr, ctr(aes), EVP_CIPH_CTR_MODE);
-UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, 0, NID_aes_128_ofb128, ofb(aes), EVP_CIPH_OFB_MODE);
-UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, 0, NID_aes_192_ofb128, ofb(aes), EVP_CIPH_OFB_MODE);
-UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, 0, NID_aes_256_ofb128, ofb(aes), EVP_CIPH_OFB_MODE);
-UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, 0, NID_aes_128_cfb128, cfb(aes), EVP_CIPH_CFB_MODE);
-UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, 0, NID_aes_192_cfb128, cfb(aes), EVP_CIPH_CFB_MODE);
-UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, 0, NID_aes_256_cfb128, cfb(aes), EVP_CIPH_CFB_MODE);
-UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, 0, NID_sm4_ofb128, ofb(sm4), EVP_CIPH_OFB_MODE);
-UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, 0, NID_sm4_cfb128, cfb(sm4), EVP_CIPH_CFB_MODE);
-UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, 0, NID_sm4_ctr, ctr(sm4), EVP_CIPH_CTR_MODE);
+UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, 0, NID_aes_128_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, 0, NID_aes_192_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, 0, NID_aes_256_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, 0, NID_aes_128_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, 0, NID_aes_192_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, 0, NID_aes_256_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, 0, NID_aes_128_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, 0, NID_aes_192_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, 0, NID_aes_256_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, 0, NID_sm4_ofb128, ofb(sm4), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, 0, NID_sm4_cfb128, cfb(sm4), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, 0, NID_sm4_ctr, ctr(sm4), EVP_CIPH_CTR_MODE, stream);
