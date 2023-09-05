@@ -616,6 +616,17 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 	if (params == NULL)
 		return 1;
 
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_PADDING);
+	if (p != NULL) {
+		unsigned int pad;
+
+		if (!OSSL_PARAM_get_uint(p, &pad)) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			return 0;
+		}
+		EVP_CIPHER_CTX_set_padding(priv->sw_ctx, pad);
+	}
+
 	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p != NULL) {
 		size_t keylen;
