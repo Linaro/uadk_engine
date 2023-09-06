@@ -112,7 +112,7 @@ int async_clear_async_event_notification(void)
 	return 1;
 }
 
-static void async_poll_task_free(void)
+void async_poll_task_free(void)
 {
 	int error;
 	struct async_poll_task *task;
@@ -381,8 +381,6 @@ int async_module_init(void)
 		goto err;
 
 	poll_queue.thread_id = thread_id;
-	OPENSSL_atexit(async_poll_task_free);
-
 	return 1;
 
 err:
