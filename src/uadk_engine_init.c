@@ -220,6 +220,8 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_dh)
 		uadk_e_destroy_dh();
 
+	async_poll_task_free();
+
 	pthread_mutex_lock(&uadk_engine_mutex);
 	uadk_inited = 0;
 	pthread_mutex_unlock(&uadk_engine_mutex);

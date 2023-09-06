@@ -78,4 +78,5 @@ int async_module_init(void);
 int async_wake_job(ASYNC_JOB *job);
 void async_free_poll_task(int id, bool is_cb);
 int async_get_free_task(int *id);
+void async_poll_task_free(void);
 #endif

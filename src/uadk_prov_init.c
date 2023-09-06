@@ -115,6 +115,7 @@ static void p_teardown(void *provctx)
 	uadk_prov_destroy_cipher();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
+	async_poll_task_free();
 }
 
 static const OSSL_DISPATCH p_test_table[] = {
