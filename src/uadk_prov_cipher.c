@@ -143,12 +143,6 @@ static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 	case NID_aes_256_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-ECB", "provider=default");
 		break;
-	case NID_aes_128_xts:
-		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-XTS", "provider=default");
-		break;
-	case NID_aes_256_xts:
-		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-XTS", "provider=default");
-		break;
 	case NID_sm4_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-CBC", "provider=default");
 		break;
