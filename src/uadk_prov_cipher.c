@@ -78,6 +78,7 @@ struct cipher_priv_ctx {
 	/* Crypto small packet offload threshold */
 	size_t switch_threshold;
 	unsigned int enc : 1;
+	unsigned int pad : 1;    /* Whether padding should be used or not */
 	size_t blksize;
 	size_t keylen;
 	size_t ivlen;
@@ -659,7 +660,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	 * the last block back in case this is the last update call and the last
 	 * block is padded.
 	 */
-	if (priv->bufsz == blksz && inlen > 0) {
+	if (priv->bufsz == blksz && (priv->enc || inlen > 0 || !priv->pad)) {
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
 		if (ret != 1) {
 			fprintf(stderr, "do hw ciphers failed.\n");
@@ -674,7 +675,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	if (nextblocks == 0)
 		goto out;
 
-	if (!priv->enc && nextblocks == inlen)
+	if (!priv->enc && priv->pad && nextblocks == inlen)
 		nextblocks -= blksz;
 
 	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
@@ -757,22 +758,36 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	}
 
 	if (priv->enc) {
-		if (priv->bufsz <= blksz) {
+		if (priv->pad) {
 			ossl_cipher_padblock(priv->buf, &priv->bufsz, blksz);
-			ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
-			if (ret != 1) {
-				fprintf(stderr, "do hw ciphers failed.\n");
-				return ret;
-			}
-			*outl = blksz;
+		} else if (priv->bufsz == 0) {
+			*outl = 0;
 			return 1;
+		} else if (priv->bufsz != blksz) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
+			return 0;
 		}
-		*outl = sw_final_len;
+
+		if (outsize < blksz) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+			return 0;
+		}
+
+		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
+		if (ret != 1) {
+			fprintf(stderr, "do hw ciphers failed.\n");
+			return ret;
+		}
+		*outl = blksz;
 		return 1;
 	}
 
 	/* dec should handle last blk since pad */
 	if (priv->bufsz != blksz) {
+		if (priv->bufsz == 0 && !priv->pad) {
+			*outl = 0;
+			return 1;
+		}
 		ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
 		return 0;
 	}
@@ -782,7 +797,8 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 		fprintf(stderr, "do hw ciphers failed.\n");
 		return ret;
 	}
-	if (!ossl_cipher_unpadblock(priv->buf, &priv->bufsz, blksz)) {
+
+	if (priv->pad && !ossl_cipher_unpadblock(priv->buf, &priv->bufsz, blksz)) {
 		/* ERR_raise already called */
 		return 0;
 	}
@@ -791,6 +807,7 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
 		return 0;
 	}
+
 	memcpy(out, priv->buf, priv->bufsz);
 	*outl = priv->bufsz;
 	priv->bufsz = 0;
@@ -943,6 +960,7 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
 			return 0;
 		}
+		priv->pad = pad ? 1 : 0;
 		EVP_CIPHER_CTX_set_padding(priv->sw_ctx, pad);
 	}
 
@@ -975,6 +993,11 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IVLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, priv->ivlen)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return 0;
+	}
+	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_PADDING);
+	if (p != NULL && !OSSL_PARAM_set_uint(p, priv->pad)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return 0;
 	}
