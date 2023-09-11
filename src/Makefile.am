@@ -57,4 +57,4 @@ uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
 uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread
 uadk_provider_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
-uadk_provider_la_CFLAGS+=-DCRYPTO3
+uadk_provider_la_CFLAGS+=-DOPENSSL_SUPPRESS_DEPRECATED
