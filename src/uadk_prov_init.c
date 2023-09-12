@@ -145,6 +145,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	if (ctx == NULL)
 		return 0;
 
+	ctx->handle = handle;
 	ret = async_module_init();
 	if (!ret)
 		fprintf(stderr, "async_module_init fail!\n");
