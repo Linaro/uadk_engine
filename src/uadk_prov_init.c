@@ -28,11 +28,6 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 
-struct p_uadk_ctx {
-	const OSSL_CORE_HANDLE *handle;
-	OSSL_LIB_CTX *libctx;
-};
-
 const char *engine_uadk_id = "uadk_provider";
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
@@ -83,6 +78,23 @@ const OSSL_ALGORITHM uadk_prov_ciphers[] = {
 	{ NULL, NULL, NULL }
 };
 
+static const OSSL_ALGORITHM uadk_prov_signature[] = {
+	{"RSA", UADK_DEFAULT_PROPERTIES,
+	 uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
+	{NULL, NULL, NULL}
+};
+
+static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
+	{"RSA", UADK_DEFAULT_PROPERTIES,
+	 uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation."},
+	{NULL, NULL, NULL}
+};
+
+static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
+	{ "RSA", UADK_DEFAULT_PROPERTIES, uadk_rsa_asym_cipher_functions },
+	{ NULL, NULL, NULL }
+};
+
 static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 					  int *no_cache)
 {
@@ -103,6 +115,12 @@ static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 		return uadk_prov_digests;
 	case OSSL_OP_CIPHER:
 		return uadk_prov_ciphers;
+	case OSSL_OP_SIGNATURE:
+		return uadk_prov_signature;
+	case OSSL_OP_KEYMGMT:
+		return uadk_prov_keymgmt;
+	case OSSL_OP_ASYM_CIPHER:
+		return uadk_prov_asym_cipher;
 	}
 	return NULL;
 }
@@ -113,6 +131,7 @@ static void p_teardown(void *provctx)
 
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
+	uadk_prov_destroy_rsa();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
 	async_poll_task_free();

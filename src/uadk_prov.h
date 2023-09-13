@@ -18,6 +18,18 @@
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
 
+struct p_uadk_ctx {
+	const OSSL_CORE_HANDLE *handle;
+	OSSL_LIB_CTX *libctx;
+};
+
+static inline OSSL_LIB_CTX *prov_libctx_of(struct p_uadk_ctx *ctx)
+{
+	if (ctx == NULL)
+		return NULL;
+	return ctx->libctx;
+}
+
 extern const OSSL_DISPATCH uadk_md5_functions[];
 extern const OSSL_DISPATCH uadk_sm3_functions[];
 extern const OSSL_DISPATCH uadk_sha1_functions[];
@@ -39,6 +51,11 @@ extern const OSSL_DISPATCH uadk_sm4_ecb_functions[];
 extern const OSSL_DISPATCH uadk_des_ede3_cbc_functions[];
 extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[];
 
+extern const OSSL_DISPATCH uadk_rsa_signature_functions[];
+extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[];
+extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[];
+
 void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
+void uadk_prov_destroy_rsa(void);
 #endif

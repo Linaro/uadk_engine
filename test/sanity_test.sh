@@ -17,6 +17,7 @@ if ((major_version >= 3)); then
 	engine_id="$TEST_SCRIPT_DIR/../src/.libs/uadk_provider.so"
 	digest_algs=$(openssl list -provider $engine_id -digest-algorithms)
 	cipher_algs=$(openssl list -provider $engine_id -cipher-algorithms)
+	signature_algs=$(openssl list -provider $engine_id -signature-algorithms)
 fi
 
 if [[ $digest_algs =~ "uadk_provider" ]]; then
@@ -65,6 +66,26 @@ if [[ $cipher_algs =~ "uadk_provider" ]]; then
 	openssl speed -provider $engine_id -async_jobs 1 -evp sm4-ecb
 	openssl speed -provider $engine_id -async_jobs 1 -evp des-ede3-cbc
 	openssl speed -provider $engine_id -async_jobs 1 -evp des-ede3-ecb
+fi
+
+if [[ $signature_algs =~ "uadk_provider" ]]; then
+	echo "uadk_provider testing rsa"
+	openssl speed -provider $engine_id rsa1024
+	openssl speed -provider $engine_id rsa2048
+	openssl speed -provider $engine_id rsa4096
+	openssl speed -provider $engine_id -async_jobs 1 rsa1024
+	openssl speed -provider $engine_id -async_jobs 1 rsa2048
+	openssl speed -provider $engine_id -async_jobs 1 rsa4096
+
+	openssl genrsa -out prikey.pem -provider $engine_id 1024
+	openssl rsa -in prikey.pem -pubout -out pubkey.pem -provider $engine_id -provider default
+	echo "Content to be encrypted" > plain.txt
+
+	openssl pkeyutl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt \
+	-pkeyopt rsa_padding_mode:pkcs1 -provider uadk_provider -provider default
+
+	openssl pkeyutl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt \
+        -pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id -provider default
 fi
 
 if [[ $version =~ "1.1.1" ]]; then
