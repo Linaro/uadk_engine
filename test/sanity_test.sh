@@ -21,50 +21,50 @@ fi
 
 if [[ $digest_algs =~ "uadk_provider" ]]; then
 	echo "uadk_provider testing digest"
-	openssl speed -provider $engine_id -provider default -evp md5
-	openssl speed -provider $engine_id -provider default -evp sm3
-	openssl speed -provider $engine_id -provider default -evp sha1
-	openssl speed -provider $engine_id -provider default -evp sha2-224
-	openssl speed -provider $engine_id -provider default -evp sha2-256
-	openssl speed -provider $engine_id -provider default -evp sha2-384
-	openssl speed -provider $engine_id -provider default -evp sha2-512
+	openssl speed -provider $engine_id -evp md5
+	openssl speed -provider $engine_id -evp sm3
+	openssl speed -provider $engine_id -evp sha1
+	openssl speed -provider $engine_id -evp sha2-224
+	openssl speed -provider $engine_id -evp sha2-256
+	openssl speed -provider $engine_id -evp sha2-384
+	openssl speed -provider $engine_id -evp sha2-512
 
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp md5
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sm3
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha1
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-224
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-256
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-384
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sha2-512
+	openssl speed -provider $engine_id -async_jobs 1 -evp md5
+	openssl speed -provider $engine_id -async_jobs 1 -evp sm3
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha1
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-224
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-256
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-384
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-512
 fi
 
 if [[ $cipher_algs =~ "uadk_provider" ]]; then
 	echo "uadk_provider testing cipher"
-	openssl speed -provider $engine_id -provider default -evp aes-128-cbc
-	openssl speed -provider $engine_id -provider default -evp aes-192-cbc
-	openssl speed -provider $engine_id -provider default -evp aes-256-cbc
-	openssl speed -provider $engine_id -provider default -evp aes-128-ecb
-	openssl speed -provider $engine_id -provider default -evp aes-192-ecb
-	openssl speed -provider $engine_id -provider default -evp aes-256-ecb
-	openssl speed -provider $engine_id -provider default -evp aes-128-xts
-	openssl speed -provider $engine_id -provider default -evp aes-256-xts
-	openssl speed -provider $engine_id -provider default -evp sm4-cbc
-	openssl speed -provider $engine_id -provider default -evp sm4-ecb
-	openssl speed -provider $engine_id -provider default -evp des-ede3-cbc
-	openssl speed -provider $engine_id -provider default -evp des-ede3-ecb
+	openssl speed -provider $engine_id -evp aes-128-cbc
+	openssl speed -provider $engine_id -evp aes-192-cbc
+	openssl speed -provider $engine_id -evp aes-256-cbc
+	openssl speed -provider $engine_id -evp aes-128-ecb
+	openssl speed -provider $engine_id -evp aes-192-ecb
+	openssl speed -provider $engine_id -evp aes-256-ecb
+	openssl speed -provider $engine_id -evp aes-128-xts
+	openssl speed -provider $engine_id -evp aes-256-xts
+	openssl speed -provider $engine_id -evp sm4-cbc
+	openssl speed -provider $engine_id -evp sm4-ecb
+	openssl speed -provider $engine_id -evp des-ede3-cbc
+	openssl speed -provider $engine_id -evp des-ede3-ecb
 
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-128-cbc
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-192-cbc
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-256-cbc
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-128-ecb
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-192-ecb
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-256-ecb
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-128-xts
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp aes-256-xts
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sm4-cbc
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp sm4-ecb
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp des-ede3-cbc
-	openssl speed -provider $engine_id -provider default -async_jobs 1 -evp des-ede3-ecb
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-128-cbc
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-192-cbc
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-256-cbc
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-128-ecb
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-192-ecb
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-256-ecb
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-128-xts
+	openssl speed -provider $engine_id -async_jobs 1 -evp aes-256-xts
+	openssl speed -provider $engine_id -async_jobs 1 -evp sm4-cbc
+	openssl speed -provider $engine_id -async_jobs 1 -evp sm4-ecb
+	openssl speed -provider $engine_id -async_jobs 1 -evp des-ede3-cbc
+	openssl speed -provider $engine_id -async_jobs 1 -evp des-ede3-ecb
 fi
 
 if [[ $version =~ "1.1.1" ]]; then
