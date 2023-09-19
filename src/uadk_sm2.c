@@ -26,6 +26,8 @@
 #include "uadk.h"
 #include "uadk_pkey.h"
 
+#define GET_SIGNLEN	1
+
 enum {
 	CTX_INIT_FAIL = -1,
 	CTX_UNINIT,
@@ -673,6 +675,17 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	const int sig_sz = ECDSA_size(ec);
 
+	/*
+	 * If 'sig' is NULL, users can use sm2_decrypt API to obtain the valid 'siglen' first,
+	 * then users use the value of 'signlen' to alloc the memory of 'sig' and call the
+	 * sm2_decrypt API a second time to do the decryption task.
+	 */
+	if (!sig) {
+		fprintf(stderr, "sig is NULL, get valid siglen\n");
+		*siglen = (size_t)sig_sz;
+		return GET_SIGNLEN;
+	}
+
 	if (!smctx || !smctx->sess) {
 		fprintf(stderr, "smctx or sess NULL\n");
 		return UADK_DO_SOFT;
@@ -690,12 +703,6 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 
 	if (*siglen < (size_t)sig_sz) {
 		fprintf(stderr, "siglen(%lu) < sig_sz(%lu)\n", *siglen, (size_t)sig_sz);
-		return -EINVAL;
-	}
-
-	if (!sig) {
-		fprintf(stderr, "invalid: sig is NULL\n");
-		*siglen = (size_t)sig_sz;
 		return -EINVAL;
 	}
 
