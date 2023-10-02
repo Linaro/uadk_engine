@@ -31,41 +31,13 @@
 
 static int g_ecc_support_state[ECC_TYPE];
 
-#if defined(DISABLE_X448) && defined(DISABLE_X25519)
-
 static int pkey_nids[] = {
 	EVP_PKEY_EC,
-	EVP_PKEY_SM2
+	EVP_PKEY_SM2,
+	EVP_PKEY_X25519,
+	EVP_PKEY_X448
 };
 
-#else
-
-	#if defined(DISABLE_X448)
-
-	static int pkey_nids[] = {
-		EVP_PKEY_EC,
-		EVP_PKEY_SM2,
-		EVP_PKEY_X25519
-	};
-	#elif defined(DISABLE_X25519)
-
-	static int pkey_nids[] = {
-		EVP_PKEY_EC,
-		EVP_PKEY_SM2,
-		EVP_PKEY_X448
-	};
-
-	#else
-
-	static int pkey_nids[] = {
-		EVP_PKEY_EC,
-		EVP_PKEY_SM2,
-		EVP_PKEY_X25519,
-		EVP_PKEY_X448
-	};
-
-	#endif
-#endif
 struct ecc_sched {
 	int sched_type;
 	struct wd_sched wd_sched;
@@ -629,8 +601,6 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		}
 		*pmeth = pkey_meth.ec;
 		break;
-
-#ifndef DISABLE_X448
 	case EVP_PKEY_X448:
 		ret = uadk_x448_create_pmeth(&pkey_meth);
 		if (!ret) {
@@ -639,9 +609,6 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		}
 		*pmeth = pkey_meth.x448;
 		break;
-#endif
-
-#ifndef DISABLE_X25519
 	case EVP_PKEY_X25519:
 		ret = uadk_x25519_create_pmeth(&pkey_meth);
 		if (!ret) {
@@ -650,7 +617,6 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		}
 		*pmeth = pkey_meth.x25519;
 		break;
-#endif
 	default:
 		fprintf(stderr, "not find nid %d\n", nid);
 		return 0;

@@ -1,0 +1,433 @@
+---
+ configure.ac                | 28 ++++++++++++++++++----
+ src/Makefile.am             | 47 +++++++++++++++++++++++++++++--------
+ src/uadk_engine_init.c      | 29 +++++++++++++++++++++++
+ src/uadk_pkey.c             | 40 ++++++++++++++++++++++++++++---
+ src/uadk_pkey.h             |  7 ++++++
+ src/v1/utils/engine_check.c | 18 ++++++++++++++
+ src/v1/utils/engine_fork.c  | 12 ++++++++++
+ 7 files changed, 164 insertions(+), 17 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 0fc14ed..7f52738 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1,19 +1,39 @@
+-AC_PREREQ([2.69])
+-AC_INIT([uadk_engine], [1.2])
++AC_PREREQ([2.71])
++AC_INIT([uadk_engine],[1.2])
+ AM_INIT_AUTOMAKE([1.10 no-define])
+ 
+ AC_CONFIG_MACRO_DIR([m4])
+ AC_CONFIG_HEADERS([config.h])
+ 
+ AC_PROG_CC
+-AC_PROG_LIBTOOL
+-AM_PROG_LIBTOOL
++LT_INIT
++LT_INIT
+ 
+ AC_ARG_ENABLE(kae,
+ 	      AS_HELP_STRING([--enable-kae],[Enable kae support]))
+ AC_SUBST(enable_kae)
+ AM_CONDITIONAL([WD_KAE], [test "$enable_kae" = "yes"])
+ 
++AC_ARG_ENABLE(rsa,
++	      AS_HELP_STRING([--enable-rsa],[enable rsa support]))
++AC_SUBST(enable_rsa)
++AM_CONDITIONAL([DISABLE_RSA],[test "$enable_rsa" = "no"])
++
++AC_ARG_ENABLE(dh,
++	      AS_HELP_STRING([--enable-dh],[enable dh support]))
++AC_SUBST(enable_dh)
++AM_CONDITIONAL([DISABLE_DH],[test "$enable_dh"="no"])
++
++AC_ARG_ENABLE(x448,
++	      AS_HELP_STRING([--enable-x448],[enable x448 support]))
++AC_SUBST(enable_x448)
++AM_CONDITIONAL([DISABLE_X448],[test "$enable_x448" = "no"])
++
++AC_ARG_ENABLE(x25519,
++	      AS_HELP_STRING([--enable-x25519],[enable x25519 support]))
++AC_SUBST(enable_x25519)
++AM_CONDITIONAL([DISABLE_X25519],[test "$enable_x25519" = "no"])
++
+ PKG_CHECK_MODULES(WD, libwd libwd_crypto, [with_wd=yes], [with_wd=no])
+ AM_CONDITIONAL(HAVE_WD, [test "$with_wd" != "no"])
+ 
+diff --git a/src/Makefile.am b/src/Makefile.am
+index bfaeb78..227e359 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -1,6 +1,8 @@
+ VERSION = 1:2
+ ACLOCAL_AMFLAGS = -I m4
+ 
++uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
++
+ if HAVE_CRYPTO
+ lib_LTLIBRARIES=uadk_engine.la
+ endif #HAVE_CRYPTO
+@@ -10,12 +12,32 @@ lib_LTLIBRARIES=uadk_provider.la
+ endif #HAVE_CRYPTO3
+ 
+ uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
+-		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
+-		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
++		       uadk_digest.c uadk_async.c uadk_sm2.c \
++		       uadk_pkey.c uadk_ec.c
++if DISABLE_RSA
++    uadk_engine_la_CFLAGS+=-DDISABLE_RSA
++else
++    uadk_engine_la_SOURCES+=uadk_rsa.c
++endif
++
++if DISABLE_DH
++    uadk_engine_la_CFLAGS+=-DDISABLE_DH
++else
++    uadk_engine_la_SOURCES+=uadk_dh.c
++endif
++
++if DISABLE_X448
++    uadk_engine_la_CFLAGS+=-DDISABLE_X448
++endif
++
++if DISABLE_X25519
++    uadk_engine_la_CFLAGS+=-DDISABLE_X25519
++endif
++
+ 
+ uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
+ uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
+-uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
++
+ uadk_engine_la_CFLAGS+=-DCRYPTO
+ 
+ AUTOMAKE_OPTIONS = subdir-objects
+@@ -26,16 +48,9 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
+ 		 v1/alg/ciphers/sec_ciphers_soft.c \
+ 		 v1/alg/ciphers/sec_ciphers_utils.c \
+ 		 v1/alg/ciphers/sec_ciphers_wd.c \
+-		 v1/alg/dh/hpre_dh.c \
+-		 v1/alg/dh/hpre_dh_soft.c \
+-		 v1/alg/dh/hpre_dh_wd.c \
+ 		 v1/alg/digests/sec_digests.c \
+ 		 v1/alg/digests/sec_digests_soft.c \
+ 		 v1/alg/digests/sec_digests_wd.c \
+-		 v1/alg/pkey/hpre_rsa.c \
+-		 v1/alg/pkey/hpre_rsa_soft.c \
+-		 v1/alg/pkey/hpre_rsa_utils.c \
+-		 v1/alg/pkey/hpre_wd.c \
+ 		 v1/wdmngr/wd_alg_queue.c \
+ 		 v1/wdmngr/wd_queue_memory.c \
+ 		 v1/utils/engine_check.c \
+@@ -48,6 +63,18 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
+ 		 v1/async/async_event.c \
+ 		 v1/async/async_poll.c \
+ 		 v1/async/async_task_queue.c
++if !DISABLE_DH
++   uadk_engine_la_SOURCES+=v1/alg/dh/hpre_dh.c \
++			   v1/alg/dh/hpre_dh_soft.c \
++			   v1/alg/dh/hpre_dh_wd.c
++endif
++if !DISABLE_RSA
++    uadk_engine_la_SOURCES+=v1/alg/pkey/hpre_rsa.c \
++			    v1/alg/pkey/hpre_rsa_soft.c \
++			    v1/alg/pkey/hpre_rsa_utils.c \
++			    v1/alg/pkey/hpre_wd.c
++endif
++
+ endif #WD_KAE
+ 
+ uadk_provider_la_SOURCES=uadk_prov_init.c uadk_prov_digest.c uadk_async.c uadk_utils.c
+diff --git a/src/uadk_engine_init.c b/src/uadk_engine_init.c
+index 0a9e3e6..0792c62 100644
+--- a/src/uadk_engine_init.c
++++ b/src/uadk_engine_init.c
+@@ -202,10 +202,16 @@ static int uadk_destroy(ENGINE *e)
+ 		sec_ciphers_free_ciphers();
+ 	if (uadk_digest_nosva)
+ 		sec_digests_free_methods();
++
++#ifndef DISABLE_RSA
+ 	if (uadk_rsa_nosva)
+ 		hpre_destroy();
++#endif
++
++#ifndef DISABLE_DH
+ 	if (uadk_dh_nosva)
+ 		hpre_dh_destroy();
++#endif
+ 	kae_debug_close_log();
+ #endif
+ 
+@@ -213,12 +219,19 @@ static int uadk_destroy(ENGINE *e)
+ 		uadk_e_destroy_cipher();
+ 	if (uadk_digest)
+ 		uadk_e_destroy_digest();
++
++#ifndef DISABLE_RSA
+ 	if (uadk_rsa)
+ 		uadk_e_destroy_rsa();
++#endif
++
+ 	if (uadk_ecc)
+ 		uadk_e_destroy_ecc();
++
++#ifndef DISABLE_DH
+ 	if (uadk_dh)
+ 		uadk_e_destroy_dh();
++#endif
+ 
+ 	pthread_mutex_lock(&uadk_engine_mutex);
+ 	uadk_inited = 0;
+@@ -250,10 +263,17 @@ static int uadk_init(ENGINE *e)
+ 		uadk_e_digest_lock_init();
+ 	if (uadk_cipher)
+ 		uadk_e_cipher_lock_init();
++
++#ifndef DISABLE_RSA
+ 	if (uadk_rsa)
+ 		uadk_e_rsa_lock_init();
++#endif
++
++#ifndef DISABLE_DH
+ 	if (uadk_dh)
+ 		uadk_e_dh_lock_init();
++#endif
++
+ 	if (uadk_ecc)
+ 		uadk_e_ecc_lock_init();
+ 
+@@ -300,6 +320,7 @@ static void bind_fn_kae_alg(ENGINE *e)
+ 			uadk_digest_nosva = 1;
+ 	}
+ 
++#ifndef DISABLE_RSA
+ 	dev_num = wd_get_nosva_dev_num("rsa");
+ 	if (dev_num > 0) {
+ 		hpre_module_init();
+@@ -308,7 +329,9 @@ static void bind_fn_kae_alg(ENGINE *e)
+ 		else
+ 			uadk_rsa_nosva = 1;
+ 	}
++#endif
+ 
++#ifndef DISABLE_DH
+ 	dev_num = wd_get_nosva_dev_num("dh");
+ 	if (dev_num > 0) {
+ 		hpre_module_dh_init();
+@@ -317,7 +340,9 @@ static void bind_fn_kae_alg(ENGINE *e)
+ 		else
+ 			uadk_dh_nosva = 1;
+ 	}
++#endif
+ }
++
+ #endif
+ 
+ static void bind_fn_uadk_alg(ENGINE *e)
+@@ -342,6 +367,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
+ 		free(dev);
+ 	}
+ 
++#ifndef DISABLE_RSA
+ 	dev = wd_get_accel_dev("rsa");
+ 	if (dev) {
+ 		if (!uadk_e_bind_rsa(e))
+@@ -350,7 +376,9 @@ static void bind_fn_uadk_alg(ENGINE *e)
+ 			uadk_rsa = 1;
+ 		free(dev);
+ 	}
++#endif
+ 
++#ifndef DISABLE_DH
+ 	dev = wd_get_accel_dev("dh");
+ 	if (dev) {
+ 		if (!uadk_e_bind_dh(e))
+@@ -359,6 +387,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
+ 			uadk_dh = 1;
+ 		free(dev);
+ 	}
++#endif
+ 
+ 	/* find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
+ 	dev = wd_get_accel_dev("ecdsa");
+diff --git a/src/uadk_pkey.c b/src/uadk_pkey.c
+index ba33b7d..a0601ac 100644
+--- a/src/uadk_pkey.c
++++ b/src/uadk_pkey.c
+@@ -31,13 +31,41 @@
+ 
+ static int g_ecc_support_state[ECC_TYPE];
+ 
++#if defined(DISABLE_X448) && defined(DISABLE_X25519)
++
+ static int pkey_nids[] = {
+ 	EVP_PKEY_EC,
+-	EVP_PKEY_SM2,
+-	EVP_PKEY_X25519,
+-	EVP_PKEY_X448
++	EVP_PKEY_SM2
+ };
+ 
++#else
++
++	#if defined(DISABLE_X448)
++
++	static int pkey_nids[] = {
++		EVP_PKEY_EC,
++		EVP_PKEY_SM2,
++		EVP_PKEY_X25519
++	};
++	#elif defined(DISABLE_X25519)
++
++	static int pkey_nids[] = {
++		EVP_PKEY_EC,
++		EVP_PKEY_SM2,
++		EVP_PKEY_X448
++	};
++
++	#else
++
++	static int pkey_nids[] = {
++		EVP_PKEY_EC,
++		EVP_PKEY_SM2,
++		EVP_PKEY_X25519,
++		EVP_PKEY_X448
++	};
++
++	#endif
++#endif
+ struct ecc_sched {
+ 	int sched_type;
+ 	struct wd_sched wd_sched;
+@@ -599,6 +627,8 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
+ 		}
+ 		*pmeth = pkey_meth.ec;
+ 		break;
++
++#ifndef DISABLE_X448
+ 	case EVP_PKEY_X448:
+ 		ret = uadk_x448_create_pmeth(&pkey_meth);
+ 		if (!ret) {
+@@ -607,6 +637,9 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
+ 		}
+ 		*pmeth = pkey_meth.x448;
+ 		break;
++#endif
++
++#ifndef DISABLE_X25519
+ 	case EVP_PKEY_X25519:
+ 		ret = uadk_x25519_create_pmeth(&pkey_meth);
+ 		if (!ret) {
+@@ -615,6 +648,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
+ 		}
+ 		*pmeth = pkey_meth.x25519;
+ 		break;
++#endif
+ 	default:
+ 		fprintf(stderr, "not find nid %d\n", nid);
+ 		return 0;
+diff --git a/src/uadk_pkey.h b/src/uadk_pkey.h
+index b80e425..f0317cd 100644
+--- a/src/uadk_pkey.h
++++ b/src/uadk_pkey.h
+@@ -77,10 +77,17 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+ void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+ int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+ void uadk_ec_delete_meth(void);
++
++#ifndef DISABLE_X448
+ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+ void uadk_x448_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
++#endif
++
++#ifndef DISABLE_X25519
+ int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
+ void uadk_x25519_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
++#endif
++
+ int uadk_bind_ec(ENGINE *e);
+ int uadk_e_ecc_get_numa_id(void);
+ int uadk_e_ecc_get_support_state(int alg_tag);
+diff --git a/src/v1/utils/engine_check.c b/src/v1/utils/engine_check.c
+index 949eeb8..90932b2 100644
+--- a/src/v1/utils/engine_check.c
++++ b/src/v1/utils/engine_check.c
+@@ -27,7 +27,11 @@
+ #include "../alg/ciphers/sec_ciphers_wd.h"
+ #include "../alg/digests/sec_digests_wd.h"
+ #include "../alg/pkey/hpre_wd.h"
++
++#ifndef DISABLE_DH
+ #include "../alg/dh/hpre_dh_wd.h"
++#endif
++
+ #include "engine_check.h"
+ #include "engine_utils.h"
+ #include "engine_log.h"
+@@ -81,8 +85,15 @@ static void *kae_checking_q_loop_fn(void *args)
+ 
+ 		kae_queue_pool_check_and_release(wd_ciphers_get_qnode_pool(), wd_ciphers_free_engine_ctx);
+ 		kae_queue_pool_check_and_release(wd_digests_get_qnode_pool(), wd_digests_free_engine_ctx);
++
++#ifndef DISABLE_RSA
+ 		kae_queue_pool_check_and_release(wd_hpre_get_qnode_pool(), NULL);
++#endif
++
++#ifndef DISABLE_DH
+ 		kae_queue_pool_check_and_release(wd_hpre_dh_get_qnode_pool(), NULL);
++#endif
++
+ 	}
+ 	US_INFO("check thread exit normally.");
+ 
+@@ -96,8 +107,15 @@ static void kae_checking_q_thread_destroy(void)
+ 
+ 	(void)wd_digests_uninit_qnode_pool();
+ 	(void)wd_ciphers_uninit_qnode_pool();
++
++#ifndef DISABLE_DH
+ 	(void)wd_hpre_dh_uninit_qnode_pool();
++#endif
++
++#ifndef DISABLE_RSA
+ 	(void)wd_hpre_uninit_qnode_pool();
++#endif
++
+ }
+ 
+ static void kae_check_thread_init(void)
+diff --git a/src/v1/utils/engine_fork.c b/src/v1/utils/engine_fork.c
+index 14f4e6e..3cab658 100644
+--- a/src/v1/utils/engine_fork.c
++++ b/src/v1/utils/engine_fork.c
+@@ -41,13 +41,25 @@ void engine_init_child_at_fork_handler_v1(void)
+ 		g_sec_digests_qnode_pool->pool_use_num = 0;
+ 	if (g_sec_ciphers_qnode_pool)
+ 		g_sec_ciphers_qnode_pool->pool_use_num = 0;
++
++#ifndef DISABLE_RSA
+ 	if (g_hpre_rsa_qnode_pool)
+ 		g_hpre_rsa_qnode_pool->pool_use_num = 0;
++#endif
++
++#ifndef DISABLE_DH
+ 	if (g_hpre_dh_qnode_pool)
+ 		g_hpre_dh_qnode_pool->pool_use_num = 0;
++#endif
+ 
++#ifndef DISABLE_RSA
+ 	(void)hpre_module_init();
++#endif
++
++#ifndef DISABLE_DH
+ 	(void)hpre_module_dh_init();
++#endif
++
+ 	(void)cipher_module_init();
+ 	(void)digest_module_init();
+ 
+-- 

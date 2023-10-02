@@ -77,10 +77,17 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
 int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_ec_delete_meth(void);
+
+#ifndef DISABLE_X448
 int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_x448_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+#endif
+
+#ifndef DISABLE_X25519
 int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth);
 void uadk_x25519_delete_pmeth(struct uadk_pkey_meth *pkey_meth);
+#endif
+
 int uadk_bind_ec(ENGINE *e);
 int uadk_e_ecc_get_numa_id(void);
 int uadk_e_ecc_get_support_state(int alg_tag);
