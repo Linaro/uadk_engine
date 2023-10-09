@@ -23,6 +23,9 @@
 #include <openssl/async.h>
 
 #define ASYNC_QUEUE_TASK_NUM	1024
+#define UADK_E_SUCCESS		1
+#define UADK_E_FAIL		0
+#define DO_SYNC			1
 
 struct async_op {
 	ASYNC_JOB *job;
