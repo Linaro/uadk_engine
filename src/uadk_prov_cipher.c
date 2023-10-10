@@ -223,8 +223,6 @@ static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
 static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned char *out,
 				      int *outl, const unsigned char *in, size_t len)
 {
-	int sw_final_len = 0;
-
 	if (priv->sw_cipher == NULL)
 		return 0;
 
@@ -263,7 +261,7 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 				 const unsigned char *iv, size_t ivlen)
 {
 	int cipher_counts = ARRAY_SIZE(cipher_info_table);
-	int ret, i;
+	int i;
 
 	if (iv)
 		memcpy(priv->iv, iv, ivlen);
