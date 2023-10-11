@@ -95,8 +95,8 @@ static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
 	{ NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
-					  int *no_cache)
+static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
+					int *no_cache)
 {
 	static int prov_init;
 
@@ -125,9 +125,9 @@ static const OSSL_ALGORITHM *p_prov_query(void *provctx, int operation_id,
 	return NULL;
 }
 
-static void p_teardown(void *provctx)
+static void uadk_teardown(void *provctx)
 {
-	struct p_uadk_ctx *ctx = (struct p_uadk_ctx *)provctx;
+	struct uadk_prov_ctx *ctx = (struct uadk_prov_ctx *)provctx;
 
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
@@ -137,9 +137,9 @@ static void p_teardown(void *provctx)
 	async_poll_task_free();
 }
 
-static const OSSL_DISPATCH p_test_table[] = {
-	{ OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))p_prov_query },
-	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))p_teardown },
+static const OSSL_DISPATCH uadk_dispatch_table[] = {
+	{ OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))uadk_query },
+	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))uadk_teardown },
 	{ 0, NULL }
 };
 
@@ -157,7 +157,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 		       const OSSL_DISPATCH **out,
 		       void **provctx)
 {
-	struct p_uadk_ctx *ctx;
+	struct uadk_prov_ctx *ctx;
 	int ret;
 
 	ctx = OPENSSL_zalloc(sizeof(*ctx));
@@ -171,6 +171,6 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	pthread_atfork(NULL, NULL, provider_init_child_at_fork_handler);
 
 	*provctx = (void *)ctx;
-	*out = p_test_table;
+	*out = uadk_dispatch_table;
 	return 1;
 }
