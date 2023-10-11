@@ -18,12 +18,12 @@
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
 
-struct p_uadk_ctx {
+struct uadk_prov_ctx {
 	const OSSL_CORE_HANDLE *handle;
 	OSSL_LIB_CTX *libctx;
 };
 
-static inline OSSL_LIB_CTX *prov_libctx_of(struct p_uadk_ctx *ctx)
+static inline OSSL_LIB_CTX *prov_libctx_of(struct uadk_prov_ctx *ctx)
 {
 	if (ctx == NULL)
 		return NULL;
