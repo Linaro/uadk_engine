@@ -35,8 +35,6 @@
 #define CTX_SYNC	0
 #define CTX_ASYNC	1
 #define CTX_NUM		2
-#define DIGEST_DOING	1
-#define DIGEST_END	0
 #define ENV_ENABLED	1
 
 /* The max BD data length is 16M-512B */
@@ -99,7 +97,9 @@ struct digest_priv_ctx {
 	uint32_t state;
 	uint32_t switch_threshold;
 	int switch_flag;
-	bool copy;
+	uint32_t app_datasize;
+	bool is_stream_copy;
+	size_t total_data_len;
 };
 
 struct digest_info {
@@ -199,7 +199,7 @@ static int digest_soft_init(struct digest_priv_ctx *md_ctx)
 	uint32_t e_nid = md_ctx->e_nid;
 	const EVP_MD *digest_md = NULL;
 	EVP_MD_CTX *ctx = NULL;
-	int ctx_len;
+	int app_datasize;
 
 	/* Allocate a soft ctx for hardware engine */
 	if (md_ctx->soft_ctx == NULL)
@@ -213,12 +213,14 @@ static int digest_soft_init(struct digest_priv_ctx *md_ctx)
 		return  0;
 	}
 
-	ctx_len = EVP_MD_meth_get_app_datasize(digest_md);
+	app_datasize = EVP_MD_meth_get_app_datasize(digest_md);
 	if (ctx->md_data == NULL) {
-		ctx->md_data = OPENSSL_malloc(ctx_len);
+		ctx->md_data = OPENSSL_malloc(app_datasize);
 		if (ctx->md_data == NULL)
 			return  0;
 	}
+
+	md_ctx->app_datasize = app_datasize;
 
 	return EVP_MD_meth_get_init(digest_md)(ctx);
 }
@@ -267,17 +269,14 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 {
 	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
 
-	/* Prevent double-free after the copy is used */
-	if (md_ctx->copy)
-		return;
-
 	if (ctx != NULL) {
 		if (ctx->md_data) {
 			OPENSSL_free(ctx->md_data);
 			ctx->md_data  = NULL;
 		}
 		EVP_MD_CTX_free(ctx);
-		ctx = NULL;
+		md_ctx->soft_ctx = NULL;
+		md_ctx->app_datasize = 0;
 	}
 }
 
@@ -515,13 +514,16 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 	priv->req.out_bytes = out_len;
 }
 
-static void digest_priv_ctx_cleanup(struct digest_priv_ctx *priv)
+static void digest_priv_ctx_reset(struct digest_priv_ctx *priv)
 {
 	/* Ensure that private variable values are initialized */
 	priv->state = SEC_DIGEST_INIT;
 	priv->last_update_bufflen = 0;
 	priv->switch_threshold = 0;
 	priv->switch_flag = 0;
+	priv->total_data_len = 0;
+	priv->app_datasize = 0;
+	priv->is_stream_copy = false;
 }
 
 static int uadk_e_digest_init(EVP_MD_CTX *ctx)
@@ -529,24 +531,23 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	__u32 digest_counts = ARRAY_SIZE(digest_info_table);
-	int nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 	struct sched_params params = {0};
 	__u32 i;
 	int ret;
 
-	priv->e_nid = nid;
+	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
-	digest_priv_ctx_cleanup(priv);
+	digest_priv_ctx_reset(priv);
 
 	ret = uadk_e_init_digest();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
 		fprintf(stderr, "uadk failed to initialize digest.\n");
-		goto soft_init;
+		return digest_soft_init(priv);
 	}
 
 	for (i = 0; i < digest_counts; i++) {
-		if (nid == digest_info_table[i].nid) {
+		if (priv->e_nid == digest_info_table[i].nid) {
 			digest_priv_ctx_setup(priv, digest_info_table[i].alg,
 			digest_info_table[i].mode, digest_info_table[i].out_len);
 			break;
@@ -561,22 +562,24 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	/* Use the default numa parameters */
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (unlikely(!priv->sess))
-		return 0;
+	if (!priv->sess) {
+		priv->sess = wd_digest_alloc_sess(&priv->setup);
+		if (unlikely(!priv->sess))
+			return 0;
 
-	priv->data = malloc(DIGEST_BLOCK_SIZE);
-	if (unlikely(!priv->data)) {
-		wd_digest_free_sess(priv->sess);
-		return 0;
+		priv->data = malloc(DIGEST_BLOCK_SIZE);
+		if (unlikely(!priv->data))
+			goto out;
 	}
 
-	priv->switch_threshold = sec_digest_get_sw_threshold(nid);
+	priv->switch_threshold = sec_digest_get_sw_threshold(priv->e_nid);
 
 	return 1;
 
-soft_init:
-	return digest_soft_init(priv);
+out:
+	wd_digest_free_sess(priv->sess);
+	priv->sess = 0;
+	return 0;
 }
 
 static void digest_update_out_length(EVP_MD_CTX *ctx)
@@ -592,6 +595,16 @@ static void digest_update_out_length(EVP_MD_CTX *ctx)
 		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
 }
 
+static void digest_set_msg_state(struct digest_priv_ctx *priv, bool is_end)
+{
+	if (unlikely(priv->is_stream_copy)) {
+		priv->req.has_next = is_end ? WD_DIGEST_STREAM_END : WD_DIGEST_STREAM_DOING;
+		priv->is_stream_copy = false;
+	} else {
+		priv->req.has_next = is_end ? WD_DIGEST_END : WD_DIGEST_DOING;
+	}
+}
+
 static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_len)
 {
 	struct digest_priv_ctx *priv =
@@ -602,8 +615,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 	int ret;
 
 	digest_update_out_length(ctx);
-
-	priv->req.has_next = DIGEST_DOING;
+	digest_set_msg_state(priv, false);
 
 	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
 		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
@@ -661,6 +673,8 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
+
+	priv->total_data_len += data_len;
 
 	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
 		uadk_memcpy(priv->data + priv->last_update_bufflen, data, data_len);
@@ -753,9 +767,10 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-	int ret = 1;
 	struct async_op op;
-	priv->req.has_next = DIGEST_END;
+	int ret = 1;
+
+	digest_set_msg_state(priv, true);
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
@@ -810,17 +825,21 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 
-	/* Prevent double-free after the copy is used */
-	if (!priv || priv->copy)
+	if (!priv)
 		return 1;
+
+	if (priv->data) {
+		free(priv->data);
+		priv->data = NULL;
+	}
 
 	if (priv->sess) {
 		wd_digest_free_sess(priv->sess);
 		priv->sess = 0;
 	}
 
-	if (priv && priv->data)
-		free(priv->data);
+	if (priv->soft_ctx)
+		digest_soft_cleanup(priv);
 
 	return 1;
 }
@@ -831,17 +850,58 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(from);
 	struct digest_priv_ctx *t =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(to);
+	struct sched_params params = {0};
+	int ret;
 
-	/*
-	 * EVP_MD_CTX_copy will copy from->priv to to->priv,
-	 * including data pointer. Instead of coping data contents,
-	 * add a flag to prevent double-free.
-	 */
+	if (!t)
+		return 1;
 
-	if (f && f->data)
-		t->copy = true;
+	if (t->sess) {
+		params.numa_id = -1;
+		t->setup.sched_param = &params;
+		t->sess = wd_digest_alloc_sess(&t->setup);
+		if (!t->sess) {
+			fprintf(stderr, "failed to alloc session for digest ctx copy.\n");
+			return 0;
+		}
+
+		t->data = malloc(DIGEST_BLOCK_SIZE);
+		if (!t->data)
+			goto free_sess;
+
+		if (t->state != SEC_DIGEST_INIT) {
+			t->is_stream_copy = true;
+			/* Length that the hardware has processed should be equal to
+			 * total input data length minus software cache data length.
+			 */
+			t->req.long_data_len = t->total_data_len - t->last_update_bufflen;
+		}
+
+		memcpy(t->data, f->data, f->last_update_bufflen);
+	}
+
+	if (t->soft_ctx) {
+		t->soft_ctx = NULL;
+		ret = digest_soft_init(t);
+		if (!ret)
+			goto free_data;
+
+		memcpy(t->soft_ctx->md_data, f->soft_ctx->md_data, t->app_datasize);
+	}
 
 	return 1;
+
+free_data:
+	if (t->data) {
+		free(t->data);
+		t->data = NULL;
+	}
+free_sess:
+	if (t->sess) {
+		wd_digest_free_sess(t->sess);
+		t->sess = 0;
+	}
+	return 0;
 }
 
 
