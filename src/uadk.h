@@ -28,7 +28,6 @@ enum {
 	HW_V3,
 };
 
-extern const char *engine_uadk_id;
 int uadk_e_bind_cipher(ENGINE *e);
 void uadk_e_destroy_cipher(void);
 int uadk_e_bind_digest(ENGINE *e);

@@ -35,7 +35,8 @@
 
 #include "async_event.h"
 #include "../utils/engine_log.h"
-#include "../../uadk.h"
+
+static const char *uadk_async_key = "uadk_async_key";
 
 static void async_fd_cleanup(ASYNC_WAIT_CTX *ctx, const void *key, OSSL_ASYNC_FD readfd, void *custom)
 {
@@ -66,7 +67,7 @@ int async_setup_async_event_notification_v1(int jobStatus)
 		return 0;
 	}
 
-	if (ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd,
+	if (ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd,
 				&custom) == 0) {
 		efd = eventfd(0, EFD_NONBLOCK);
 		if (efd == -1) {
@@ -74,10 +75,10 @@ int async_setup_async_event_notification_v1(int jobStatus)
 			return 0;
 		}
 
-		if (ASYNC_WAIT_CTX_set_wait_fd(waitctx, engine_uadk_id, efd,
+		if (ASYNC_WAIT_CTX_set_wait_fd(waitctx, uadk_async_key, efd,
 					custom, async_fd_cleanup) == 0) {
 			US_ERR("set wait fd error.");
-			async_fd_cleanup(waitctx, engine_uadk_id, efd, NULL);
+			async_fd_cleanup(waitctx, uadk_async_key, efd, NULL);
 			return 0;
 		}
 	}
@@ -111,14 +112,14 @@ int async_clear_async_event_notification_v1(void)
 	}
 
 	if (num_add_fds > 0) {
-		if (ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom) == 0) {
+		if (ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom) == 0) {
 			US_ERR("no fd.");
 			return 0;
 		}
 
-		async_fd_cleanup(waitctx, engine_uadk_id, efd, NULL);
+		async_fd_cleanup(waitctx, uadk_async_key, efd, NULL);
 
-		if (ASYNC_WAIT_CTX_clear_fd(waitctx, engine_uadk_id) == 0) {
+		if (ASYNC_WAIT_CTX_clear_fd(waitctx, uadk_async_key) == 0) {
 			US_ERR("clear fd error.");
 			return 0;
 		}
@@ -148,7 +149,7 @@ int async_pause_job_v1(volatile ASYNC_JOB *job, int jobStatus)
 		return ret;
 	}
 
-	ret = ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom);
+	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
 		if (read(efd, &buf, sizeof(uint64_t)) == -1) {
 			if (errno != EAGAIN)
@@ -178,7 +179,7 @@ int async_wake_job_v1(volatile ASYNC_JOB *job, int jobStatus)
 		return ret;
 	}
 
-	ret = ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom);
+	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
 		if (write(efd, &buf, sizeof(uint64_t)) == -1)
 			US_ERR("Failed to write to fd: %d - error: %d\n", efd, errno);
