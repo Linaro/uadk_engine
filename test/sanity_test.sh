@@ -78,14 +78,14 @@ if [[ $signature_algs =~ "uadk_provider" ]]; then
 	openssl speed -provider $engine_id -async_jobs 1 rsa4096
 
 	openssl genrsa -out prikey.pem -provider $engine_id 1024
-	openssl rsa -in prikey.pem -pubout -out pubkey.pem -provider $engine_id -provider default
+	openssl rsa -in prikey.pem -pubout -out pubkey.pem -provider $engine_id
 	echo "Content to be encrypted" > plain.txt
 
 	openssl pkeyutl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt \
-	-pkeyopt rsa_padding_mode:pkcs1 -provider uadk_provider -provider default
+	-pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id
 
 	openssl pkeyutl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt \
-        -pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id -provider default
+        -pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id
 fi
 
 if [[ $version =~ "1.1.1" ]]; then
