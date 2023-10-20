@@ -120,6 +120,8 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		return uadk_prov_keymgmt;
 	case OSSL_OP_ASYM_CIPHER:
 		return uadk_prov_asym_cipher;
+	case OSSL_OP_STORE:
+		return prov->query_operation(provctx, operation_id, no_cache);
 	}
 	return NULL;
 }

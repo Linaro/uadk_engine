@@ -220,7 +220,7 @@ struct rsa_st {
 	/* Be careful using this if the RSA structure is shared */
 	CRYPTO_EX_DATA ex_data;
 
-	int references; //CRYPTO_REF_COUNT references;
+	CRYPTO_REF_COUNT references;
 	int flags;
 	/* Used to cache montgomery values */
 	BN_MONT_CTX *_method_mod_n;
@@ -234,8 +234,6 @@ struct rsa_st {
 };
 
 typedef struct rsa_st RSA;
-
-typedef int CRYPTO_REF_COUNT;
 
 struct evp_signature_st {
 	int name_id;
