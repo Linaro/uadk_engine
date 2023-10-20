@@ -28,7 +28,6 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 
-const char *engine_uadk_id = "uadk_provider";
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
 

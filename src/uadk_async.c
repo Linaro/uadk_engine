@@ -24,6 +24,7 @@
 #include "uadk.h"
 #include "uadk_async.h"
 
+static const char *uadk_async_key = "uadk_async_key";
 static struct async_poll_queue poll_queue;
 
 static int g_uadk_e_keep_polling;
@@ -61,15 +62,15 @@ int async_setup_async_event_notification(struct async_op *op)
 	if (waitctx == NULL)
 		return 0;
 
-	if (ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id,
+	if (ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key,
 				  &efd, &custom) == 0) {
 		efd = eventfd(0, EFD_NONBLOCK);
 		if (efd == -1)
 			return 0;
 
-		if (ASYNC_WAIT_CTX_set_wait_fd(waitctx, engine_uadk_id, efd,
+		if (ASYNC_WAIT_CTX_set_wait_fd(waitctx, uadk_async_key, efd,
 					       custom, async_fd_cleanup) == 0) {
-			async_fd_cleanup(waitctx, engine_uadk_id, efd, NULL);
+			async_fd_cleanup(waitctx, uadk_async_key, efd, NULL);
 			return 0;
 		}
 	}
@@ -99,13 +100,13 @@ int async_clear_async_event_notification(void)
 		return 0;
 
 	if (num_add_fds > 0) {
-		if (ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id,
+		if (ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key,
 					  &efd, &custom) == 0)
 			return 0;
 
-		async_fd_cleanup(waitctx, engine_uadk_id, efd, NULL);
+		async_fd_cleanup(waitctx, uadk_async_key, efd, NULL);
 
-		if (ASYNC_WAIT_CTX_clear_fd(waitctx, engine_uadk_id) == 0)
+		if (ASYNC_WAIT_CTX_clear_fd(waitctx, uadk_async_key) == 0)
 			return 0;
 	}
 
@@ -272,7 +273,7 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id)
 		if (ASYNC_pause_job() == 0)
 			return 0;
 
-		ret = ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom);
+		ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 		if (ret <= 0)
 			continue;
 
@@ -299,7 +300,7 @@ int async_wake_job(ASYNC_JOB *job)
 	if (waitctx == NULL)
 		return 0;
 
-	ret = ASYNC_WAIT_CTX_get_fd(waitctx, engine_uadk_id, &efd, &custom);
+	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
 		if (write(efd, &buf, sizeof(uint64_t)) == -1)
 			fprintf(stderr, "failed to write to fd: %d - error: %d\n", efd, errno);
