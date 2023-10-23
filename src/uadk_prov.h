@@ -117,7 +117,11 @@ extern const OSSL_DISPATCH uadk_rsa_signature_functions[];
 extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[];
 extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[];
 
+extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[];
+extern const OSSL_DISPATCH uadk_dh_keyexch_functions[];
+
 void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_rsa(void);
+void uadk_prov_destroy_dh(void);
 #endif
