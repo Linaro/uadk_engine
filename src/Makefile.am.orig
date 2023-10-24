@@ -1,8 +1,6 @@
 VERSION = 1:2
 ACLOCAL_AMFLAGS = -I m4
 
-uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
-
 if HAVE_CRYPTO
 lib_LTLIBRARIES=uadk_engine.la
 endif #HAVE_CRYPTO
@@ -12,32 +10,12 @@ lib_LTLIBRARIES=uadk_provider.la
 endif #HAVE_CRYPTO3
 
 uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
-		       uadk_digest.c uadk_async.c uadk_sm2.c \
-		       uadk_pkey.c uadk_ec.c
-if DISABLE_RSA
-    uadk_engine_la_CFLAGS+=-DDISABLE_RSA
-else
-    uadk_engine_la_SOURCES+=uadk_rsa.c
-endif
-
-if DISABLE_DH
-    uadk_engine_la_CFLAGS+=-DDISABLE_DH
-else
-    uadk_engine_la_SOURCES+=uadk_dh.c
-endif
-
-if DISABLE_X448
-    uadk_engine_la_CFLAGS+=-DDISABLE_X448
-endif
-
-if DISABLE_X25519
-    uadk_engine_la_CFLAGS+=-DDISABLE_X25519
-endif
-
+		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
+		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
 
 uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
 uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
-
+uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
 uadk_engine_la_CFLAGS+=-DCRYPTO
 
 AUTOMAKE_OPTIONS = subdir-objects
@@ -48,9 +26,16 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/alg/ciphers/sec_ciphers_soft.c \
 		 v1/alg/ciphers/sec_ciphers_utils.c \
 		 v1/alg/ciphers/sec_ciphers_wd.c \
+		 v1/alg/dh/hpre_dh.c \
+		 v1/alg/dh/hpre_dh_soft.c \
+		 v1/alg/dh/hpre_dh_wd.c \
 		 v1/alg/digests/sec_digests.c \
 		 v1/alg/digests/sec_digests_soft.c \
 		 v1/alg/digests/sec_digests_wd.c \
+		 v1/alg/pkey/hpre_rsa.c \
+		 v1/alg/pkey/hpre_rsa_soft.c \
+		 v1/alg/pkey/hpre_rsa_utils.c \
+		 v1/alg/pkey/hpre_wd.c \
 		 v1/wdmngr/wd_alg_queue.c \
 		 v1/wdmngr/wd_queue_memory.c \
 		 v1/utils/engine_check.c \
@@ -63,18 +48,6 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/async/async_event.c \
 		 v1/async/async_poll.c \
 		 v1/async/async_task_queue.c
-if !DISABLE_DH
-   uadk_engine_la_SOURCES+=v1/alg/dh/hpre_dh.c \
-			   v1/alg/dh/hpre_dh_soft.c \
-			   v1/alg/dh/hpre_dh_wd.c
-endif
-if !DISABLE_RSA
-    uadk_engine_la_SOURCES+=v1/alg/pkey/hpre_rsa.c \
-			    v1/alg/pkey/hpre_rsa_soft.c \
-			    v1/alg/pkey/hpre_rsa_utils.c \
-			    v1/alg/pkey/hpre_wd.c
-endif
-
 endif #WD_KAE
 
 uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
