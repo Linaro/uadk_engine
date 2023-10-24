@@ -1,0 +1,15 @@
+# uadk_provider can be enabled via uadk_provider.cnf
+# export OPENSSL_CONF=/path/to/uadk_provider.cnf
+# openssl command -config /path/to/uadk_provider.cnf
+# application calls CONF_modules_load_file
+
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+uadk_provider = uadk_sect
+
+[uadk_sect]
+activate = 1
