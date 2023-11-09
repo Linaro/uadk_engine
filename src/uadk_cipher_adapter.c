@@ -16,9 +16,11 @@
  */
 #include "uadk_cipher_adapter.h"
 
-#define HW_SEC_V2 0
-#define HW_SEC_V3 1
-#define OTHERS_HW 2
+#define HW_UNINIT	-1
+#define HW_SEC_V2	0
+#define HW_SEC_V3	1
+
+static int g_platform = HW_UNINIT;
 
 static int cipher_hw_v2_nids[] = {
 	NID_aes_128_cbc,
@@ -140,7 +142,6 @@ static void uadk_e_create_ciphers(int index)
 
 int uadk_e_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
 {
-	int platform = OTHERS_HW;
 	struct uacce_dev *dev;
 	__u32 i;
 
@@ -153,24 +154,26 @@ int uadk_e_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int n
 		return 0;
 	}
 
-	dev = wd_get_accel_dev("cipher");
-	if (!dev) {
-		fprintf(stderr, "no device available, switch to software!\n");
-		return 0;
+	if (g_platform == HW_UNINIT) {
+		dev = wd_get_accel_dev("cipher");
+		if (!dev) {
+			fprintf(stderr, "no device available, switch to software!\n");
+			return 0;
+		}
+
+		if (!strcmp(dev->api, "hisi_qm_v2"))
+			g_platform = HW_SEC_V2;
+		else
+			g_platform = HW_SEC_V3;
+
+		free(dev);
 	}
 
-	if (!strcmp(dev->api, "hisi_qm_v2"))
-		platform = HW_SEC_V2;
-	else if (!strcmp(dev->api, "hisi_qm_v3"))
-		platform = HW_SEC_V3;
-
-	free(dev);
-
 	if (cipher == NULL) {
-		if (platform == HW_SEC_V2) {
+		if (g_platform == HW_SEC_V2) {
 			*nids = cipher_hw_v2_nids;
 			return ARRAY_SIZE(cipher_hw_v2_nids);
-		} else if (platform == HW_SEC_V3) {
+		} else if (g_platform == HW_SEC_V3) {
 			*nids = cipher_hw_v3_nids;
 			return ARRAY_SIZE(cipher_hw_v3_nids);
 		}
