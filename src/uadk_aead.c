@@ -401,9 +401,11 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 	case EVP_CTRL_INIT:
 		priv->req.iv_bytes = 0;
 		return 1;
+# if (OPENSSL_VERSION_NUMBER >= 0x1010106fL)
 	case EVP_CTRL_GET_IVLEN:
 		*(int *)ptr = priv->req.iv_bytes;
 		return 1;
+#endif
 	case EVP_CTRL_GCM_SET_IVLEN:
 		if (arg != AES_GCM_IV_LEN) {
 			fprintf(stderr, "invalid: aead gcm iv length only support 12B.\n");
