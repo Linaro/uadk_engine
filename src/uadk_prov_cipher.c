@@ -396,7 +396,7 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER, idx);
+	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
 	if (!ret)
 		return 0;
 	return 1;

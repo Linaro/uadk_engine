@@ -445,7 +445,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST, idx);
+	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
 	if (!ret)
 		return 0;
 	return 1;

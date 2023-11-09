@@ -234,14 +234,14 @@ out:
 	return ret;
 }
 
-static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type, int id)
+static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type type)
 {
 	struct async_poll_task *task_queue;
 	struct async_poll_task *task;
 	int ret;
 
 	task_queue = poll_queue.head;
-	task = &task_queue[id];
+	task = &task_queue[op->idx];
 	task->ctx = ctx;
 	task->type = type;
 	task->op = op;
@@ -253,7 +253,7 @@ static int async_add_poll_task(void *ctx, struct async_op *op, enum task_type ty
 	return 1;
 }
 
-int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id)
+int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 {
 	ASYNC_WAIT_CTX *waitctx;
 	OSSL_ASYNC_FD efd;
@@ -261,7 +261,7 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id)
 	uint64_t buf;
 	int ret;
 
-	ret = async_add_poll_task(ctx, op, type, id);
+	ret = async_add_poll_task(ctx, op, type);
 	if (ret == 0)
 		return ret;
 

@@ -926,7 +926,7 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 			}
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH, idx);
+		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
 		if (!ret)
 			goto err;
 

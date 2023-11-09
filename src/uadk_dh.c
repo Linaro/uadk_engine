@@ -723,12 +723,12 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
 			if (ret < 0 && ret != -EBUSY) {
-				async_free_poll_task(idx, 0);
+				async_free_poll_task(op.idx, 0);
 				goto err;
 			}
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH, idx);
+		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
 		if (!ret)
 			goto err;
 

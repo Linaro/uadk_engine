@@ -72,7 +72,7 @@ struct async_poll_queue {
 
 int async_setup_async_event_notification(struct async_op *op);
 int async_clear_async_event_notification(void);
-int async_pause_job(void *ctx, struct async_op *op, enum task_type type, int id);
+int async_pause_job(void *ctx, struct async_op *op, enum task_type type);
 void async_register_poll_fn(int type, async_recv_t func);
 int async_module_init(void);
 int async_wake_job(ASYNC_JOB *job);
