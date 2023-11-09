@@ -262,8 +262,10 @@ static int uadk_init(ENGINE *e)
 
 	if (uadk_digest)
 		uadk_e_digest_lock_init();
-	if (uadk_cipher)
+	if (uadk_cipher) {
 		uadk_e_cipher_lock_init();
+		uadk_e_aead_lock_init();
+	}
 	if (uadk_rsa)
 		uadk_e_rsa_lock_init();
 	if (uadk_dh)
