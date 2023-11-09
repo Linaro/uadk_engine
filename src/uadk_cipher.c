@@ -878,6 +878,13 @@ EVP_CIPHER *uadk_create_cipher_meth(int nid)
 				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
 		cipher = uadk_sm4_cbc;
 		break;
+	case NID_sm4_ecb:
+		UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_sm4_ecb;
+		break;
 	case NID_des_ede3_cbc:
 		UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, EVP_CIPH_CBC_MODE,
 				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
