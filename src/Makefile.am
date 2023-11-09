@@ -11,7 +11,8 @@ endif #HAVE_CRYPTO3
 
 uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
 		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
-		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c
+		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c \
+		       uadk_aead.c uadk_cipher_adapter.c
 
 uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
 uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)

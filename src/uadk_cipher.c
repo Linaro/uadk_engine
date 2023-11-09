@@ -25,6 +25,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_cipher_adapter.h"
 
 #define UADK_DO_SOFT         (-0xE0)
 #define CTX_SYNC_ENC		0
@@ -74,53 +75,7 @@ struct cipher_info {
 	__u32 out_bytes;
 };
 
-static int platform;
-
 #define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
-
-static int cipher_hw_v2_nids[] = {
-	NID_aes_128_cbc,
-	NID_aes_192_cbc,
-	NID_aes_256_cbc,
-	NID_aes_128_ecb,
-	NID_aes_192_ecb,
-	NID_aes_256_ecb,
-	NID_aes_128_xts,
-	NID_aes_256_xts,
-	NID_sm4_cbc,
-	NID_des_ede3_cbc,
-	NID_des_ede3_ecb,
-	NID_sm4_ecb,
-	0,
-};
-
-static int cipher_hw_v3_nids[] = {
-	NID_aes_128_cbc,
-	NID_aes_192_cbc,
-	NID_aes_256_cbc,
-	NID_aes_128_ctr,
-	NID_aes_192_ctr,
-	NID_aes_256_ctr,
-	NID_aes_128_ecb,
-	NID_aes_192_ecb,
-	NID_aes_256_ecb,
-	NID_aes_128_xts,
-	NID_aes_256_xts,
-	NID_sm4_cbc,
-	NID_sm4_ecb,
-	NID_des_ede3_cbc,
-	NID_des_ede3_ecb,
-	NID_aes_128_cfb128,
-	NID_aes_192_cfb128,
-	NID_aes_256_cfb128,
-	NID_aes_128_ofb128,
-	NID_aes_192_ofb128,
-	NID_aes_256_ofb128,
-	NID_sm4_cfb128,
-	NID_sm4_ofb128,
-	NID_sm4_ctr,
-	0,
-};
 
 static EVP_CIPHER *uadk_aes_128_cbc;
 static EVP_CIPHER *uadk_aes_192_cbc;
@@ -328,130 +283,6 @@ static void uadk_e_cipher_sw_cleanup(EVP_CIPHER_CTX *ctx)
 	}
 }
 
-static int uadk_get_accel_platform(char *alg_name)
-{
-	struct uacce_dev *dev;
-
-	dev = wd_get_accel_dev(alg_name);
-	if (dev == NULL)
-		return 0;
-
-	if (!strcmp(dev->api, "hisi_qm_v2"))
-		platform = HW_V2;
-	else
-		platform = HW_V3;
-	free(dev);
-
-	return 1;
-}
-
-static int uadk_e_engine_ciphers(ENGINE *e, const EVP_CIPHER **cipher,
-				 const int **nids, int nid)
-{
-	int *cipher_nids;
-	__u32 size, i;
-	int ret = 1;
-
-	if (platform == HW_V2) {
-		size = (sizeof(cipher_hw_v2_nids) - 1) / sizeof(int);
-		cipher_nids = cipher_hw_v2_nids;
-	} else {
-		size = (sizeof(cipher_hw_v3_nids) - 1) / sizeof(int);
-		cipher_nids = cipher_hw_v3_nids;
-	}
-
-	if (!cipher) {
-		*nids = cipher_nids;
-		return size;
-	}
-
-	for (i = 0; i < size; i++) {
-		if (nid == cipher_nids[i])
-			break;
-	}
-
-	switch (nid) {
-	case NID_aes_128_cbc:
-		*cipher = uadk_aes_128_cbc;
-		break;
-	case NID_aes_192_cbc:
-		*cipher = uadk_aes_192_cbc;
-		break;
-	case NID_aes_256_cbc:
-		*cipher = uadk_aes_256_cbc;
-		break;
-	case NID_aes_128_ctr:
-		*cipher = uadk_aes_128_ctr;
-		break;
-	case NID_aes_192_ctr:
-		*cipher = uadk_aes_192_ctr;
-		break;
-	case NID_aes_256_ctr:
-		*cipher = uadk_aes_256_ctr;
-		break;
-	case NID_aes_128_ecb:
-		*cipher = uadk_aes_128_ecb;
-		break;
-	case NID_aes_192_ecb:
-		*cipher = uadk_aes_192_ecb;
-		break;
-	case NID_aes_256_ecb:
-		*cipher = uadk_aes_256_ecb;
-		break;
-	case NID_aes_128_xts:
-		*cipher = uadk_aes_128_xts;
-		break;
-	case NID_aes_256_xts:
-		*cipher = uadk_aes_256_xts;
-		break;
-	case NID_sm4_cbc:
-		*cipher = uadk_sm4_cbc;
-		break;
-	case NID_sm4_ecb:
-		*cipher = uadk_sm4_ecb;
-		break;
-	case NID_des_ede3_cbc:
-		*cipher = uadk_des_ede3_cbc;
-		break;
-	case NID_des_ede3_ecb:
-		*cipher = uadk_des_ede3_ecb;
-		break;
-	case NID_aes_128_ofb128:
-		*cipher = uadk_aes_128_ofb128;
-		break;
-	case NID_aes_192_ofb128:
-		*cipher = uadk_aes_192_ofb128;
-		break;
-	case NID_aes_256_ofb128:
-		*cipher = uadk_aes_256_ofb128;
-		break;
-	case NID_aes_128_cfb128:
-		*cipher = uadk_aes_128_cfb128;
-		break;
-	case NID_aes_192_cfb128:
-		*cipher = uadk_aes_192_cfb128;
-		break;
-	case NID_aes_256_cfb128:
-		*cipher = uadk_aes_256_cfb128;
-		break;
-	case NID_sm4_ofb128:
-		*cipher = uadk_sm4_ofb128;
-		break;
-	case NID_sm4_cfb128:
-		*cipher = uadk_sm4_cfb128;
-		break;
-	case NID_sm4_ctr:
-		*cipher = uadk_sm4_ctr;
-		break;
-	default:
-		ret = 0;
-		*cipher = NULL;
-		break;
-	}
-
-	return ret;
-}
-
 static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 {
 	struct sched_params *param = (struct sched_params *)sched_param;
@@ -560,7 +391,8 @@ static int uadk_e_wd_cipher_env_init(struct uacce_dev *dev)
 
 static int uadk_e_wd_cipher_init(struct uacce_dev *dev)
 {
-	int ret, i, j;
+	__u32 i, j;
+	int ret;
 
 	g_cipher_engine.numa_id = dev->numa_id;
 
@@ -978,210 +810,193 @@ do { \
 		return 0; \
 } while (0)
 
-static int bind_v2_cipher(void)
+EVP_CIPHER *uadk_create_cipher_meth(int nid)
 {
-	UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, EVP_CIPH_CBC_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, EVP_CIPH_CBC_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, EVP_CIPH_CBC_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+	EVP_CIPHER *cipher;
 
-	return 0;
-}
-
-static int bind_v3_cipher(void)
-{
-	UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, EVP_CIPH_CTR_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, EVP_CIPH_CTR_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, EVP_CIPH_OFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, EVP_CIPH_OFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, EVP_CIPH_CFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, EVP_CIPH_CFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, EVP_CIPH_CFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-	UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
-			  sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
-			  uadk_e_do_cipher, uadk_e_cipher_cleanup,
-			  EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
-
-	return 0;
-}
-
-int uadk_e_bind_cipher(ENGINE *e)
-{
-	int ret;
-
-	ret = uadk_get_accel_platform("cipher");
-	if (!ret) {
-		fprintf(stderr, "failed to get accel hardware version.\n");
-		return 0;
+	switch (nid) {
+	case NID_aes_128_cbc:
+		UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_cbc;
+		break;
+	case NID_aes_192_cbc:
+		UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, EVP_CIPH_CBC_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_192_cbc;
+		break;
+	case NID_aes_256_cbc:
+		UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, EVP_CIPH_CBC_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_cbc;
+		break;
+	case NID_aes_128_ecb:
+		UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_ecb;
+		break;
+	case NID_aes_192_ecb:
+		UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, EVP_CIPH_ECB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_192_ecb;
+		break;
+	case NID_aes_256_ecb:
+		UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, EVP_CIPH_ECB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_ecb;
+		break;
+	case NID_aes_128_xts:
+		UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_xts;
+		break;
+	case NID_aes_256_xts:
+		UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, EVP_CIPH_XTS_MODE | EVP_CIPH_CUSTOM_IV,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_xts;
+		break;
+	case NID_sm4_cbc:
+		UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_sm4_cbc;
+		break;
+	case NID_des_ede3_cbc:
+		UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, EVP_CIPH_CBC_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_des_ede3_cbc;
+		break;
+	case NID_des_ede3_ecb:
+		UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, EVP_CIPH_ECB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_des_ede3_ecb;
+		break;
+	case NID_aes_128_ctr:
+		UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_ctr;
+		break;
+	case NID_aes_192_ctr:
+		UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, EVP_CIPH_CTR_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_192_ctr;
+		break;
+	case NID_aes_256_ctr:
+		UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, EVP_CIPH_CTR_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_ctr;
+		break;
+	case NID_aes_128_ofb128:
+		UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_ofb128;
+		break;
+	case NID_aes_192_ofb128:
+		UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, EVP_CIPH_OFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_192_ofb128;
+		break;
+	case NID_aes_256_ofb128:
+		UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, EVP_CIPH_OFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_ofb128;
+		break;
+	case NID_aes_128_cfb128:
+		UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, EVP_CIPH_CFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_128_cfb128;
+		break;
+	case NID_aes_192_cfb128:
+		UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, EVP_CIPH_CFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_192_cfb128;
+		break;
+	case NID_aes_256_cfb128:
+		UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, EVP_CIPH_CFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_aes_256_cfb128;
+		break;
+	case NID_sm4_ofb128:
+		UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_sm4_ofb128;
+		break;
+	case NID_sm4_cfb128:
+		UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, EVP_CIPH_OFB_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_sm4_cfb128;
+		break;
+	case NID_sm4_ctr:
+		UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE,
+				sizeof(struct cipher_priv_ctx), uadk_e_cipher_init,
+				uadk_e_do_cipher, uadk_e_cipher_cleanup,
+				EVP_CIPHER_set_asn1_iv, EVP_CIPHER_get_asn1_iv);
+		cipher = uadk_sm4_ctr;
+		break;
+	default:
+		cipher = NULL;
+		break;
 	}
 
-	bind_v2_cipher();
-	if (platform > HW_V2)
-		bind_v3_cipher();
-
-	return ENGINE_set_ciphers(e, uadk_e_engine_ciphers);
+	return cipher;
 }
 
-static void destroy_v2_cipher(void)
+static void destroy_cipher(struct engine_cipher_info *info, int num)
 {
-	EVP_CIPHER_meth_free(uadk_aes_128_cbc);
-	uadk_aes_128_cbc = 0;
-	EVP_CIPHER_meth_free(uadk_aes_192_cbc);
-	uadk_aes_192_cbc = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_cbc);
-	uadk_aes_256_cbc = 0;
-	EVP_CIPHER_meth_free(uadk_aes_128_ecb);
-	uadk_aes_128_ecb = 0;
-	EVP_CIPHER_meth_free(uadk_aes_192_ecb);
-	uadk_aes_192_ecb = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_ecb);
-	uadk_aes_256_ecb = 0;
-	EVP_CIPHER_meth_free(uadk_aes_128_xts);
-	uadk_aes_128_xts = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_xts);
-	uadk_aes_256_xts = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_cbc);
-	uadk_sm4_cbc = 0;
-	EVP_CIPHER_meth_free(uadk_des_ede3_cbc);
-	uadk_des_ede3_cbc = 0;
-	EVP_CIPHER_meth_free(uadk_des_ede3_ecb);
-	uadk_des_ede3_ecb = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_ecb);
-	uadk_sm4_ecb = 0;
-}
-
-static void destroy_v3_cipher(void)
-{
-	EVP_CIPHER_meth_free(uadk_aes_128_ctr);
-	uadk_aes_128_ctr = 0;
-	EVP_CIPHER_meth_free(uadk_aes_192_ctr);
-	uadk_aes_192_ctr = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_ctr);
-	uadk_aes_256_ctr = 0;
-	EVP_CIPHER_meth_free(uadk_aes_128_ofb128);
-	uadk_aes_128_ofb128 = 0;
-	EVP_CIPHER_meth_free(uadk_aes_192_ofb128);
-	uadk_aes_192_ofb128 = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_ofb128);
-	uadk_aes_256_ofb128 = 0;
-	EVP_CIPHER_meth_free(uadk_aes_128_cfb128);
-	uadk_aes_128_cfb128 = 0;
-	EVP_CIPHER_meth_free(uadk_aes_192_cfb128);
-	uadk_aes_192_cfb128 = 0;
-	EVP_CIPHER_meth_free(uadk_aes_256_cfb128);
-	uadk_aes_256_cfb128 = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_cfb128);
-	uadk_sm4_cfb128 = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_ofb128);
-	uadk_sm4_ofb128 = 0;
-	EVP_CIPHER_meth_free(uadk_sm4_ctr);
-	uadk_sm4_ctr = 0;
-}
-
-void uadk_e_destroy_cipher(void)
-{
-	__u32 i;
-	int ret;
-
-	if (g_cipher_engine.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("cipher");
-		if (ret == ENV_ENABLED) {
-			wd_cipher_env_uninit();
-		} else {
-			wd_cipher_uninit();
-			for (i = 0; i < g_cipher_engine.ctx_cfg.ctx_num; i++)
-				wd_release_ctx(g_cipher_engine.ctx_cfg.ctxs[i].ctx);
-			free(g_cipher_engine.ctx_cfg.ctxs);
+	for (int i = 0; i != num; ++i) {
+		if (info[i].cipher != NULL) {
+			EVP_CIPHER_meth_free(info[i].cipher);
+			info[i].cipher = NULL;
 		}
-		g_cipher_engine.pid = 0;
 	}
+}
 
-	pthread_spin_destroy(&g_cipher_engine.lock);
-
-	destroy_v2_cipher();
-	if (platform > HW_V2)
-		destroy_v3_cipher();
+void uadk_e_destroy_cipher(struct engine_cipher_info *info, int num)
+{
+	destroy_cipher(info, num);
 }
 
 void uadk_e_cipher_lock_init(void)
