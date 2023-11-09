@@ -61,7 +61,7 @@ struct aead_engine {
 	pthread_spinlock_t lock;
 };
 
-static struct aead_engine engine;
+static struct aead_engine g_aead_engine;
 
 static EVP_CIPHER *uadk_aes_128_gcm;
 static EVP_CIPHER *uadk_aes_192_gcm;
@@ -175,42 +175,42 @@ static int uadk_e_wd_aead_cipher_init(struct uacce_dev *dev)
 	__u32 i, j;
 	int ret;
 
-	engine.numa_id = dev->numa_id;
+	g_aead_engine.numa_id = dev->numa_id;
 
 	ret = uadk_e_is_env_enabled("aead");
 	if (ret)
 		return uadk_e_wd_aead_cipher_env_init(dev);
 
-	memset(&engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
-	engine.ctx_cfg.ctx_num = CTX_NUM;
-	engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
-	if (!engine.ctx_cfg.ctxs)
+	memset(&g_aead_engine.ctx_cfg, 0, sizeof(struct wd_ctx_config));
+	g_aead_engine.ctx_cfg.ctx_num = CTX_NUM;
+	g_aead_engine.ctx_cfg.ctxs = calloc(CTX_NUM, sizeof(struct wd_ctx));
+	if (!g_aead_engine.ctx_cfg.ctxs)
 		return -ENOMEM;
 
 	for (i = 0; i < CTX_NUM; i++) {
-		engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
-		if (!engine.ctx_cfg.ctxs[i].ctx) {
+		g_aead_engine.ctx_cfg.ctxs[i].ctx = wd_request_ctx(dev);
+		if (!g_aead_engine.ctx_cfg.ctxs[i].ctx) {
 			ret = -ENOMEM;
 			goto err_freectx;
 		}
 	}
 
-	engine.ctx_cfg.ctxs[CTX_SYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
-	engine.ctx_cfg.ctxs[CTX_SYNC_DEC].op_type = CTX_TYPE_DECRYPT;
-	engine.ctx_cfg.ctxs[CTX_SYNC_ENC].ctx_mode = CTX_MODE_SYNC;
-	engine.ctx_cfg.ctxs[CTX_SYNC_DEC].ctx_mode = CTX_MODE_SYNC;
+	g_aead_engine.ctx_cfg.ctxs[CTX_SYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
+	g_aead_engine.ctx_cfg.ctxs[CTX_SYNC_DEC].op_type = CTX_TYPE_DECRYPT;
+	g_aead_engine.ctx_cfg.ctxs[CTX_SYNC_ENC].ctx_mode = CTX_MODE_SYNC;
+	g_aead_engine.ctx_cfg.ctxs[CTX_SYNC_DEC].ctx_mode = CTX_MODE_SYNC;
 
-	engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].op_type = CTX_TYPE_DECRYPT;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].ctx_mode = CTX_MODE_ASYNC;
-	engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].ctx_mode = CTX_MODE_ASYNC;
+	g_aead_engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].op_type = CTX_TYPE_ENCRYPT;
+	g_aead_engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].op_type = CTX_TYPE_DECRYPT;
+	g_aead_engine.ctx_cfg.ctxs[CTX_ASYNC_ENC].ctx_mode = CTX_MODE_ASYNC;
+	g_aead_engine.ctx_cfg.ctxs[CTX_ASYNC_DEC].ctx_mode = CTX_MODE_ASYNC;
 
-	engine.sched.name = "sched_single";
-	engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
-	engine.sched.poll_policy = sched_single_poll_policy;
-	engine.sched.sched_init = sched_single_aead_init;
+	g_aead_engine.sched.name = "sched_single";
+	g_aead_engine.sched.pick_next_ctx = sched_single_pick_next_ctx;
+	g_aead_engine.sched.poll_policy = sched_single_poll_policy;
+	g_aead_engine.sched.sched_init = sched_single_aead_init;
 
-	ret = wd_aead_init(&engine.ctx_cfg, &engine.sched);
+	ret = wd_aead_init(&g_aead_engine.ctx_cfg, &g_aead_engine.sched);
 	if (ret)
 		goto err_freectx;
 
@@ -219,9 +219,9 @@ static int uadk_e_wd_aead_cipher_init(struct uacce_dev *dev)
 
 err_freectx:
 	for (j = 0; j < i; j++)
-		wd_release_ctx(engine.ctx_cfg.ctxs[j].ctx);
+		wd_release_ctx(g_aead_engine.ctx_cfg.ctxs[j].ctx);
 
-	free(engine.ctx_cfg.ctxs);
+	free(g_aead_engine.ctx_cfg.ctxs);
 
 	return ret;
 }
@@ -231,30 +231,30 @@ static int uadk_e_init_aead_cipher(void)
 	struct uacce_dev *dev;
 	int ret;
 
-	if (engine.pid != getpid()) {
-		pthread_spin_lock(&engine.lock);
-		if (engine.pid == getpid()) {
-			pthread_spin_unlock(&engine.lock);
+	if (g_aead_engine.pid != getpid()) {
+		pthread_spin_lock(&g_aead_engine.lock);
+		if (g_aead_engine.pid == getpid()) {
+			pthread_spin_unlock(&g_aead_engine.lock);
 			return 1;
 		}
 
 		dev = wd_get_accel_dev("aead");
 		if (!dev) {
-			pthread_spin_unlock(&engine.lock);
+			pthread_spin_unlock(&g_aead_engine.lock);
 			fprintf(stderr, "failed to get device for aead.\n");
 			return 0;
 		}
 
 		ret = uadk_e_wd_aead_cipher_init(dev);
 		if (ret < 0) {
-			pthread_spin_unlock(&engine.lock);
+			pthread_spin_unlock(&g_aead_engine.lock);
 			fprintf(stderr, "failed to initiate aead cipher.\n");
 			free(dev);
 			return 0;
 		}
 
-		engine.pid = getpid();
-		pthread_spin_unlock(&engine.lock);
+		g_aead_engine.pid = getpid();
+		pthread_spin_unlock(&g_aead_engine.lock);
 		free(dev);
 	}
 
@@ -277,7 +277,7 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 	if (ret)
 		params.type = 0;
 
-	params.numa_id = engine.numa_id;
+	params.numa_id = g_aead_engine.numa_id;
 	priv->setup.sched_param = &params;
 	if (!priv->sess) {
 		priv->sess = wd_aead_alloc_sess(&priv->setup);
@@ -713,20 +713,25 @@ void uadk_e_destroy_aead(struct engine_cipher_info *info, int num)
 	__u32 i;
 	int ret;
 
-	if (engine.pid == getpid()) {
+	if (g_aead_engine.pid == getpid()) {
 		ret = uadk_e_is_env_enabled("aead");
 		if (ret) {
 			wd_aead_env_uninit();
 		} else {
 			wd_aead_uninit();
-			for (i = 0; i < engine.ctx_cfg.ctx_num; i++)
-				wd_release_ctx(engine.ctx_cfg.ctxs[i].ctx);
+			for (i = 0; i < g_aead_engine.ctx_cfg.ctx_num; i++)
+				wd_release_ctx(g_aead_engine.ctx_cfg.ctxs[i].ctx);
 
-			free(engine.ctx_cfg.ctxs);
+			free(g_aead_engine.ctx_cfg.ctxs);
 		}
-		engine.pid = 0;
+		g_aead_engine.pid = 0;
 	}
 
-	pthread_spin_destroy(&engine.lock);
+	pthread_spin_destroy(&g_aead_engine.lock);
 	destroy_aead(info, num);
+}
+
+void uadk_e_aead_lock_init(void)
+{
+	pthread_spin_init(&g_aead_engine.lock, PTHREAD_PROCESS_PRIVATE);
 }

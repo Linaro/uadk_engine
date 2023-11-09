@@ -42,5 +42,6 @@ void uadk_e_ecc_lock_init(void);
 void uadk_e_rsa_lock_init(void);
 void uadk_e_dh_lock_init(void);
 void uadk_e_cipher_lock_init(void);
+void uadk_e_aead_lock_init(void);
 void uadk_e_digest_lock_init(void);
 #endif
