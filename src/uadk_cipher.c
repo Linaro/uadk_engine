@@ -996,6 +996,24 @@ static void destroy_cipher(struct engine_cipher_info *info, int num)
 
 void uadk_e_destroy_cipher(struct engine_cipher_info *info, int num)
 {
+	__u32 i;
+	int ret;
+
+	if (g_cipher_engine.pid == getpid()) {
+		ret = uadk_e_is_env_enabled("cipher");
+		if (ret == ENV_ENABLED) {
+			wd_cipher_env_uninit();
+		} else {
+			wd_cipher_uninit();
+			for (i = 0; i < g_cipher_engine.ctx_cfg.ctx_num; i++)
+				wd_release_ctx(g_cipher_engine.ctx_cfg.ctxs[i].ctx);
+			free(g_cipher_engine.ctx_cfg.ctxs);
+		}
+		g_cipher_engine.pid = 0;
+	}
+
+	pthread_spin_destroy(&g_cipher_engine.lock);
+
 	destroy_cipher(info, num);
 }
 
