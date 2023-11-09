@@ -312,7 +312,7 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 			}
 		} while (ret == -EBUSY);
 
-		ret = async_pause_job((void *)usr, &op, ASYNC_TASK_ECC, idx);
+		ret = async_pause_job((void *)usr, &op, ASYNC_TASK_ECC);
 		if (!ret)
 			goto err;
 		if (req->status)

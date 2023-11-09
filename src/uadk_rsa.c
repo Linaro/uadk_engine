@@ -1118,7 +1118,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 		}
 	} while (ret == -EBUSY);
 
-	ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA, idx);
+	ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA);
 	if (!ret)
 		goto err;
 
