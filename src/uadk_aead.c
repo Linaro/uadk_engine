@@ -375,6 +375,7 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 {
 	struct aead_priv_ctx *priv =
 		(struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	void *ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
 	int enc = EVP_CIPHER_CTX_encrypting(ctx);
 
 	switch (type) {
@@ -391,30 +392,30 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 		}
 		return 1;
 	case EVP_CTRL_GCM_GET_TAG:
-		if (arg <= 0 || arg > AES_GCM_TAG_LEN) {
-			fprintf(stderr, "TAG length invalid.\n");
+		if (arg <= 0 || arg > AES_GCM_TAG_LEN || !enc) {
+			fprintf(stderr, "cannot get tag when decrypt or arg is invalid.\n");
 			return 0;
 		}
 
-		if (EVP_CIPHER_CTX_buf_noconst(ctx) == NULL || ptr == NULL) {
-			fprintf(stderr, "ctx memory pointer is invalid.\n");
+		if (ctx_buf == NULL || ptr == NULL) {
+			fprintf(stderr, "failed to get tag, ctx memory pointer is invalid.\n");
 			return 0;
 		}
 
-		memcpy(ptr, EVP_CIPHER_CTX_buf_noconst(ctx), arg);
+		memcpy(ptr, ctx_buf, arg);
 		return 1;
 	case EVP_CTRL_GCM_SET_TAG:
-		if (arg != AES_GCM_TAG_LEN || enc) {
+		if (arg <= 0 || arg > AES_GCM_TAG_LEN || enc) {
 			fprintf(stderr, "cannot set tag when encrypt or arg is invalid.\n");
 			return 0;
 		}
 
-		if (EVP_CIPHER_CTX_buf_noconst(ctx) == NULL || ptr == NULL) {
-			fprintf(stderr, "ctx memory pointer is invalid.\n");
+		if (ctx_buf == NULL || ptr == NULL) {
+			fprintf(stderr, "failed to set tag, ctx memory pointer is invalid.\n");
 			return 0;
 		}
 
-		memcpy(EVP_CIPHER_CTX_buf_noconst(ctx), ptr, AES_GCM_TAG_LEN);
+		memcpy(ctx_buf, ptr, arg);
 		return 1;
 	default:
 		fprintf(stderr, "unsupported ctrl type: %d\n", type);
