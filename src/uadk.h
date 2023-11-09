@@ -28,8 +28,6 @@ enum {
 	HW_V3,
 };
 
-int uadk_e_bind_cipher(ENGINE *e);
-void uadk_e_destroy_cipher(void);
 int uadk_e_bind_digest(ENGINE *e);
 void uadk_e_destroy_digest(void);
 int uadk_e_bind_rsa(ENGINE *e);
