@@ -28,6 +28,7 @@
 #include "uadk_utils.h"
 
 #define RET_FAIL		-1
+#define STATE_FAIL		0xFFFF
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
 #define CTX_ASYNC_ENC		2
@@ -50,7 +51,7 @@ struct aead_priv_ctx {
 	unsigned char *data;
 	unsigned char iv[AES_GCM_BLOCK_SIZE];
 	unsigned char mac[AES_GCM_TAG_LEN];
-	size_t last_update_bufflen;
+	int taglen;
 };
 
 struct aead_engine {
@@ -267,10 +268,8 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 	int ret;
 
 	ret = uadk_e_init_aead_cipher();
-	if (unlikely(!ret)) {
-		fprintf(stderr, "uadk failed to init aead HW!\n");
+	if (!ret)
 		return 0;
-	}
 
 	params.type = priv->req.op_type;
 	ret = uadk_e_is_env_enabled("aead");
@@ -296,10 +295,14 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 			fprintf(stderr, "uadk engine failed to set ckey!\n");
 			goto out;
 		}
-		priv->data = malloc(AEAD_BLOCK_SIZE << 1);
-		if (unlikely(!priv->data)) {
-			fprintf(stderr, "uadk engine failed to alloc data!\n");
-			goto out;
+
+		if (ASYNC_get_current_job()) {
+			/* Memory needs to be reserved for both input and output. */
+			priv->data = malloc(AEAD_BLOCK_SIZE << 1);
+			if (unlikely(!priv->data)) {
+				fprintf(stderr, "uadk engine failed to alloc data!\n");
+				goto out;
+			}
 		}
 	}
 
@@ -313,9 +316,14 @@ out:
 static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 			       const unsigned char *iv, int enc)
 {
-	struct aead_priv_ctx *priv =
-		(struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	struct aead_priv_ctx *priv;
 	int ret, ckey_len;
+
+	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	if (!priv) {
+		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
+		return 0;
+	}
 
 	if (unlikely(!ckey))
 		return 1;
@@ -328,7 +336,6 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	priv->setup.dalg = 0;
 	priv->setup.dmode = 0;
 
-	priv->last_update_bufflen = 0;
 	priv->req.assoc_bytes = 0;
 	priv->req.out_bytes = 0;
 	priv->req.data_fmt = WD_FLAT_BUF;
@@ -339,6 +346,8 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 
 	priv->req.mac = priv->mac;
 	priv->req.mac_bytes = AES_GCM_TAG_LEN;
+	priv->taglen = 0;
+	priv->data = NULL;
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION_DIGEST;
@@ -355,8 +364,13 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 
 static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)
 {
-	struct aead_priv_ctx *priv =
-		(struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	struct aead_priv_ctx *priv;
+
+	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	if (!priv) {
+		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
+		return 0;
+	}
 
 	if (priv->sess) {
 		wd_aead_free_sess(priv->sess);
@@ -373,10 +387,15 @@ static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)
 
 static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr)
 {
-	struct aead_priv_ctx *priv =
-		(struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	void *ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
 	int enc = EVP_CIPHER_CTX_encrypting(ctx);
+	struct aead_priv_ctx *priv;
+
+	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	if (!priv) {
+		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
+		return 0;
+	}
 
 	switch (type) {
 	case EVP_CTRL_INIT:
@@ -387,7 +406,7 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 		return 1;
 	case EVP_CTRL_GCM_SET_IVLEN:
 		if (arg != AES_GCM_IV_LEN) {
-			fprintf(stderr, "gcm only support 12 bytes.\n");
+			fprintf(stderr, "invalid: aead gcm iv length only support 12B.\n");
 			return 0;
 		}
 		return 1;
@@ -416,6 +435,7 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 		}
 
 		memcpy(ctx_buf, ptr, arg);
+		priv->taglen = arg;
 		return 1;
 	default:
 		fprintf(stderr, "unsupported ctrl type: %d\n", type);
@@ -423,18 +443,16 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 	}
 }
 
-static int uadk_e_do_aes_gcm_first(EVP_CIPHER_CTX *ctx, unsigned char *out,
+static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
 				   const unsigned char *in, size_t inlen)
 {
-	struct aead_priv_ctx *priv =
-	     (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	int ret;
 
 	priv->req.assoc_bytes = inlen;
 
+	/* Asynchronous jobs use the block mode. */
 	if (ASYNC_get_current_job()) {
-		memcpy(priv->data + priv->last_update_bufflen, in, inlen);
-		priv->last_update_bufflen += inlen;
+		memcpy(priv->data, in, inlen);
 		return 1;
 	}
 
@@ -442,61 +460,35 @@ static int uadk_e_do_aes_gcm_first(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv->req.msg_state = AEAD_MSG_FIRST;
 
 	ret = wd_do_aead_sync(priv->sess, &priv->req);
-	if (ret < 0) {
-		fprintf(stderr, "do sec aead first operation failed, ret:%d!\n", ret);
+	if (unlikely(ret < 0)) {
+		fprintf(stderr, "do aead first operation failed, ret: %d!\n", ret);
 		return RET_FAIL;
 	}
 
 	return 1;
 }
 
-static int uadk_e_hw_update(struct aead_priv_ctx *priv, unsigned char *out,
-			    unsigned char *in, size_t inlen)
+static int do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
+			const unsigned char *in, size_t inlen)
 {
 	int ret;
 
-	priv->req.src = in;
+	/* Due to a hardware limitation, zero-length aad using block mode. */
+	if (priv->req.assoc_bytes)
+		priv->req.msg_state = AEAD_MSG_MIDDLE;
+	else
+		priv->req.msg_state = AEAD_MSG_BLOCK;
+
+	priv->req.src = (unsigned char *)in;
 	priv->req.dst = out;
 	priv->req.in_bytes = inlen;
-	priv->req.msg_state = AEAD_MSG_MIDDLE;
+	priv->req.state = 0;
 	ret = wd_do_aead_sync(priv->sess, &priv->req);
-	if (ret < 0) {
-		fprintf(stderr, "do sec aead update operation failed, ret:%d!\n", ret);
+	if (ret < 0 || priv->req.state) {
+		fprintf(stderr, "do aead update operation failed, ret: %d, state: %u!\n",
+			ret, priv->req.state);
 		return RET_FAIL;
 	}
-
-	return 0;
-}
-
-static int uadk_e_cache_data(struct aead_priv_ctx *priv, const unsigned char *in, size_t inlen)
-{
-	if (ASYNC_get_current_job() || !priv->req.assoc_bytes) {
-		if (priv->last_update_bufflen + inlen > AEAD_BLOCK_SIZE) {
-			fprintf(stderr, "aead input data length is too long!\n");
-			return RET_FAIL;
-		}
-		memcpy(priv->data + priv->last_update_bufflen, in, inlen);
-		priv->last_update_bufflen += inlen;
-		return 0;
-	}
-
-	return 1;
-}
-
-static int uadk_e_do_aes_gcm_update(EVP_CIPHER_CTX *ctx, unsigned char *out,
-				    const unsigned char *in, size_t inlen)
-{
-	struct aead_priv_ctx *priv =
-	     (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
-	int ret;
-
-	ret = uadk_e_cache_data(priv, in, inlen);
-	if (ret <= 0)
-		return ret;
-
-	ret = uadk_e_hw_update(priv, out, in, inlen);
-	if (ret < 0)
-		return RET_FAIL;
 
 	return inlen;
 }
@@ -504,6 +496,7 @@ static int uadk_e_do_aes_gcm_update(EVP_CIPHER_CTX *ctx, unsigned char *out,
 static void *uadk_e_aead_cb(struct wd_aead_req *req, void *data)
 {
 	struct uadk_e_cb_info *cb_param;
+	struct wd_aead_req *req_origin;
 	struct async_op *op;
 
 	if (!req)
@@ -512,6 +505,9 @@ static void *uadk_e_aead_cb(struct wd_aead_req *req, void *data)
 	cb_param = req->cb_param;
 	if (!cb_param)
 		return NULL;
+
+	req_origin = cb_param->priv;
+	req_origin->state = req->state;
 
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
@@ -523,35 +519,49 @@ static void *uadk_e_aead_cb(struct wd_aead_req *req, void *data)
 	return NULL;
 }
 
-static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op)
+static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
+			 unsigned char *out, const unsigned char *in, size_t inlen)
 {
 	struct uadk_e_cb_info *cb_param;
-	int ret = 0;
-	int idx;
+	int ret;
 
-	priv->req.in_bytes = priv->last_update_bufflen - priv->req.assoc_bytes;
-	priv->req.dst = priv->data + AEAD_BLOCK_SIZE;
+	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
+		fprintf(stderr, "aead input data length is too long!\n");
+		return 0;
+	}
+
+	priv->req.in_bytes = inlen;
+	/* AAD data is input or output together with plaintext or ciphertext. */
+	if (priv->req.assoc_bytes) {
+		memcpy(priv->data + priv->req.assoc_bytes, in, inlen);
+		priv->req.src = priv->data;
+		priv->req.dst = priv->data + AEAD_BLOCK_SIZE;
+	} else {
+		priv->req.src = (unsigned char *)in;
+		priv->req.dst = out;
+	}
 
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
-	if (!cb_param) {
+	if (unlikely(!cb_param)) {
 		fprintf(stderr, "failed to alloc cb_param.\n");
-		return ret;
+		return 0;
 	}
 
 	cb_param->op = op;
-	cb_param->priv = priv;
+	cb_param->priv = &priv->req;
 	priv->req.cb = uadk_e_aead_cb;
 	priv->req.cb_param = cb_param;
+	priv->req.msg_state = AEAD_MSG_BLOCK;
+	priv->req.state = STATE_FAIL;
 
-	ret = async_get_free_task(&idx);
-	if (!ret)
+	ret = async_get_free_task(&op->idx);
+	if (unlikely(!ret))
 		goto free_cb_param;
 
-	op->idx = idx;
 	do {
 		ret = wd_do_aead_async(priv->sess, &priv->req);
-		if (ret < 0 && ret != -EBUSY) {
-			fprintf(stderr, "do sec aead async failed.\n");
+		if (unlikely(ret < 0 && ret != -EBUSY)) {
+			fprintf(stderr, "do aead async operation failed.\n");
 			async_free_poll_task(op->idx, 0);
 			ret = 0;
 			goto free_cb_param;
@@ -559,65 +569,59 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op)
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_AEAD);
+	if (unlikely(!ret || priv->req.state)) {
+		fprintf(stderr, "do aead async job failed, ret: %d, state: %u!\n",
+			ret, priv->req.state);
+		ret = 0;
+		goto free_cb_param;
+	}
+
+	if (priv->req.assoc_bytes)
+		memcpy(out, priv->req.dst + priv->req.assoc_bytes, inlen);
 
 free_cb_param:
 	free(cb_param);
 	return ret;
 }
 
-static int uadk_e_do_aes_gcm_final(EVP_CIPHER_CTX *ctx, unsigned char *out,
-				   const unsigned char *in, size_t inlen)
+static int uadk_e_do_aes_gcm_update(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *priv,
+				    unsigned char *out, const unsigned char *in, size_t inlen)
 {
-	struct aead_priv_ctx *priv =
-	     (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	unsigned char *ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
 	struct async_op *op;
 	int ret, enc;
 
-	op = malloc(sizeof(struct async_op));
-	if (!op)
-		return RET_FAIL;
-
-	ret = async_setup_async_event_notification(op);
-	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to setup async event notification.\n");
-		free(op);
-		return RET_FAIL;
-	}
-
-	if (priv->req.assoc_bytes && !op->job)
-		priv->req.msg_state = AEAD_MSG_END;
-	else
-		priv->req.msg_state = AEAD_MSG_BLOCK;
-
 	enc = EVP_CIPHER_CTX_encrypting(ctx);
-	if (!enc)
-		memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
-
-	priv->req.src = priv->data;
-	if (!op->job) {
-		priv->req.in_bytes = priv->last_update_bufflen;
-		priv->req.dst = out;
-		ret = wd_do_aead_sync(priv->sess, &priv->req);
-		if (ret < 0) {
-			fprintf(stderr, "do sec aead final operation failed, ret: %d!\n", ret);
-			goto out;
+	if (!enc) {
+		if (priv->taglen == AES_GCM_TAG_LEN) {
+			memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
+		} else {
+			fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
+			return RET_FAIL;
 		}
-	} else {
-		ret = do_aead_async(priv, op);
-		if (!ret)
-			goto out;
-
-		memcpy(out, priv->req.dst + priv->req.assoc_bytes, priv->req.in_bytes);
 	}
 
-	if (enc)
-		memcpy(ctx_buf, priv->req.mac, AES_GCM_TAG_LEN);
+	if (ASYNC_get_current_job()) {
+		op = malloc(sizeof(struct async_op));
+		if (unlikely(!op))
+			return RET_FAIL;
 
-	priv->last_update_bufflen = 0;
+		ret = async_setup_async_event_notification(op);
+		if (unlikely(!ret)) {
+			fprintf(stderr, "failed to setup async event notification.\n");
+			free(op);
+			return RET_FAIL;
+		}
 
-	free(op);
-	return priv->req.in_bytes;
+		ret = do_aead_async(priv, op, out, in, inlen);
+		if (unlikely(!ret))
+			goto out;
+
+		free(op);
+		return inlen;
+	}
+
+	return do_aead_sync(priv, out, in, inlen);
 
 out:
 	(void)async_clear_async_event_notification();
@@ -625,19 +629,55 @@ out:
 	return RET_FAIL;
 }
 
+static int uadk_e_do_aes_gcm_final(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *priv,
+				   unsigned char *out, const unsigned char *in, size_t inlen)
+{
+	unsigned char *ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
+	int ret, enc;
+
+	enc = EVP_CIPHER_CTX_encrypting(ctx);
+
+	if (ASYNC_get_current_job() || !priv->req.assoc_bytes)
+		goto out;
+
+	priv->req.msg_state = AEAD_MSG_END;
+	priv->req.src = NULL;
+	priv->req.in_bytes = 0;
+	priv->req.dst = out;
+	priv->req.state = 0;
+	ret = wd_do_aead_sync(priv->sess, &priv->req);
+	if (ret < 0 || priv->req.state) {
+		fprintf(stderr, "do aead final operation failed, ret: %d, state: %u!\n",
+			ret, priv->req.state);
+		return RET_FAIL;
+	}
+
+out:
+	if (enc)
+		memcpy(ctx_buf, priv->req.mac, AES_GCM_TAG_LEN);
+
+	return 0;
+}
+
 static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			     const unsigned char *in, size_t inlen)
 {
-	int ret;
+	struct aead_priv_ctx *priv;
+
+	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+	if (unlikely(!priv)) {
+		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
+		return 0;
+	}
 
 	if (in) {
 		if (out == NULL)
-			return uadk_e_do_aes_gcm_first(ctx, out, in, inlen);
+			return uadk_e_do_aes_gcm_first(priv, out, in, inlen);
 
-		return uadk_e_do_aes_gcm_update(ctx, out, in, inlen);
+		return uadk_e_do_aes_gcm_update(ctx, priv, out, in, inlen);
 	}
 
-	return uadk_e_do_aes_gcm_final(ctx, out, NULL, 0);
+	return uadk_e_do_aes_gcm_final(ctx, priv, out, NULL, 0);
 }
 
 #define UADK_AEAD_DESCR(name, block_size, key_size, iv_len, flags, ctx_size,	\
