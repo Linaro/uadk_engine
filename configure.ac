@@ -6,8 +6,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
 
 AC_PROG_CC
-AC_PROG_LIBTOOL
-AM_PROG_LIBTOOL
+LT_INIT
 
 AC_ARG_ENABLE(kae,
 	      AS_HELP_STRING([--enable-kae],[Enable kae support]))
