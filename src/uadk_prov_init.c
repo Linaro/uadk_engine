@@ -31,6 +31,17 @@
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
 
+/* Functions provided by the core */
+static OSSL_FUNC_core_get_params_fn *c_get_params;
+static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
+
+struct uadk_provider_params {
+	char *enable_sw_offload;
+} uadk_params;
+
+/* offload small packets to sw */
+int enable_sw_offload;
+
 const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ OSSL_DIGEST_NAME_MD5, UADK_DEFAULT_PROPERTIES,
 	  uadk_md5_functions, "uadk_provider md5" },
@@ -153,6 +164,28 @@ static const OSSL_DISPATCH uadk_dispatch_table[] = {
 	{ 0, NULL }
 };
 
+int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
+{
+	OSSL_PARAM core_params[2], *p = core_params;
+
+	*p++ = OSSL_PARAM_construct_utf8_ptr(
+			"enable_sw_offload",
+			(char **)&uadk_params.enable_sw_offload,
+			0);
+
+	*p = OSSL_PARAM_construct_end();
+
+	if (!c_get_params(handle, core_params)) {
+		fprintf(stderr, "WARN: UADK get parameters from core is failed.\n");
+		return 0;
+	}
+
+	if (uadk_params.enable_sw_offload)
+		enable_sw_offload = atoi(uadk_params.enable_sw_offload);
+
+	return 1;
+}
+
 static void provider_init_child_at_fork_handler(void)
 {
 	int ret;
@@ -170,11 +203,30 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	struct uadk_prov_ctx *ctx;
 	int ret;
 
+	for (; oin->function_id != 0; oin++) {
+		switch (oin->function_id) {
+		case OSSL_FUNC_CORE_GET_PARAMS:
+			c_get_params = OSSL_FUNC_core_get_params(oin);
+			break;
+		case OSSL_FUNC_CORE_GET_LIBCTX:
+			c_get_libctx = OSSL_FUNC_core_get_libctx(oin);
+			break;
+		default:
+			/* Just ignore anything we don't understand */
+			break;
+		}
+	}
+
+	/* get parameters from uadk_provider.cnf */
+	if (!uadk_get_params_from_core(handle))
+		return 0;
+
 	ctx = OPENSSL_zalloc(sizeof(*ctx));
 	if (ctx == NULL)
 		return 0;
 
 	ctx->handle = handle;
+	ctx->libctx = (OSSL_LIB_CTX *)c_get_libctx(handle);
 	ret = async_module_init();
 	if (!ret)
 		fprintf(stderr, "async_module_init fail!\n");

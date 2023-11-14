@@ -29,6 +29,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_prov.h"
 #include "uadk_utils.h"
 
 #define UADK_DO_SOFT	(-0xE0)
@@ -288,7 +289,8 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 		return 0;
 	}
 
-	uadk_digests_soft_md(priv);
+	if (enable_sw_offload)
+		uadk_digests_soft_md(priv);
 
 	return 1;
 
@@ -403,7 +405,8 @@ static int uadk_do_digest_sync(struct digest_priv_ctx *priv)
 {
 	int ret;
 
-	if (priv->req.in_bytes <= priv->switch_threshold &&
+	if (priv->soft_md &&
+	    priv->req.in_bytes <= priv->switch_threshold &&
 	    priv->state == SEC_DIGEST_INIT)
 		return 0;
 

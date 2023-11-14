@@ -27,6 +27,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_prov.h"
 
 #define UADK_DO_SOFT		(-0xE0)
 #define UADK_DO_HW		(-0xF0)
@@ -283,7 +284,8 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 	if (key)
 		memcpy(priv->key, key, keylen);
 
-	uadk_prov_cipher_sw_init(priv, key, iv);
+	if (enable_sw_offload)
+		uadk_prov_cipher_sw_init(priv, key, iv);
 	return 1;
 }
 
@@ -446,7 +448,8 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 		free(ctx_set_num);
 
 		if (unlikely(ret)) {
-			priv->switch_flag = UADK_DO_SOFT;
+			if (priv->sw_cipher)
+				priv->switch_flag = UADK_DO_SOFT;
 			pthread_mutex_unlock(&cipher_mutex);
 			return;
 		}
@@ -634,10 +637,16 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	int outlint = 0;
 	int ret;
 
-	if (priv->switch_flag == UADK_DO_SOFT ||
-	    (priv->sw_cipher && priv->switch_flag != UADK_DO_HW &&
-	     inlen <= priv->switch_threshold)) {
-		/* have issue if both using hw and soft partly */
+	if (priv->sw_cipher &&
+	    (priv->switch_flag == UADK_DO_SOFT ||
+	    (priv->switch_flag != UADK_DO_HW &&
+	     inlen <= priv->switch_threshold))) {
+		/*
+		 * Using soft only if enable_sw_offload, which is set in conf file,
+		 * then sw_cipher is initialzied
+		 * 1. small packets
+		 * 2. already choose DO_SOFT, can be hw fail case or following sw case
+		 */
 		ret = uadk_prov_cipher_soft_work(priv, out, &outlint, in, inlen);
 		if (ret) {
 			*outl = outlint;
@@ -746,7 +755,8 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	int sw_final_len = 0;
 	int ret;
 
-	if (priv->switch_flag == UADK_DO_SOFT) {
+	if (priv->sw_cipher &&
+	    priv->switch_flag == UADK_DO_SOFT) {
 		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
 			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
 			return 0;
@@ -854,9 +864,10 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 		return 0;
 	}
 
-	if (priv->switch_flag == UADK_DO_SOFT ||
-	    (priv->sw_cipher && priv->switch_flag != UADK_DO_HW &&
-	     inl <= priv->switch_threshold)) {
+	if (priv->sw_cipher &&
+	    (priv->switch_flag == UADK_DO_SOFT ||
+	    (priv->switch_flag != UADK_DO_HW &&
+	     inl <= priv->switch_threshold))) {
 		int len = 0;
 
 		/* have isseu if both using hw and soft partly */
@@ -883,7 +894,8 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int sw_final_len = 0;
 
-	if (priv->switch_flag == UADK_DO_SOFT) {
+	if (priv->sw_cipher &&
+	    priv->switch_flag == UADK_DO_SOFT) {
 		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
 			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
 			return 0;
@@ -1083,8 +1095,11 @@ static void uadk_prov_cipher_freectx(void *ctx)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)ctx;
 
-	EVP_CIPHER_free(priv->sw_cipher);
-	EVP_CIPHER_CTX_free(priv->sw_ctx);
+	if (priv->sw_cipher)
+		EVP_CIPHER_free(priv->sw_cipher);
+
+	if (priv->sw_ctx)
+		EVP_CIPHER_CTX_free(priv->sw_ctx);
 
 	if (priv->sess) {
 		wd_cipher_free_sess(priv->sess);

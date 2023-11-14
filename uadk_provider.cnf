@@ -13,3 +13,4 @@ uadk_provider = uadk_sect
 
 [uadk_sect]
 activate = 1
+enable_sw_offload = 0

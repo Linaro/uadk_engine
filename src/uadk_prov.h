@@ -124,4 +124,7 @@ void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_rsa(void);
 void uadk_prov_destroy_dh(void);
+
+/* offload small packets to sw */
+extern int enable_sw_offload;
 #endif
