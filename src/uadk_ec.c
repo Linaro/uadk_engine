@@ -548,8 +548,11 @@ static int ecdsa_sign(int type, const unsigned char *dgst, int dlen,
 		goto err;
 	}
 
-	*siglen = i2d_ECDSA_SIG(s, &sig);
+	if (siglen)
+		*siglen = i2d_ECDSA_SIG(s, &sig);
+
 	ECDSA_SIG_free(s);
+
 	return 1;
 
 err:
