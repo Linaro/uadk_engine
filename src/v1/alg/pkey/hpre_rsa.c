@@ -298,13 +298,13 @@ static int hpre_rsa_public_encrypt(int flen, const unsigned char *from,
 	BIGNUM *ret_bn  = NULL;
 	hpre_engine_ctx_t *eng_ctx = NULL;
 	unsigned char *in_buf = NULL;
+	int ret = HPRE_CRYPTO_FAIL;
 	BN_CTX *bn_ctx = NULL;
 	int num_bytes = 0;
 	int key_bits;
-	int ret;
 
 	if (hpre_rsa_check_para(flen, from, to, rsa) != HPRE_CRYPTO_SUCC)
-		return HPRE_CRYPTO_FAIL;
+		return ret;
 
 	key_bits = RSA_bits(rsa);
 	if (!check_bit_useful(key_bits)) {
@@ -392,7 +392,7 @@ static int hpre_rsa_private_encrypt(int flen, const unsigned char *from,
 	int version;
 
 	if (hpre_rsa_check_para(flen, from, to, rsa) != HPRE_CRYPTO_SUCC)
-		return HPRE_CRYPTO_FAIL;
+		return ret;
 
 	key_bits = RSA_bits(rsa);
 	if (!check_bit_useful(key_bits)) {
@@ -479,6 +479,7 @@ static int hpre_rsa_public_decrypt(int flen, const unsigned char *from,
 		unsigned char *to, RSA *rsa, int padding)
 {
 	hpre_engine_ctx_t *eng_ctx = NULL;
+	int ret = HPRE_CRYPTO_FAIL;
 	BIGNUM *bn_ret = NULL;
 	BIGNUM *f = NULL;
 	BN_CTX *bn_ctx = NULL;
@@ -488,10 +489,10 @@ static int hpre_rsa_public_decrypt(int flen, const unsigned char *from,
 	int num_bytes = 0;
 	int rsa_soft_mark = 0;
 	unsigned char *buf = NULL;
-	int ret, len;
+	int len;
 
 	if (hpre_rsa_check_para(flen, from, to, rsa) != HPRE_CRYPTO_SUCC)
-		return HPRE_CRYPTO_FAIL;
+		return ret;
 
 	RSA_get0_key(rsa, &n, &e, &d);
 	ret = hpre_rsa_check(flen, n, e, &num_bytes, rsa);
@@ -578,7 +579,7 @@ static int hpre_rsa_private_decrypt(int flen, const unsigned char *from,
 	BN_CTX *bn_ctx = NULL;
 
 	if (hpre_rsa_check_para(flen, from, to, rsa) != HPRE_CRYPTO_SUCC)
-		return HPRE_CRYPTO_FAIL;
+		return ret;
 
 	RSA_get0_key(rsa, &n, &e, &d);
 	num_bytes = BN_num_bytes(n);
