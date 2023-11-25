@@ -185,7 +185,7 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	priv = (struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(priv == NULL)) {
-		fprintf(stderr, "uadk engine state is NULL.\n");
+		fprintf(stderr, "priv get from cipher ctx is NULL.\n");
 		return 0;
 	}
 
@@ -235,7 +235,7 @@ static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 	priv = (struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(priv == NULL)) {
-		fprintf(stderr, "uadk engine state is NULL.\n");
+		fprintf(stderr, "priv get from cipher ctx is NULL.\n");
 		return 0;
 	}
 
@@ -277,7 +277,7 @@ static void uadk_e_cipher_sw_cleanup(EVP_CIPHER_CTX *ctx)
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 
-	if (priv->sw_ctx_data) {
+	if (priv && priv->sw_ctx_data) {
 		OPENSSL_free(priv->sw_ctx_data);
 		priv->sw_ctx_data = NULL;
 	}
@@ -500,6 +500,11 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	int nid, ret;
 	__u32 i;
 
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from cipher ctx is NULL.\n");
+		return 0;
+	}
+
 	if (unlikely(!key)) {
 		fprintf(stderr, "ctx init parameter key is NULL.\n");
 		return 0;
@@ -541,7 +546,7 @@ static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 
 	uadk_e_cipher_sw_cleanup(ctx);
 
-	if (priv->sess) {
+	if (priv && priv->sess) {
 		wd_cipher_free_sess(priv->sess);
 		priv->sess = 0;
 	}
@@ -751,6 +756,11 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	struct async_op op;
 	int ret;
+
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from cipher ctx is NULL.\n");
+		return 0;
+	}
 
 	priv->req.src = (unsigned char *)in;
 	priv->req.in_bytes = inlen;

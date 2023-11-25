@@ -535,6 +535,11 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	__u32 i;
 	int ret;
 
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return 0;
+	}
+
 	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
 
 	digest_priv_ctx_reset(priv);
@@ -587,6 +592,11 @@ static void digest_update_out_length(EVP_MD_CTX *ctx)
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return;
+	}
+
 	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
 	if (priv->e_nid == NID_sha224)
 		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
@@ -613,6 +623,11 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 	size_t left_len = data_len;
 	int copy_to_bufflen;
 	int ret;
+
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return 0;
+	}
 
 	digest_update_out_length(ctx);
 	digest_set_msg_state(priv, false);
@@ -670,6 +685,11 @@ static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_l
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return 0;
+	}
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
@@ -770,6 +790,11 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	struct async_op *op;
 	int ret = 1;
 
+	if (unlikely(!priv)) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return 0;
+	}
+
 	digest_set_msg_state(priv, true);
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -862,6 +887,11 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 
 	if (!t)
 		return 1;
+
+	if (!f) {
+		fprintf(stderr, "priv get from digest ctx is NULL.\n");
+		return 0;
+	}
 
 	if (t->sess) {
 		params.numa_id = -1;
