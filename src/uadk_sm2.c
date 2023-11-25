@@ -922,7 +922,7 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 	c3_size = EVP_MD_size(md);
 	if (c3_size <= 0) {
 		fprintf(stderr, "c3 size error\n");
-		return 0;
+		return UADK_E_INVALID;
 	}
 
 	if (!out) {
@@ -1033,7 +1033,7 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 	hash_size = EVP_MD_size(md);
 	if (hash_size <= 0) {
 		fprintf(stderr, "hash size = %d error\n", hash_size);
-		return 0;
+		return UADK_E_INVALID;
 	}
 
 	if (!out) {
@@ -1107,6 +1107,7 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	struct sm2_ciphertext *ctext_struct;
+	const unsigned char *in_soft = in;
 	struct wd_ecc_req req = {0};
 	struct wd_ecc_point c1;
 	struct wd_dtb c2, c3;
@@ -1120,10 +1121,8 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 
 	ctext_struct = d2i_SM2_Ciphertext(NULL, &in, inlen);
-	if (!ctext_struct) {
-		ret = UADK_DO_SOFT;
-		goto do_soft;
-	}
+	if (!ctext_struct)
+		return 0;
 
 	ret = cipher_ber_to_bin(md, ctext_struct, &c1, &c2, &c3);
 	if (ret) {
@@ -1165,7 +1164,7 @@ do_soft:
 		return ret;
 
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return openssl_decrypt(ctx, out, outlen, in, inlen);
+	return openssl_decrypt(ctx, out, outlen, in_soft, inlen);
 }
 
 static void sm2_cleanup(EVP_PKEY_CTX *ctx)
