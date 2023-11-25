@@ -50,7 +50,7 @@ struct ecc_res_config {
 /* ECC global hardware resource is saved here */
 struct ecc_res {
 	struct wd_ctx_config *ctx_res;
-	int pid;
+	int status;
 	int numa_id;
 	pthread_spinlock_t lock;
 } ecc_res;
@@ -105,6 +105,13 @@ void uadk_e_ecc_cb(void *req_t)
 	}
 }
 
+static void uadk_e_ecc_set_status(void)
+{
+	pthread_spin_lock(&ecc_res.lock);
+	ecc_res.status = UADK_DEVICE_ERROR;
+	pthread_spin_unlock(&ecc_res.lock);
+}
+
 static int uadk_ecc_poll(void *ctx)
 {
 	unsigned int recv = 0;
@@ -114,12 +121,15 @@ static int uadk_ecc_poll(void *ctx)
 
 	do {
 		ret = wd_ecc_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (!ret && recv == expt)
+		if (!ret && recv == expt) {
 			return 0;
-		else if (ret == -EAGAIN)
+		} else if (ret == -EAGAIN) {
 			rx_cnt++;
-		else
+		} else {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_ecc_set_status();
 			return -1;
+		}
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
@@ -166,8 +176,11 @@ static int uadk_e_ecc_env_poll(void *ctx)
 
 	do {
 		ret = wd_ecc_poll(expt, &recv);
-		if (ret < 0 || recv == expt)
+		if (ret < 0 || recv == expt) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_ecc_set_status();
 			return ret;
+		}
 		rx_cnt++;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
@@ -262,8 +275,11 @@ static void uadk_wd_ecc_uninit(void)
 	__u32 i;
 	int ret;
 
-	if (ecc_res.pid != getpid())
+	if (ecc_res.status == UADK_UNINIT)
 		return;
+
+	if (ecc_res.status == UADK_INIT_FAIL)
+		goto clear_status;
 
 	ret = uadk_e_is_env_enabled("ecc");
 	if (ret == ENV_ENABLED) {
@@ -276,8 +292,10 @@ static void uadk_wd_ecc_uninit(void)
 		free(ctx_cfg);
 		ecc_res.ctx_res = NULL;
 	}
-	ecc_res.pid = 0;
 	ecc_res.numa_id = 0;
+
+clear_status:
+	ecc_res.status = UADK_UNINIT;
 }
 
 int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
@@ -307,6 +325,8 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 		do {
 			ret = wd_do_ecc_async(sess, req);
 			if (ret < 0 && ret != -EBUSY) {
+				if (ret == -WD_HW_EACCESS)
+					uadk_e_ecc_set_status();
 				async_free_poll_task(op.idx, 0);
 				goto err;
 			}
@@ -319,8 +339,11 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 			return 0;
 	} else {
 		ret = wd_do_ecc_sync(sess, req);
-		if (ret < 0)
+		if (ret < 0) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_ecc_set_status();
 			return 0;
+		}
 	}
 	return 1;
 err:
@@ -513,42 +536,43 @@ bool uadk_support_algorithm(const char *alg)
 
 int uadk_init_ecc(void)
 {
-	struct uacce_dev *dev;
+	struct uacce_dev *dev = NULL;
 	int ret;
 
-	if (ecc_res.pid != getpid()) {
-		pthread_spin_lock(&ecc_res.lock);
-		if (ecc_res.pid == getpid()) {
-			pthread_spin_unlock(&ecc_res.lock);
-			return 0;
-		}
+	if (ecc_res.status != UADK_UNINIT)
+		return ecc_res.status;
 
-		/* Find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
-		dev = wd_get_accel_dev("ecdsa");
-		if (!dev) {
-			pthread_spin_unlock(&ecc_res.lock);
-			fprintf(stderr, "failed to get device for ecc\n");
-			return -ENOMEM;
-		}
+	pthread_spin_lock(&ecc_res.lock);
+	if (ecc_res.status != UADK_UNINIT)
+		goto unlock;
 
-		ret = uadk_wd_ecc_init(&ecc_res_config, dev);
-		if (ret) {
-			fprintf(stderr, "failed to init ec(%d).\n", ret);
-			goto err_unlock;
-		}
-
-		ecc_res.numa_id = dev->numa_id;
-		ecc_res.pid = getpid();
-		pthread_spin_unlock(&ecc_res.lock);
-		free(dev);
+	/* Find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
+	dev = wd_get_accel_dev("ecdsa");
+	if (!dev) {
+		fprintf(stderr, "no device available, switch to software!\n");
+		goto err_init;
 	}
 
-	return 0;
+	ret = uadk_wd_ecc_init(&ecc_res_config, dev);
+	if (ret) {
+		fprintf(stderr, "device unavailable(%d), switch to software!\n", ret);
+		goto err_init;
+	}
 
-err_unlock:
+	ecc_res.numa_id = dev->numa_id;
+	ecc_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&ecc_res.lock);
 	free(dev);
-	return ret;
+
+	return ecc_res.status;
+
+err_init:
+	ecc_res.status = UADK_INIT_FAIL;
+unlock:
+	pthread_spin_unlock(&ecc_res.lock);
+	if (dev)
+		free(dev);
+	return ecc_res.status;
 }
 
 static void uadk_uninit_ecc(void)
@@ -630,8 +654,14 @@ static int uadk_ecc_bind_pmeth(ENGINE *e)
 	return ENGINE_set_pkey_meths(e, get_pkey_meths);
 }
 
+static void uadk_e_ecc_clear_status(void)
+{
+	ecc_res.status = UADK_UNINIT;
+}
+
 void uadk_e_ecc_lock_init(void)
 {
+	pthread_atfork(NULL, NULL, uadk_e_ecc_clear_status);
 	pthread_spin_init(&ecc_res.lock, PTHREAD_PROCESS_PRIVATE);
 }
 
