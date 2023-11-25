@@ -302,7 +302,7 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int idx, ret;
+	int idx, ret, cnt;
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
@@ -321,12 +321,17 @@ int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 			goto err;
 
 		op.idx = idx;
-
+		cnt = 0;
 		do {
 			ret = wd_do_ecc_async(sess, req);
-			if (ret < 0 && ret != -EBUSY) {
-				if (ret == -WD_HW_EACCESS)
+			if (unlikely(ret < 0)) {
+				if (unlikely(ret == -WD_HW_EACCESS))
 					uadk_e_ecc_set_status();
+				else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+					fprintf(stderr, "do ecc async operation timeout.\n");
+				else
+					continue;
+
 				async_free_poll_task(op.idx, 0);
 				goto err;
 			}

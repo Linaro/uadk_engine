@@ -21,6 +21,7 @@
 
 #define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
 #define ENV_STRING_LEN		256
+#define ENGINE_SEND_MAX_CNT	90000000
 #define ENGINE_RECV_MAX_CNT	60000000
 #define UADK_UNINIT		0
 #define UADK_INIT_SUCCESS	1
