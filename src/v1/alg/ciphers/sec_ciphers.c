@@ -64,7 +64,7 @@ static cipher_info_t g_sec_ciphers_info[] = {
 	{NID_sm4_ctr, 1, 16, 16, EVP_CIPH_CTR_MODE, 1, NULL},
 	{NID_sm4_cbc, 16, 16, 16, EVP_CIPH_CBC_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1, 1, NULL},
 	{NID_sm4_ofb128, 1, 16, 16, EVP_CIPH_OFB_MODE, 1, NULL},
-	{NID_sm4_ecb, 16, 16, 0, EVP_CIPH_CTR_MODE, 1, NULL},
+	{NID_sm4_ecb, 16, 16, 0, EVP_CIPH_ECB_MODE, 1, NULL},
 };
 
 #define CIPHERS_COUNT (BLOCKSIZES_OF(g_sec_ciphers_info))
