@@ -69,6 +69,7 @@ struct async_poll_queue {
 	sem_t full_sem;
 	pthread_mutex_t async_task_mutex;
 	pthread_t thread_id;
+	pthread_attr_t thread_attr;
 };
 
 int async_setup_async_event_notification(struct async_op *op);

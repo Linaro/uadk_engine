@@ -132,6 +132,7 @@ void async_poll_task_free(void)
 	poll_queue.head = NULL;
 
 	pthread_mutex_unlock(&poll_queue.async_task_mutex);
+	pthread_attr_destroy(&poll_queue.thread_attr);
 	sem_destroy(&poll_queue.empty_sem);
 	sem_destroy(&poll_queue.full_sem);
 	pthread_mutex_destroy(&poll_queue.async_task_mutex);
@@ -359,7 +360,6 @@ static void *async_poll_process_func(void *args)
 int async_module_init(void)
 {
 	pthread_t thread_id;
-	pthread_attr_t thread_attr;
 
 	memset(&poll_queue, 0, sizeof(struct async_poll_queue));
 
@@ -378,9 +378,9 @@ int async_module_init(void)
 
 	uadk_e_set_async_poll_state(ENABLE_ASYNC_POLLING);
 
-	pthread_attr_init(&thread_attr);
-	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);
-	if (pthread_create(&thread_id, &thread_attr, async_poll_process_func, NULL))
+	pthread_attr_init(&poll_queue.thread_attr);
+	pthread_attr_setdetachstate(&poll_queue.thread_attr, PTHREAD_CREATE_DETACHED);
+	if (pthread_create(&thread_id, &poll_queue.thread_attr, async_poll_process_func, NULL))
 		goto err;
 
 	poll_queue.thread_id = thread_id;
