@@ -767,7 +767,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-	struct async_op op;
+	struct async_op *op;
 	int ret = 1;
 
 	digest_set_msg_state(priv, true);
@@ -782,13 +782,18 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	if (priv->e_nid == NID_sha384)
 		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
 
-	ret = async_setup_async_event_notification(&op);
+	op = malloc(sizeof(struct async_op));
+	if (!op)
+		return 0;
+
+	ret = async_setup_async_event_notification(op);
 	if (unlikely(!ret)) {
 		fprintf(stderr, "failed to setup async event notification.\n");
+		free(op);
 		return 0;
 	}
 
-	if (op.job == NULL) {
+	if (!op->job) {
 		/* Synchronous, only the synchronous mode supports soft computing */
 		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 			ret = digest_soft_final(priv, digest);
@@ -800,12 +805,13 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 		if (!ret)
 			goto sync_err;
 	} else {
-		ret = do_digest_async(priv, &op);
+		ret = do_digest_async(priv, op);
 		if (!ret)
 			goto clear;
 	}
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
+	free(op);
 	return 1;
 
 sync_err:
@@ -817,6 +823,7 @@ sync_err:
 	}
 clear:
 	async_clear_async_event_notification();
+	free(op);
 	return ret;
 }
 
