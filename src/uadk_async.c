@@ -302,8 +302,10 @@ int async_wake_job(ASYNC_JOB *job)
 
 	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
-		if (write(efd, &buf, sizeof(uint64_t)) == -1)
+		if (write(efd, &buf, sizeof(uint64_t)) == -1) {
 			fprintf(stderr, "failed to write to fd: %d - error: %d\n", efd, errno);
+			return errno;
+		}
 	}
 
 	return ret;
@@ -364,7 +366,7 @@ int async_module_init(void)
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
 		return 0;
 
-	poll_queue.head = calloc(ASYNC_QUEUE_TASK_NUM, sizeof(struct async_poll_task));
+	poll_queue.head = OPENSSL_malloc(ASYNC_QUEUE_TASK_NUM * sizeof(struct async_poll_task));
 	if (poll_queue.head == NULL)
 		return 0;
 

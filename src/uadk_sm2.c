@@ -149,7 +149,7 @@ static int get_hash_type(int nid_hash)
 }
 
 static int compute_hash(const char *in, size_t in_len,
-		       char *out, size_t out_len, void *usr)
+			char *out, size_t out_len, void *usr)
 {
 	const EVP_MD *digest = (const EVP_MD *)usr;
 	EVP_MD_CTX *hash = EVP_MD_CTX_new();
@@ -377,7 +377,7 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 	e_sig = ECDSA_SIG_new();
 	if (!e_sig) {
 		fprintf(stderr, "failed to ECDSA_SIG_new\n");
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
 	br = BN_bin2bn((void *)r->data, r->dsize, NULL);
@@ -1200,6 +1200,7 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
 	if (!ret) {
 		fprintf(stderr, "sm2 is not supported\n");
+		free(smctx);
 		return 0;
 	}
 
@@ -1284,6 +1285,8 @@ static int sm2_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 		}
 		goto set_data;
 	case EVP_PKEY_CTRL_GET_MD:
+		if (!p2)
+			return 0;
 		*(const EVP_MD **)p2 = smctx->ctx.md;
 		return 1;
 	case EVP_PKEY_CTRL_SET1_ID:
