@@ -1491,9 +1491,14 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 	}
 
 	ret = rsa_create_pub_bn_ctx(rsa, pub_enc, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
+	if (ret <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
+	}
+
+	if (flen > num_bytes) {
+		ret = UADK_DO_SOFT;
+		goto free_buf;
 	}
 
 	ret = add_rsa_pubenc_padding(flen, from, from_buf, num_bytes, padding);
@@ -1756,9 +1761,14 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	}
 
 	ret = rsa_create_pub_bn_ctx(rsa, pub, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
+	if (ret <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
+	}
+
+	if (flen > num_bytes) {
+		ret = UADK_DO_SOFT;
+		goto free_buf;
 	}
 
 	ret = rsa_fill_pubkey(pub, rsa_sess, from_buf, to);
