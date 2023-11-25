@@ -328,6 +328,10 @@ static int set_digest(handle_t sess, struct wd_dtb *e,
 
 	if (dlen << TRANS_BITS_BYTES_SHIFT > order_bits) {
 		m = BN_new();
+		if (!m) {
+			fprintf(stderr, "failed to BN_new BIGNUM m\n");
+			return -1;
+		}
 
 		/* Need to truncate digest if it is too long: first truncate
 		 * whole bytes
