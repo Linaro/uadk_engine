@@ -652,7 +652,7 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 {
 	struct uadk_e_cb_info cb_param;
-	int idx, ret;
+	int idx, ret, cnt;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "switch to soft cipher.\n");
@@ -668,11 +668,18 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	if (!ret)
 		return 0;
 
+	cnt = 0;
 	op->idx = idx;
 	do {
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
-		if (ret < 0 && ret != -EBUSY) {
-			fprintf(stderr, "do sec cipher failed, switch to soft cipher.\n");
+		if (unlikely(ret < 0)) {
+			if (unlikely(ret != -EBUSY))
+				fprintf(stderr, "do cipher async operation failed.\n");
+			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+				fprintf(stderr, "do cipher async operation timeout.\n");
+			else
+				continue;
+
 			async_free_poll_task(op->idx, 0);
 			return 0;
 		}

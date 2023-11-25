@@ -27,7 +27,7 @@
 #include "uadk_async.h"
 #include "uadk_utils.h"
 
-#define RET_FAIL		-1
+#define RET_FAIL		(-1)
 #define STATE_FAIL		0xFFFF
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
@@ -521,17 +521,9 @@ static void *uadk_e_aead_cb(struct wd_aead_req *req, void *data)
 	return NULL;
 }
 
-static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
-			 unsigned char *out, const unsigned char *in, size_t inlen)
+static void do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char *out,
+				  const unsigned char *in, size_t inlen)
 {
-	struct uadk_e_cb_info *cb_param;
-	int ret;
-
-	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
-		fprintf(stderr, "aead input data length is too long!\n");
-		return 0;
-	}
-
 	priv->req.in_bytes = inlen;
 	/* AAD data is input or output together with plaintext or ciphertext. */
 	if (priv->req.assoc_bytes) {
@@ -542,6 +534,21 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 		priv->req.src = (unsigned char *)in;
 		priv->req.dst = out;
 	}
+}
+
+static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
+			 unsigned char *out, const unsigned char *in, size_t inlen)
+{
+	struct uadk_e_cb_info *cb_param;
+	int cnt = 0;
+	int ret;
+
+	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
+		fprintf(stderr, "aead input data length is too long!\n");
+		return 0;
+	}
+
+	do_aead_async_prepare(priv, out, in, inlen);
 
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
 	if (unlikely(!cb_param)) {
@@ -562,8 +569,14 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 
 	do {
 		ret = wd_do_aead_async(priv->sess, &priv->req);
-		if (unlikely(ret < 0 && ret != -EBUSY)) {
-			fprintf(stderr, "do aead async operation failed.\n");
+		if (unlikely(ret < 0)) {
+			if (unlikely(ret != -EBUSY))
+				fprintf(stderr, "do aead async operation failed.\n");
+			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+				fprintf(stderr, "do aead async operation timeout.\n");
+			else
+				continue;
+
 			async_free_poll_task(op->idx, 0);
 			ret = 0;
 			goto free_cb_param;

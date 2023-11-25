@@ -1099,7 +1099,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int idx, ret;
+	int idx, ret, cnt;
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
@@ -1128,11 +1128,17 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 		goto err;
 
 	op.idx = idx;
+	cnt = 0;
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
-		if (ret < 0 && ret != -EBUSY) {
-			if (ret == -WD_HW_EACCESS)
+		if (unlikely(ret < 0)) {
+			if (unlikely(ret == -WD_HW_EACCESS))
 				uadk_e_rsa_set_status();
+			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+				fprintf(stderr, "do rsa async operation timeout.\n");
+			else
+				continue;
+
 			async_free_poll_task(op.idx, 0);
 			goto err;
 		}
