@@ -1358,7 +1358,7 @@ static void rsa_free_pub_bn_ctx(unsigned char **from_buf)
 }
 
 static int rsa_create_pri_bn_ctx(RSA *rsa, struct rsa_prikey_param *pri,
-				 unsigned char **from_buf, int *num_bytes)
+				 unsigned char **from_buf, int *num_bytes, int flen)
 {
 	RSA_get0_key(rsa, &pri->n, &pri->e, &pri->d);
 	if (!(pri->n) || !(pri->e) || !(pri->d))
@@ -1374,6 +1374,9 @@ static int rsa_create_pri_bn_ctx(RSA *rsa, struct rsa_prikey_param *pri,
 
 	*num_bytes = BN_num_bytes(pri->n);
 	if (!(*num_bytes))
+		return UADK_E_FAIL;
+
+	if (flen > *num_bytes)
 		return UADK_E_FAIL;
 
 	*from_buf = OPENSSL_malloc(*num_bytes);
@@ -1578,8 +1581,8 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_pkey;
 	}
 
-	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
+	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes, flen);
+	if (ret <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
@@ -1665,8 +1668,8 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_pkey;
 	}
 
-	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
+	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes, flen);
+	if (ret <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
