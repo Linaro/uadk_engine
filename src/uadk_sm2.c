@@ -1204,8 +1204,7 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	}
 
 	ret = uadk_init_ecc();
-	if (ret) {
-		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
+	if (ret != UADK_INIT_SUCCESS) {
 		smctx->init_status = CTX_INIT_FAIL;
 		goto end;
 	}

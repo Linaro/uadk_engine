@@ -479,19 +479,19 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 
 	ret = ecdsa_do_sign_check(eckey, dgst, dlen, in_kinv, in_r);
 	if (ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(ECDSA_SUPPORT);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_init_ecc();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(eckey, "ecdsa");
 	if (!sess)
-		goto do_soft;
+		goto soft_log;
 
 	memset(&req, 0, sizeof(req));
 	tdgst.data = (void *)dgst;
@@ -521,8 +521,9 @@ uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
-do_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+do_soft:
 	return openssl_do_sign(dgst, dlen, in_kinv, in_r, eckey);
 }
 
@@ -677,19 +678,19 @@ static int ecdsa_do_verify(const unsigned char *dgst, int dlen,
 
 	ret = ecdsa_do_verify_check(eckey, dgst, dlen, sig);
 	if (ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(ECDSA_SUPPORT);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_init_ecc();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(eckey, "ecdsa");
 	if (!sess)
-		goto do_soft;
+		goto soft_log;
 
 	memset(&req, 0, sizeof(req));
 	tdgst.data = (void *)dgst;
@@ -717,8 +718,9 @@ uninit_iot:
 	wd_ecc_del_in(sess, req.src);
 free_sess:
 	wd_ecc_free_sess(sess);
-do_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+do_soft:
 	return openssl_do_verify(dgst, dlen, sig, eckey);
 }
 
@@ -970,23 +972,23 @@ static int sm2_generate_key(EC_KEY *eckey)
 
 	ret = ecc_genkey_check(eckey);
 	if (ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = eckey_create_key(eckey);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_init_ecc();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(eckey, "sm2");
 	if (!sess)
-		goto do_soft;
+		goto soft_log;
 
 	memset(&req, 0, sizeof(req));
 	ret = sm2_keygen_init_iot(sess, &req);
@@ -1010,8 +1012,9 @@ uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
-do_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+do_soft:
 	return openssl_do_generate(eckey);
 }
 
@@ -1030,7 +1033,6 @@ static int ecdh_keygen_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	return 1;
 }
-
 
 static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 				 const EC_POINT *pubkey, const EC_KEY *ecdh)
@@ -1201,23 +1203,23 @@ static int ecdh_generate_key(EC_KEY *ecdh)
 
 	ret = ecc_genkey_check(ecdh);
 	if (ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = ecdh_create_key(ecdh);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(ECDH_SUPPORT);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_init_ecc();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(ecdh, "ecdh");
 	if (!sess)
-		goto do_soft;
+		goto soft_log;
 
 	memset(&req, 0, sizeof(req));
 	ret = ecdh_keygen_init_iot(sess, &req, ecdh);
@@ -1245,8 +1247,9 @@ uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
-do_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+do_soft:
 	return openssl_do_generate(ecdh);
 }
 
@@ -1319,19 +1322,19 @@ static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 
 	ret = ecc_compkey_check(out, outlen, pub_key, ecdh);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(ECDH_SUPPORT);
 	if (!ret)
-		goto do_soft;
+		goto soft_log;
 
 	ret = uadk_init_ecc();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto do_soft;
 
 	sess = ecc_alloc_sess(ecdh, "ecdh");
 	if (!sess)
-		goto do_soft;
+		goto soft_log;
 
 	memset(&req, 0, sizeof(req));
 	ret = ecdh_compkey_init_iot(sess, &req, pub_key, ecdh);
@@ -1365,8 +1368,9 @@ uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
-do_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+do_soft:
 	return openssl_do_compute(out, outlen, pub_key, ecdh);
 }
 

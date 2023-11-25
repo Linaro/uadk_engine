@@ -132,8 +132,8 @@ struct rsa_res_config {
 /* Save rsa global hardware resource */
 struct rsa_res {
 	struct wd_ctx_config *ctx_res;
-	int pid;
 	int numa_id;
+	int status;
 	pthread_spinlock_t lock;
 } g_rsa_res;
 
@@ -659,6 +659,13 @@ static int rsa_poll_policy(handle_t h_sched_ctx, __u32 expect, __u32 *count)
 	return UADK_E_POLL_SUCCESS;
 }
 
+static void uadk_e_rsa_set_status(void)
+{
+	pthread_spin_lock(&g_rsa_res.lock);
+	g_rsa_res.status = UADK_DEVICE_ERROR;
+	pthread_spin_unlock(&g_rsa_res.lock);
+}
+
 static int uadk_e_rsa_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
@@ -668,12 +675,15 @@ static int uadk_e_rsa_poll(void *ctx)
 
 	do {
 		ret = wd_rsa_poll_ctx(CTX_ASYNC, expt, &recv);
-		if (!ret && recv == expt)
+		if (!ret && recv == expt) {
 			return UADK_E_POLL_SUCCESS;
-		else if (ret == -EAGAIN)
+		} else if (ret == -EAGAIN) {
 			rx_cnt++;
-		else
+		} else {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_rsa_set_status();
 			return UADK_E_POLL_FAIL;
+		}
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
@@ -704,8 +714,11 @@ static int uadk_e_rsa_env_poll(void *ctx)
 
 	do {
 		ret = wd_rsa_poll(expt, &recv);
-		if (ret < 0 || recv == expt)
+		if (ret < 0 || recv == expt) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_rsa_set_status();
 			return ret;
+		}
 		rx_cnt++;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
@@ -788,42 +801,42 @@ free_cfg:
 
 static int uadk_e_rsa_init(void)
 {
-	struct uacce_dev *dev;
+	struct uacce_dev *dev = NULL;
 	int ret;
 
-	if (g_rsa_res.pid != getpid()) {
-		pthread_spin_lock(&g_rsa_res.lock);
-		if (g_rsa_res.pid == getpid()) {
-			pthread_spin_unlock(&g_rsa_res.lock);
-			return UADK_E_INIT_SUCCESS;
-		}
+	if (g_rsa_res.status != UADK_UNINIT)
+		return g_rsa_res.status;
 
-		dev = wd_get_accel_dev("rsa");
-		if (!dev) {
-			pthread_spin_unlock(&g_rsa_res.lock);
-			fprintf(stderr, "failed to get device for rsa\n");
-			return -ENOMEM;
-		}
+	pthread_spin_lock(&g_rsa_res.lock);
+	if (g_rsa_res.status != UADK_UNINIT)
+		goto unlock;
 
-		ret = uadk_e_wd_rsa_init(&rsa_res_config, dev);
-		if (ret)
-			goto err_unlock;
-
-		g_rsa_res.numa_id = dev->numa_id;
-		g_rsa_res.pid = getpid();
-		pthread_spin_unlock(&g_rsa_res.lock);
-		free(dev);
+	dev = wd_get_accel_dev("rsa");
+	if (!dev) {
+		fprintf(stderr, "no device available, switch to software!\n");
+		goto err_init;
 	}
 
-	return UADK_E_INIT_SUCCESS;
+	ret = uadk_e_wd_rsa_init(&rsa_res_config, dev);
+	if (ret) {
+		fprintf(stderr, "device unavailable(%d), switch to software!\n", ret);
+		goto err_init;
+	}
 
-err_unlock:
-	g_rsa_res.ctx_res = NULL;
+	g_rsa_res.numa_id = dev->numa_id;
+	g_rsa_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&g_rsa_res.lock);
 	free(dev);
-	(void)fprintf(stderr, "failed to init rsa(%d)\n", ret);
 
-	return ret;
+	return g_rsa_res.status;
+
+err_init:
+	g_rsa_res.status = UADK_INIT_FAIL;
+unlock:
+	pthread_spin_unlock(&g_rsa_res.lock);
+	if (dev)
+		free(dev);
+	return g_rsa_res.status;
 }
 
 static void uadk_e_rsa_uninit(void)
@@ -832,23 +845,25 @@ static void uadk_e_rsa_uninit(void)
 	__u32 i;
 	int ret;
 
-	if (!ctx_cfg)
+	if (g_rsa_res.status == UADK_UNINIT)
 		return;
 
-	if (g_rsa_res.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("rsa");
-		if (ret == ENV_ENABLED) {
-			wd_rsa_env_uninit();
-		} else {
-			wd_rsa_uninit();
-			for (i = 0; i < ctx_cfg->ctx_num; i++)
-				wd_release_ctx(ctx_cfg->ctxs[i].ctx);
-			free(ctx_cfg->ctxs);
-			free(ctx_cfg);
-		}
+	if (g_rsa_res.status == UADK_INIT_FAIL)
+		goto clear_status;
 
-		g_rsa_res.pid = 0;
+	ret = uadk_e_is_env_enabled("rsa");
+	if (ret == ENV_ENABLED) {
+		wd_rsa_env_uninit();
+	} else {
+		wd_rsa_uninit();
+		for (i = 0; i < ctx_cfg->ctx_num; i++)
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+		free(ctx_cfg->ctxs);
+		free(ctx_cfg);
 	}
+
+clear_status:
+	g_rsa_res.status = UADK_UNINIT;
 }
 
 static struct uadk_rsa_sess *rsa_new_eng_session(RSA *rsa)
@@ -1094,10 +1109,13 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 
 	if (!op.job) {
 		ret = wd_do_rsa_sync(rsa_sess->sess, &(rsa_sess->req));
-		if (!ret)
-			return UADK_E_SUCCESS;
-		else
+		if (ret) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_rsa_set_status();
 			goto err;
+		} else {
+			return UADK_E_SUCCESS;
+		}
 	}
 	cb_param.op = &op;
 	cb_param.priv = &(rsa_sess->req);
@@ -1113,6 +1131,8 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
 		if (ret < 0 && ret != -EBUSY) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_rsa_set_status();
 			async_free_poll_task(op.idx, 0);
 			goto err;
 		}
@@ -1379,16 +1399,18 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int ret;
 
 	ret = rsa_check_bit_useful(bits, 0);
-	if (!ret || ret == SOFT)
-		goto exe_soft;
+	if (!ret)
+		return UADK_E_FAIL;
+	else if (ret == SOFT)
+		goto soft_log;
 
 	ret = uadk_e_rsa_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	ret = rsa_keygen_param_alloc(&keygen_param, &bn_param, &key_pair, &bn_ctx);
 	if (ret == -ENOMEM)
-		goto exe_soft;
+		return ret;
 
 	rsa_sess = rsa_get_eng_session(rsa, bits, is_crt);
 	if (!rsa_sess) {
@@ -1431,8 +1453,9 @@ free_keygen:
 	rsa_keygen_param_free(&keygen_param, &bn_param, &key_pair, &bn_ctx, ret);
 	if (ret != UADK_DO_SOFT)
 		return ret;
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return uadk_e_soft_rsa_keygen(rsa, bits, e, cb);
 }
 
@@ -1446,16 +1469,18 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 	BIGNUM *enc_bn = NULL;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		goto exe_soft;
+	if (!ret)
+		return UADK_E_FAIL;
+	else if (ret == SOFT)
+		goto soft_log;
 
 	ret = uadk_e_rsa_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	ret = rsa_pkey_param_alloc(&pub_enc, NULL);
 	if (ret == -ENOMEM)
-		goto exe_soft;
+		return ret;
 
 	is_crt = check_rsa_is_crt(rsa);
 
@@ -1510,8 +1535,9 @@ free_pkey:
 	rsa_pkey_param_free(&pub_enc, NULL);
 	if (ret != UADK_DO_SOFT)
 		return ret;
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return RSA_meth_get_pub_enc(RSA_PKCS1_OpenSSL())
 				   (flen, from, to, rsa, padding);
 }
@@ -1526,16 +1552,18 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 	BIGNUM *dec_bn = NULL;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		goto exe_soft;
+	if (!ret)
+		return UADK_E_FAIL;
+	else if (ret == SOFT)
+		goto soft_log;
 
 	ret = uadk_e_rsa_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		goto exe_soft;
+		return ret;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1592,8 +1620,9 @@ free_pkey:
 	rsa_pkey_param_free(NULL, &pri);
 	if (ret != UADK_DO_SOFT)
 		return ret;
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return RSA_meth_get_priv_dec(RSA_PKCS1_OpenSSL())
 				    (flen, from, to, rsa, padding);
 }
@@ -1610,16 +1639,18 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 	int num_bytes, ret;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		goto exe_soft;
+	if (!ret)
+		return UADK_E_FAIL;
+	else if (ret == SOFT)
+		goto soft_log;
 
 	ret = uadk_e_rsa_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		goto exe_soft;
+		return ret;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1686,8 +1717,9 @@ free_pkey:
 	rsa_pkey_param_free(NULL, &pri);
 	if (ret != UADK_DO_SOFT)
 		return ret;
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return RSA_meth_get_priv_enc(RSA_PKCS1_OpenSSL())
 				    (flen, from, to, rsa, padding);
 }
@@ -1705,15 +1737,15 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	if (!ret)
 		return UADK_E_FAIL;
 	else if (ret == SOFT)
-		goto exe_soft;
+		goto soft_log;
 
 	ret = uadk_e_rsa_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	ret = rsa_pkey_param_alloc(&pub, NULL);
 	if (ret == -ENOMEM)
-		goto exe_soft;
+		return ret;
 
 	is_crt = check_rsa_is_crt(rsa);
 
@@ -1775,8 +1807,9 @@ free_pkey:
 	rsa_pkey_param_free(&pub, NULL);
 	if (ret != UADK_DO_SOFT)
 		return ret;
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return RSA_meth_get_pub_dec(RSA_PKCS1_OpenSSL())
 				   (flen, from, to, rsa, padding);
 }
@@ -1834,7 +1867,13 @@ void uadk_e_destroy_rsa(void)
 	uadk_e_rsa_uninit();
 }
 
+static void uadk_e_rsa_clear_status(void)
+{
+	g_rsa_res.status = UADK_UNINIT;
+}
+
 void uadk_e_rsa_lock_init(void)
 {
+	pthread_atfork(NULL, NULL, uadk_e_rsa_clear_status);
 	pthread_spin_init(&g_rsa_res.lock, PTHREAD_PROCESS_PRIVATE);
 }

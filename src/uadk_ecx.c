@@ -85,10 +85,8 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 	}
 
 	ret = uadk_init_ecc();
-	if (ret) {
-		fprintf(stderr, "failed to uadk_init_ecc, ret = %d\n", ret);
+	if (ret != UADK_INIT_SUCCESS)
 		return UADK_E_FAIL;
-	}
 
 	x25519_ctx = calloc(1, sizeof(struct ecx_ctx));
 	if (!x25519_ctx) {
@@ -141,10 +139,8 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 	}
 
 	ret = uadk_init_ecc();
-	if (ret) {
-		fprintf(stderr, "failed to do uadk_init_ecc, ret = %d\n", ret);
+	if (ret != UADK_INIT_SUCCESS)
 		return UADK_E_FAIL;
-	}
 
 	x448_ctx = calloc(1, sizeof(struct ecx_ctx));
 	if (!x448_ctx) {

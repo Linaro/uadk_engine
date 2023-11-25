@@ -75,8 +75,8 @@ struct uadk_dh_sess {
 
 struct dh_res {
 	struct wd_ctx_config *ctx_res;
-	int pid;
 	int numa_id;
+	int status;
 	pthread_spinlock_t lock;
 } g_dh_res;
 
@@ -200,6 +200,13 @@ static __u32 dh_pick_next_ctx(handle_t sched_ctx,
 		return CTX_SYNC;
 }
 
+static void uadk_e_dh_set_status(void)
+{
+	pthread_spin_lock(&g_dh_res.lock);
+	g_dh_res.status = UADK_DEVICE_ERROR;
+	pthread_spin_unlock(&g_dh_res.lock);
+}
+
 static int uadk_e_dh_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
@@ -210,12 +217,15 @@ static int uadk_e_dh_poll(void *ctx)
 
 	do {
 		ret = wd_dh_poll_ctx(idx, expt, &recv);
-		if (!ret && recv == expt)
+		if (!ret && recv == expt) {
 			return UADK_E_POLL_SUCCESS;
-		else if (ret == -EAGAIN)
+		} else if (ret == -EAGAIN) {
 			rx_cnt++;
-		else
+		} else {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_dh_set_status();
 			return UADK_E_POLL_FAIL;
+		}
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
@@ -281,8 +291,11 @@ static int uadk_e_dh_env_poll(void *ctx)
 
 	do {
 		ret = wd_dh_poll(expt, &recv);
-		if (ret < 0 || recv == expt)
+		if (ret < 0 || recv == expt) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_dh_set_status();
 			return ret;
+		}
 		rx_cnt++;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
@@ -363,41 +376,42 @@ free_cfg:
 
 static int uadk_e_dh_init(void)
 {
-	struct uacce_dev *dev;
+	struct uacce_dev *dev = NULL;
 	int ret;
 
-	if (g_dh_res.pid != getpid()) {
-		pthread_spin_lock(&g_dh_res.lock);
-		if (g_dh_res.pid == getpid()) {
-			pthread_spin_unlock(&g_dh_res.lock);
-			return UADK_E_INIT_SUCCESS;
-		}
+	if (g_dh_res.status != UADK_UNINIT)
+		return g_dh_res.status;
 
-		dev = wd_get_accel_dev("dh");
-		if (!dev) {
-			pthread_spin_unlock(&g_dh_res.lock);
-			fprintf(stderr, "failed to get device for dh\n");
-			return -ENOMEM;
-		}
+	pthread_spin_lock(&g_dh_res.lock);
+	if (g_dh_res.status != UADK_UNINIT)
+		goto unlock;
 
-		ret = uadk_e_wd_dh_init(&dh_res_config, dev);
-		if (ret)
-			goto err_unlock;
-
-		g_dh_res.numa_id = dev->numa_id;
-		g_dh_res.pid = getpid();
-		pthread_spin_unlock(&g_dh_res.lock);
-		free(dev);
+	dev = wd_get_accel_dev("dh");
+	if (!dev) {
+		fprintf(stderr, "no device available, switch to software!\n");
+		goto err_init;
 	}
 
-	return UADK_E_INIT_SUCCESS;
+	ret = uadk_e_wd_dh_init(&dh_res_config, dev);
+	if (ret) {
+		fprintf(stderr, "device unavailable(%d), switch to software!\n", ret);
+		goto err_init;
+	}
 
-err_unlock:
+	g_dh_res.numa_id = dev->numa_id;
+	g_dh_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&g_dh_res.lock);
 	free(dev);
-	fprintf(stderr, "failed to init dh(%d)\n", ret);
 
-	return ret;
+	return g_dh_res.status;
+
+err_init:
+	g_dh_res.status = UADK_INIT_FAIL;
+unlock:
+	pthread_spin_unlock(&g_dh_res.lock);
+	if (dev)
+		free(dev);
+	return g_dh_res.status;
 }
 
 static void uadk_e_wd_dh_uninit(void)
@@ -406,20 +420,26 @@ static void uadk_e_wd_dh_uninit(void)
 	__u32 i;
 	int ret;
 
-	if (g_dh_res.pid == getpid()) {
-		ret = uadk_e_is_env_enabled("dh");
-		if (ret == ENV_ENABLED) {
-			wd_dh_env_uninit();
-		} else {
-			wd_dh_uninit();
-			for (i = 0; i < ctx_cfg->ctx_num; i++)
-				wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+	if (g_dh_res.status == UADK_UNINIT)
+		return;
 
-			free(ctx_cfg->ctxs);
-			free(ctx_cfg);
-		}
-		g_dh_res.pid = 0;
+	if (g_dh_res.status == UADK_INIT_FAIL)
+		goto clear_status;
+
+	ret = uadk_e_is_env_enabled("dh");
+	if (ret == ENV_ENABLED) {
+		wd_dh_env_uninit();
+	} else {
+		wd_dh_uninit();
+		for (i = 0; i < ctx_cfg->ctx_num; i++)
+			wd_release_ctx(ctx_cfg->ctxs[i].ctx);
+
+		free(ctx_cfg->ctxs);
+		free(ctx_cfg);
 	}
+
+clear_status:
+	g_dh_res.status = UADK_UNINIT;
 }
 
 static struct uadk_dh_sess *dh_new_eng_session(DH *dh_alg)
@@ -706,8 +726,11 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 
 	if (!op.job) {
 		ret = wd_do_dh_sync(dh_sess->sess, &dh_sess->req);
-		if (ret)
+		if (ret) {
+			if (ret == -WD_HW_EACCESS)
+				uadk_e_dh_set_status();
 			return UADK_E_FAIL;
+		}
 	} else {
 		cb_param.op = &op;
 		cb_param.priv = &dh_sess->req;
@@ -723,6 +746,8 @@ static int dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
 			if (ret < 0 && ret != -EBUSY) {
+				if (ret == -WD_HW_EACCESS)
+					uadk_e_dh_set_status();
 				async_free_poll_task(op.idx, 0);
 				goto err;
 			}
@@ -770,21 +795,21 @@ static int uadk_e_dh_generate_key(DH *dh)
 	int ret;
 
 	if (!dh)
-		goto exe_soft;
+		return UADK_E_FAIL;
 
 	ret = uadk_e_dh_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	DH_get0_pqg(dh, &p, &q, &g);
 	if (!p || !g || q)
-		goto exe_soft;
+		return UADK_E_FAIL;
 
 	/* Get session and prepare private key */
 	ret = dh_prepare_data(g, dh, &dh_sess, &priv_key);
 	if (!ret) {
 		fprintf(stderr, "prepare dh data failed\n");
-		goto exe_soft;
+		goto soft_log;
 	}
 
 	ret = dh_fill_genkey_req(g, p, priv_key, dh_sess);
@@ -814,8 +839,9 @@ free_data:
 	if (dh_sess->key_flag == KEY_GEN_BY_ENGINE)
 		BN_free(priv_key);
 	dh_free_eng_session(dh_sess);
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return uadk_e_dh_soft_generate_key(dh);
 }
 
@@ -830,20 +856,20 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 	int ret;
 
 	if (!dh || !key || !pub_key || !DH_get0_priv_key(dh))
-		goto exe_soft;
+		return UADK_E_FAIL;
 
 	ret = uadk_e_dh_init();
-	if (ret)
+	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
 
 	DH_get0_pqg(dh, &p, &q, &g);
 	if (!p || !g)
-		goto exe_soft;
+		return UADK_E_FAIL;
 
 	ret = dh_prepare_data(g, dh, &dh_sess, &priv_key);
 	if (!ret) {
 		fprintf(stderr, "failed to prepare dh data\n");
-		goto exe_soft;
+		goto soft_log;
 	}
 
 	ret = dh_fill_compkey_req(g, p, priv_key, pub_key, dh_sess);
@@ -868,8 +894,9 @@ free_data:
 	if (dh_sess->key_flag == KEY_GEN_BY_ENGINE)
 		BN_free(priv_key);
 	dh_free_eng_session(dh_sess);
-exe_soft:
+soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+exe_soft:
 	return uadk_e_dh_soft_compute_key(key, pub_key, dh);
 }
 
@@ -919,7 +946,13 @@ void uadk_e_destroy_dh(void)
 	uadk_e_wd_dh_uninit();
 }
 
+static void uadk_e_dh_clear_status(void)
+{
+	g_dh_res.status = UADK_UNINIT;
+}
+
 void uadk_e_dh_lock_init(void)
 {
+	pthread_atfork(NULL, NULL, uadk_e_dh_clear_status);
 	pthread_spin_init(&g_dh_res.lock, PTHREAD_PROCESS_PRIVATE);
 }
