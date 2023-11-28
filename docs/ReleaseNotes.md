@@ -1,4 +1,27 @@
 
+# UADK engine Release v1.3 Dec 2023
+
+## New Features
+- Support the following hardware acceleration algorithms with openssl 3.0 provider mechanism: \
+  RSA, DH \
+  AES, SM4 \
+  SM3, MD5, SHA1, SHA224, SHA256, SHA384, SHA512
+
+- Build uadk_engine with OpenSSL1.1.1x version, while build uadk_provider with OpenSSL3.x version.
+- Support enable uadk_provider via uadk_provider.cnf file.
+- Support hardware acceleration AES-GCM in uadk_engine.
+- Add sanity_test.sh and correctness test: evp_test.sh for providers
+
+## Fixes
+- Add and modify some test cases in sanity_test.sh file.
+- Fix some issues related to resources management.
+
+## Working combination
+
+- UADK v2.6
+- OpenSSL 1.1.1f & OpenSSL 3.0+
+
+
 # UADK engine Release v1.2 June 2023
 
 ## New Features
