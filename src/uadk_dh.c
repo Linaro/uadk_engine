@@ -297,7 +297,7 @@ static int uadk_e_dh_env_poll(void *ctx)
 			return ret;
 		}
 		rx_cnt++;
-	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
+	} while (rx_cnt < ENGINE_ENV_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll msg: timeout!\n");
 
