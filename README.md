@@ -146,7 +146,7 @@ Usage
 #. Firstly, modify the openssl.cnf file, add the following settings at the beginning of this file:
 
 ```
-openssl_cnf=openssl_def
+openssl_conf=openssl_def
 [openssl_def]
 engines=engine_section
 [engine_section]

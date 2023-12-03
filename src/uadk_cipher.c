@@ -365,7 +365,7 @@ static int uadk_e_cipher_env_poll(void *ctx)
 		if (ret < 0 || recv == expt)
 			return ret;
 		rx_cnt++;
-	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
+	} while (rx_cnt < ENGINE_ENV_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll msg: timeout!\n");
 
