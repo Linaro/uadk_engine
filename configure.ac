@@ -7,6 +7,7 @@ AC_CONFIG_HEADERS([config.h])
 
 AC_PROG_CC
 LT_INIT
+AC_SUBST([hardcode_into_libs], [no])
 
 AC_ARG_ENABLE(kae,
 	      AS_HELP_STRING([--enable-kae],[Enable kae support]))

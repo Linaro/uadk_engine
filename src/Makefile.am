@@ -18,6 +18,8 @@ uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
 uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
 uadk_engine_la_CFLAGS+=-DCRYPTO
+uadk_engine_la_CFLAGS+=-fPIC -fPIE -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+		       -O2 -ftrapv -Wl,-z,relro,-z,now -Wl,-s
 
 AUTOMAKE_OPTIONS = subdir-objects
 
