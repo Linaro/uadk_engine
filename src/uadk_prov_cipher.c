@@ -679,27 +679,28 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 		out += blksz;
 	}
 
-	if (nextblocks == 0)
-		goto out;
-
-	if (!priv->enc && priv->pad && nextblocks == inlen)
-		nextblocks -= blksz;
-
-	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
-	if (ret != 1) {
-		fprintf(stderr, "do hw ciphers failed.\n");
-		return ret;
+	if (nextblocks > 0) {
+		if (!priv->enc && priv->pad && nextblocks == inlen)
+			nextblocks -= blksz;
+		outlint += nextblocks;
 	}
 
-	outlint += nextblocks;
-	in += nextblocks;
-	inlen -= nextblocks;
+	if (nextblocks > 0) {
+		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
+		if (ret != 1) {
+			fprintf(stderr, "do hw ciphers failed.\n");
+			return ret;
+		}
+
+		in += nextblocks;
+		inlen -= nextblocks;
+	}
 
 	if (inlen != 0
 	    && !ossl_cipher_trailingdata(priv->buf, &priv->bufsz,
 					 blksz, &in, &inlen))
 		return 0;
-out:
+
 	*outl = outlint;
 	return inlen == 0;
 }
@@ -1125,6 +1126,8 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	if (ctx->sw_ctx == NULL)						\
 		fprintf(stderr, "EVP_CIPHER_CTX_new failed.\n");		\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
+	if (strcmp(#typ, "block") == 0) \
+		ctx->pad = 1;\
 	return ctx;								\
 }                                                                               \
 static OSSL_FUNC_cipher_get_params_fn uadk_##nm##_get_params;			\
