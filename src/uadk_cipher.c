@@ -39,6 +39,7 @@
 #define IV_LEN			16
 #define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
+#define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
 
 struct cipher_engine {
 	struct wd_ctx_config ctx_cfg;
@@ -74,8 +75,6 @@ struct cipher_info {
 	enum wd_cipher_mode mode;
 	__u32 out_bytes;
 };
-
-#define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
 
 static EVP_CIPHER *uadk_aes_128_cbc;
 static EVP_CIPHER *uadk_aes_192_cbc;
@@ -189,9 +188,9 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		return 0;
 	}
 
-	sw_cipher = sec_ciphers_get_cipher_sw_impl(EVP_CIPHER_CTX_nid(ctx));
+	nid = EVP_CIPHER_CTX_nid(ctx);
+	sw_cipher = sec_ciphers_get_cipher_sw_impl(nid);
 	if (unlikely(sw_cipher == NULL)) {
-		nid = EVP_CIPHER_CTX_nid(ctx);
 		fprintf(stderr, "get openssl software cipher failed, nid = %d.\n", nid);
 		return 0;
 	}
