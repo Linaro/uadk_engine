@@ -152,8 +152,12 @@ static int compute_hash(const char *in, size_t in_len,
 			char *out, size_t out_len, void *usr)
 {
 	const EVP_MD *digest = (const EVP_MD *)usr;
-	EVP_MD_CTX *hash = EVP_MD_CTX_new();
+	EVP_MD_CTX *hash;
 	int ret = 0;
+
+	hash = EVP_MD_CTX_new();
+	if (!hash)
+		return -1;
 
 	if (EVP_DigestInit(hash, digest) == 0 ||
 		EVP_DigestUpdate(hash, in, in_len) == 0 ||
