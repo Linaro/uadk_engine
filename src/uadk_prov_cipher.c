@@ -420,14 +420,13 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 		struct wd_ctx_nums *ctx_set_num;
 		struct wd_ctx_params cparams = {0};
 
-		/* 0: enc, 1: dec */
-		ctx_set_num = calloc(2, sizeof(*ctx_set_num));
+		ctx_set_num = calloc(1, sizeof(*ctx_set_num));
 		if (!ctx_set_num) {
 			fprintf(stderr, "failed to alloc ctx_set_size!\n");
 			return;
 		}
 
-		cparams.op_type_num = 2;
+		cparams.op_type_num = 1;
 		cparams.ctx_set_num = ctx_set_num;
 		cparams.bmp = numa_allocate_nodemask();
 		if (!cparams.bmp) {
@@ -440,8 +439,6 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 
 		ctx_set_num[0].sync_ctx_num = 2;
 		ctx_set_num[0].async_ctx_num = 2;
-		ctx_set_num[1].sync_ctx_num = 2;
-		ctx_set_num[1].async_ctx_num = 2;
 
 		ret = wd_cipher_init2_(priv->alg_name, 0, 0, &cparams);
 		numa_free_nodemask(cparams.bmp);
@@ -458,7 +455,8 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 	}
 	pthread_mutex_unlock(&cipher_mutex);
 
-	params.type = priv->req.op_type;
+	/* dec and enc use the same op */
+	params.type = 0;
 	/* Use the default numa parameters */
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
