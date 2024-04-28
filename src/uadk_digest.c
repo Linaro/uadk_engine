@@ -85,8 +85,13 @@ struct evp_md_ctx_st {
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 };
 
-struct digest_priv_ctx {
+struct digest_sess {
 	handle_t sess;
+	int refcnt;
+};
+
+struct digest_priv_ctx {
+	struct digest_sess *sess;
 	struct wd_digest_sess_setup setup;
 	struct wd_digest_req req;
 	unsigned char *data;
@@ -202,10 +207,11 @@ static int digest_soft_init(struct digest_priv_ctx *md_ctx)
 	int app_datasize;
 
 	/* Allocate a soft ctx for hardware engine */
-	if (md_ctx->soft_ctx == NULL)
+	if (md_ctx->soft_ctx == NULL) {
 		md_ctx->soft_ctx = EVP_MD_CTX_new();
 		if (md_ctx->soft_ctx == NULL)
 			return 0;
+	}
 
 	ctx = md_ctx->soft_ctx;
 
@@ -570,9 +576,13 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
 	if (!priv->sess) {
-		priv->sess = wd_digest_alloc_sess(&priv->setup);
-		if (unlikely(!priv->sess))
+		priv->sess = OPENSSL_malloc(sizeof(struct digest_sess));
+		priv->sess->sess = wd_digest_alloc_sess(&priv->setup);
+		if (unlikely(!priv->sess->sess)) {
+			OPENSSL_free(priv->sess);
 			return 0;
+		}
+		priv->sess->refcnt = 1;
 
 		priv->data = malloc(DIGEST_BLOCK_SIZE);
 		if (unlikely(!priv->data))
@@ -584,7 +594,8 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	return 1;
 
 out:
-	wd_digest_free_sess(priv->sess);
+	wd_digest_free_sess(priv->sess->sess);
+	OPENSSL_free(priv->sess);
 	priv->sess = 0;
 	return 0;
 }
@@ -651,7 +662,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		else if (priv->state == SEC_DIGEST_FIRST_UPDATING)
 			priv->state = SEC_DIGEST_DOING;
 
-		ret = wd_do_digest_sync(priv->sess, &priv->req);
+		ret = wd_do_digest_sync(priv->sess->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 			goto do_soft_digest;
@@ -741,7 +752,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 		priv->state == SEC_DIGEST_INIT)
 		return 0;
 
-	ret = wd_do_digest_sync(priv->sess, &priv->req);
+	ret = wd_do_digest_sync(priv->sess->sess, &priv->req);
 	if (ret) {
 		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 		return 0;
@@ -771,7 +782,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	op->idx = idx;
 	cnt = 0;
 	do {
-		ret = wd_do_digest_async(priv->sess, &priv->req);
+		ret = wd_do_digest_async(priv->sess->sess, &priv->req);
 		if (unlikely(ret < 0)) {
 			if (unlikely(ret != -EBUSY))
 				fprintf(stderr, "do digest async operation failed.\n");
@@ -874,8 +885,11 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 	}
 
 	if (priv->sess) {
-		wd_digest_free_sess(priv->sess);
-		priv->sess = 0;
+		if (!priv->sess->refcnt--) {
+			wd_digest_free_sess(priv->sess->sess);
+			OPENSSL_free(priv->sess);
+			priv->sess = 0;
+		}
 	}
 
 	if (priv->soft_ctx)
@@ -890,7 +904,6 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(from);
 	struct digest_priv_ctx *t =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(to);
-	struct sched_params params = {0};
 	int ret;
 
 	if (!t)
@@ -902,17 +915,10 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	}
 
 	if (t->sess) {
-		params.numa_id = -1;
-		t->setup.sched_param = &params;
-		t->sess = wd_digest_alloc_sess(&t->setup);
-		if (!t->sess) {
-			fprintf(stderr, "failed to alloc session for digest ctx copy.\n");
-			return 0;
-		}
-
+		t->sess->refcnt++;
 		t->data = malloc(DIGEST_BLOCK_SIZE);
 		if (!t->data)
-			goto free_sess;
+			return 0;
 
 		if (t->state != SEC_DIGEST_INIT) {
 			t->is_stream_copy = true;
@@ -940,11 +946,6 @@ free_data:
 	if (t->data) {
 		free(t->data);
 		t->data = NULL;
-	}
-free_sess:
-	if (t->sess) {
-		wd_digest_free_sess(t->sess);
-		t->sess = 0;
 	}
 	return 0;
 }
