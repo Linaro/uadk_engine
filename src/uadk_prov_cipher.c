@@ -286,6 +286,7 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 
 	if (enable_sw_offload)
 		uadk_prov_cipher_sw_init(priv, key, iv);
+
 	return 1;
 }
 
@@ -639,19 +640,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	    (priv->switch_flag == UADK_DO_SOFT ||
 	    (priv->switch_flag != UADK_DO_HW &&
 	     inlen <= priv->switch_threshold))) {
-		/*
-		 * Using soft only if enable_sw_offload, which is set in conf file,
-		 * then sw_cipher is initialzied
-		 * 1. small packets
-		 * 2. already choose DO_SOFT, can be hw fail case or following sw case
-		 */
-		ret = uadk_prov_cipher_soft_work(priv, out, &outlint, in, inlen);
-		if (ret) {
-			*outl = outlint;
-			return 1;
-		}
-
-		fprintf(stderr, "do soft ciphers failed.\n");
+		goto do_soft;
 	}
 
 	if (priv->bufsz != 0)
@@ -669,6 +658,8 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
 		if (ret != 1) {
 			fprintf(stderr, "do hw ciphers failed.\n");
+			if (priv->sw_cipher)
+				goto do_soft;
 			return ret;
 		}
 
@@ -687,6 +678,8 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
 		if (ret != 1) {
 			fprintf(stderr, "do hw ciphers failed.\n");
+			if (priv->sw_cipher)
+				goto do_soft;
 			return ret;
 		}
 
@@ -701,6 +694,22 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 
 	*outl = outlint;
 	return inlen == 0;
+
+do_soft:
+	/*
+	 * Using soft only if enable_sw_offload, which is set in conf file,
+	 * then sw_cipher is initialzied
+	 * 1. small packets
+	 * 2. already choose DO_SOFT, can be hw fail case or following sw case
+	 */
+	ret = uadk_prov_cipher_soft_work(priv, out, &outlint, in, inlen);
+	if (ret) {
+		*outl = outlint;
+		return 1;
+	}
+
+	fprintf(stderr, "do soft ciphers failed.\n");
+	return 0;
 }
 
 void uadk_prov_destroy_cipher(void)
@@ -756,12 +765,7 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 
 	if (priv->sw_cipher &&
 	    priv->switch_flag == UADK_DO_SOFT) {
-		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
-			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
-			return 0;
-		}
-		*outl = sw_final_len;
-		return 1;
+		goto do_soft;
 	}
 
 	if (priv->enc) {
@@ -783,6 +787,8 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
 		if (ret != 1) {
 			fprintf(stderr, "do hw ciphers failed.\n");
+			if (priv->sw_cipher)
+				goto do_soft;
 			return ret;
 		}
 		*outl = blksz;
@@ -802,6 +808,8 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	ret = uadk_prov_hw_cipher(priv, priv->buf, outl, outsize, priv->buf, blksz);
 	if (ret != 1) {
 		fprintf(stderr, "do hw ciphers failed.\n");
+		if (priv->sw_cipher)
+			goto do_soft;
 		return ret;
 	}
 
@@ -819,6 +827,14 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	*outl = priv->bufsz;
 	priv->bufsz = 0;
 
+	return 1;
+
+do_soft:
+	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
+		fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
+		return 0;
+	}
+	*outl = sw_final_len;
 	return 1;
 }
 
@@ -867,24 +883,31 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 	    (priv->switch_flag == UADK_DO_SOFT ||
 	    (priv->switch_flag != UADK_DO_HW &&
 	     inl <= priv->switch_threshold))) {
-		int len = 0;
-
-		/* have isseu if both using hw and soft partly */
-		ret = uadk_prov_cipher_soft_work(priv, out, &len, in, inl);
-		if (ret) {
-			*outl = len;
-			return 1;
-		}
-
-		fprintf(stderr, "do soft ciphers failed.\n");
+		goto do_soft;
 	}
 
 	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, inl);
-	if (ret != 1)
+	if (ret != 1) {
+		if (priv->sw_cipher)
+			goto do_soft;
 		return ret;
+	}
 
 	*outl = inl;
 	return 1;
+
+do_soft:
+	int len = 0;
+
+	/* have isseu if both using hw and soft partly */
+	ret = uadk_prov_cipher_soft_work(priv, out, &len, in, inl);
+	if (ret) {
+		*outl = len;
+		return 1;
+	}
+
+	fprintf(stderr, "do soft ciphers failed.\n");
+	return 0;
 }
 
 static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
