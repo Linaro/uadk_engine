@@ -202,10 +202,11 @@ static int digest_soft_init(struct digest_priv_ctx *md_ctx)
 	int app_datasize;
 
 	/* Allocate a soft ctx for hardware engine */
-	if (md_ctx->soft_ctx == NULL)
+	if (md_ctx->soft_ctx == NULL) {
 		md_ctx->soft_ctx = EVP_MD_CTX_new();
 		if (md_ctx->soft_ctx == NULL)
 			return 0;
+	}
 
 	ctx = md_ctx->soft_ctx;
 
