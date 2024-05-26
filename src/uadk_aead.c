@@ -46,7 +46,6 @@
 
 struct aead_priv_ctx {
 	handle_t sess;
-	struct wd_aead_sess_setup setup;
 	struct wd_aead_req req;
 	unsigned char *data;
 	unsigned char iv[AES_GCM_BLOCK_SIZE];
@@ -262,24 +261,17 @@ static int uadk_e_init_aead_cipher(void)
 	return 1;
 }
 
-static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey, int ckey_len)
+static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey,
+			   int ckey_len, struct wd_aead_sess_setup *setup)
 {
-	struct sched_params params = {0};
 	int ret;
 
 	ret = uadk_e_init_aead_cipher();
 	if (!ret)
 		return 0;
 
-	params.type = priv->req.op_type;
-	ret = uadk_e_is_env_enabled("aead");
-	if (ret)
-		params.type = 0;
-
-	params.numa_id = g_aead_engine.numa_id;
-	priv->setup.sched_param = &params;
 	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(&priv->setup);
+		priv->sess = wd_aead_alloc_sess(setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk engine failed to alloc aead session!\n");
 			return 0;
@@ -316,6 +308,8 @@ out:
 static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 			       const unsigned char *iv, int enc)
 {
+	struct wd_aead_sess_setup setup;
+	struct sched_params params = {0};
 	struct aead_priv_ctx *priv;
 	int ret, ckey_len;
 
@@ -331,10 +325,10 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	if (iv)
 		memcpy(priv->iv, iv, AES_GCM_IV_LEN);
 
-	priv->setup.calg = WD_CIPHER_AES;
-	priv->setup.cmode = WD_CIPHER_GCM;
-	priv->setup.dalg = 0;
-	priv->setup.dmode = 0;
+	setup.calg = WD_CIPHER_AES;
+	setup.cmode = WD_CIPHER_GCM;
+	setup.dalg = 0;
+	setup.dmode = 0;
 
 	priv->req.assoc_bytes = 0;
 	priv->req.out_bytes = 0;
@@ -354,8 +348,15 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	else
 		priv->req.op_type = WD_CIPHER_DECRYPTION_DIGEST;
 
+	params.type = priv->req.op_type;
+	ret = uadk_e_is_env_enabled("aead");
+	if (ret)
+		params.type = 0;
+	params.numa_id = g_aead_engine.numa_id;
+	setup.sched_param = &params;
+
 	ckey_len = EVP_CIPHER_CTX_key_length(ctx);
-	ret = uadk_e_ctx_init(priv, ckey, ckey_len);
+	ret = uadk_e_ctx_init(priv, ckey, ckey_len, &setup);
 	if (!ret)
 		return 0;
 
