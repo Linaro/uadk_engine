@@ -59,6 +59,8 @@
 #define PRIME_CHECK_BIT_NUM		4
 
 static RSA_METHOD *rsa_hw_meth;
+static EVP_PKEY_METHOD *g_hpre_pkey_meth;
+static const int RSAPKEYMETH_IDX;
 
 struct bignum_st {
 	BN_ULONG *d;
@@ -1870,12 +1872,30 @@ static void uadk_e_delete_rsa_meth(void)
 	}
 }
 
+static EVP_PKEY_METHOD *uadk_rsa_get_pkey_meth(void)
+{
+	const EVP_PKEY_METHOD *def_rsa = EVP_PKEY_meth_get0(RSAPKEYMETH_IDX);
+
+	if (g_hpre_pkey_meth == NULL) {
+		g_hpre_pkey_meth = EVP_PKEY_meth_new(EVP_PKEY_RSA, 0);
+		if (g_hpre_pkey_meth == NULL) {
+			fprintf(stderr, "failed to new pkey meth");
+			return NULL;
+		}
+
+		EVP_PKEY_meth_copy(g_hpre_pkey_meth, def_rsa);
+	}
+
+	return g_hpre_pkey_meth;
+}
+
 /**
  * uadk_e_bind_rsa() - Set the access to get rsa methods to the ENGINE.
  * @e: uadk engine
  */
 int uadk_e_bind_rsa(ENGINE *e)
 {
+	(void)uadk_rsa_get_pkey_meth();
 	return ENGINE_set_RSA(e, uadk_e_get_rsa_methods());
 }
 
