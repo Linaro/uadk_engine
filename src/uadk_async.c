@@ -310,7 +310,7 @@ int async_wake_job(ASYNC_JOB *job)
 
 void async_register_poll_fn(int type, async_recv_t func)
 {
-	if (type < 0 || type >= ASYNC_TASK_MAX) {
+	if (type < ASYNC_TASK_CIPHER || type >= ASYNC_TASK_MAX) {
 		fprintf(stderr, "alg type is error, type= %d.\n", type);
 		return;
 	}
