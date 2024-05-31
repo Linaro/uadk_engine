@@ -651,24 +651,31 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 
 static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 {
-	struct uadk_e_cb_info cb_param;
-	int idx, ret, cnt;
+	struct uadk_e_cb_info *cb_param;
+	int ret = 0;
+	int cnt = 0;
+	int idx;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "switch to soft cipher.\n");
-		return 0;
+		return ret;
 	}
 
-	cb_param.op = op;
-	cb_param.priv = priv;
+	cb_param = malloc(sizeof(struct uadk_e_cb_info));
+	if (!cb_param) {
+		fprintf(stderr, "failed to alloc cb_param.\n");
+		return ret;
+	}
+
+	cb_param->op = op;
+	cb_param->priv = priv;
 	priv->req.cb = uadk_e_cipher_cb;
-	priv->req.cb_param = &cb_param;
+	priv->req.cb_param = cb_param;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)
-		return 0;
+		goto free_cb_param;
 
-	cnt = 0;
 	op->idx = idx;
 	do {
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
@@ -681,14 +688,17 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 				continue;
 
 			async_free_poll_task(op->idx, 0);
-			return 0;
+			ret = 0;
+			goto free_cb_param;
 		}
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
-	if (!ret)
-		return 0;
-	return 1;
+
+free_cb_param:
+	free(cb_param);
+	priv->req.cb_param = NULL;
+	return ret;
 }
 
 static int uadk_e_cipher_ctrl(EVP_CIPHER_CTX *ctx, int type, int numa_node, void *ptr)
@@ -793,13 +803,14 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv->req.out_buf_bytes = inlen;
 
 	uadk_e_ctx_init(ctx, priv);
+
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
 		fprintf(stderr, "failed to setup async event notification.\n");
 		return 0;
 	}
 
-	if (op.job == NULL) {
+	if (!op.job) {
 		/* Synchronous, only the synchronous mode supports soft computing */
 		ret = do_cipher_sync(priv);
 		if (!ret)
@@ -820,12 +831,13 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	uadk_cipher_update_priv_ctx(priv);
 
 	return 1;
+
 sync_err:
 	ret = uadk_e_cipher_soft_work(ctx, out, in, inlen);
 	if (ret != 1)
 		fprintf(stderr, "do soft ciphers failed.\n");
 out_notify:
-	async_clear_async_event_notification();
+	(void)async_clear_async_event_notification();
 	return ret;
 }
 
