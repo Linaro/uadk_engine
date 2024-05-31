@@ -51,6 +51,7 @@ struct aead_priv_ctx {
 	unsigned char iv[AES_GCM_BLOCK_SIZE];
 	unsigned char mac[AES_GCM_TAG_LEN];
 	int taglen;
+	bool is_req_tag_set;
 };
 
 struct aead_engine {
@@ -341,6 +342,7 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	priv->req.mac = priv->mac;
 	priv->req.mac_bytes = AES_GCM_TAG_LEN;
 	priv->taglen = 0;
+	priv->is_req_tag_set = false;
 	priv->data = NULL;
 
 	if (enc)
@@ -621,22 +623,11 @@ free_cb_param:
 	return ret;
 }
 
-static int uadk_e_do_aes_gcm_update(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *priv,
-				    unsigned char *out, const unsigned char *in, size_t inlen)
+static int uadk_e_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
+				    const unsigned char *in, size_t inlen)
 {
-	unsigned char *ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
 	struct async_op *op;
-	int ret, enc;
-
-	enc = EVP_CIPHER_CTX_encrypting(ctx);
-	if (!enc) {
-		if (priv->taglen == AES_GCM_TAG_LEN) {
-			memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
-		} else {
-			fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
-			return RET_FAIL;
-		}
-	}
+	int ret;
 
 	if (ASYNC_get_current_job()) {
 		op = malloc(sizeof(struct async_op));
@@ -685,6 +676,8 @@ static int uadk_e_do_aes_gcm_final(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *pr
 out:
 	if (enc)
 		memcpy(ctx_buf, priv->req.mac, AES_GCM_TAG_LEN);
+	else
+		priv->is_req_tag_set = false;
 
 	return 0;
 }
@@ -693,6 +686,8 @@ static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			     const unsigned char *in, size_t inlen)
 {
 	struct aead_priv_ctx *priv;
+	unsigned char *ctx_buf;
+	int enc;
 
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(!priv)) {
@@ -701,10 +696,22 @@ static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	}
 
 	if (in) {
+		enc = EVP_CIPHER_CTX_encrypting(ctx);
+		if (!enc && !priv->is_req_tag_set) {
+			if (likely(priv->taglen == AES_GCM_TAG_LEN)) {
+				ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
+				memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
+				priv->is_req_tag_set = true;
+			} else {
+				fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
+				return RET_FAIL;
+			}
+		}
+
 		if (out == NULL)
 			return uadk_e_do_aes_gcm_first(priv, out, in, inlen);
 
-		return uadk_e_do_aes_gcm_update(ctx, priv, out, in, inlen);
+		return uadk_e_do_aes_gcm_update(priv, out, in, inlen);
 	}
 
 	return uadk_e_do_aes_gcm_final(ctx, priv, out, NULL, 0);
