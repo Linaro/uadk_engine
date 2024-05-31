@@ -298,62 +298,93 @@ clear_status:
 	ecc_res.status = UADK_UNINIT;
 }
 
+static int uadk_ecc_do_sync(handle_t sess, struct wd_ecc_req *req)
+{
+	int ret;
+
+	ret = wd_do_ecc_sync(sess, req);
+	if (ret < 0) {
+		if (ret == -WD_HW_EACCESS)
+			uadk_e_ecc_set_status();
+		return UADK_E_FAIL;
+	}
+
+	return 1;
+}
+
+static int uadk_ecc_do_async(handle_t sess, struct wd_ecc_req *req,
+			     struct async_op *op, void *usr)
+{
+	struct uadk_e_cb_info *cb_param;
+	int ret = 0;
+	int cnt = 0;
+	int idx;
+
+	cb_param = malloc(sizeof(struct uadk_e_cb_info));
+	if (!cb_param) {
+		fprintf(stderr, "failed to alloc cb_param.\n");
+		return ret;
+	}
+
+	cb_param->op = op;
+	cb_param->priv = req;
+	req->cb_param = cb_param;
+	req->cb = uadk_e_ecc_cb;
+	req->status = -1;
+	ret = async_get_free_task(&idx);
+	if (!ret)
+		goto free_cb_param;
+
+	op->idx = idx;
+	do {
+		ret = wd_do_ecc_async(sess, req);
+		if (unlikely(ret < 0)) {
+			if (unlikely(ret == -WD_HW_EACCESS))
+				uadk_e_ecc_set_status();
+			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+				fprintf(stderr, "do ecc async operation timeout.\n");
+			else
+				continue;
+
+			async_free_poll_task(op->idx, 0);
+			ret = 0;
+			goto free_cb_param;
+		}
+	} while (ret == -EBUSY);
+
+	ret = async_pause_job((void *)usr, op, ASYNC_TASK_ECC);
+	if (!ret)
+		goto free_cb_param;
+
+	if (req->status) {
+		ret = 0;
+		goto free_cb_param;
+	}
+
+free_cb_param:
+	free(cb_param);
+	req->cb_param = NULL;
+	return ret;
+}
+
 int uadk_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 {
-	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int idx, ret, cnt;
+	int ret;
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
 		fprintf(stderr, "failed to setup async event notification.\n");
-		return 0;
+		return ret;
 	}
 
-	if (op.job != NULL) {
-		cb_param.op = &op;
-		cb_param.priv = req;
-		req->cb_param = &cb_param;
-		req->cb = uadk_e_ecc_cb;
-		req->status = -1;
-		ret = async_get_free_task(&idx);
-		if (!ret)
-			goto err;
+	if (!op.job)
+		return uadk_ecc_do_sync(sess, req);
 
-		op.idx = idx;
-		cnt = 0;
-		do {
-			ret = wd_do_ecc_async(sess, req);
-			if (unlikely(ret < 0)) {
-				if (unlikely(ret == -WD_HW_EACCESS))
-					uadk_e_ecc_set_status();
-				else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
-					fprintf(stderr, "do ecc async operation timeout.\n");
-				else
-					continue;
-
-				async_free_poll_task(op.idx, 0);
-				goto err;
-			}
-		} while (ret == -EBUSY);
-
-		ret = async_pause_job((void *)usr, &op, ASYNC_TASK_ECC);
-		if (!ret)
-			goto err;
-		if (req->status)
-			return 0;
-	} else {
-		ret = wd_do_ecc_sync(sess, req);
-		if (ret < 0) {
-			if (ret == -WD_HW_EACCESS)
-				uadk_e_ecc_set_status();
-			return 0;
-		}
-	}
-	return 1;
-err:
+	ret = uadk_ecc_do_async(sess, req, &op, usr);
 	(void)async_clear_async_event_notification();
-	return 0;
+
+	return ret;
 }
 
 bool uadk_is_all_zero(const unsigned char *data, size_t dlen)
