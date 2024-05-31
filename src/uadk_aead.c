@@ -27,6 +27,8 @@
 #include "uadk_async.h"
 #include "uadk_utils.h"
 
+#define UADK_E_SUCCESS		1
+#define UADK_E_FAIL		0
 #define RET_FAIL		(-1)
 #define STATE_FAIL		0xFFFF
 #define CTX_SYNC_ENC		0
@@ -116,7 +118,7 @@ static int uadk_e_aead_poll(void *ctx)
 		else if (ret == -EAGAIN)
 			rx_cnt++;
 		else
-			return RET_FAIL;
+			return ret;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
@@ -243,14 +245,14 @@ static int uadk_e_init_aead_cipher(void)
 		pthread_spin_lock(&g_aead_engine.lock);
 		if (g_aead_engine.pid == getpid()) {
 			pthread_spin_unlock(&g_aead_engine.lock);
-			return 1;
+			return UADK_E_SUCCESS;
 		}
 
 		dev = wd_get_accel_dev("aead");
 		if (!dev) {
 			pthread_spin_unlock(&g_aead_engine.lock);
 			fprintf(stderr, "failed to get device for aead.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		ret = uadk_e_wd_aead_cipher_init(dev);
@@ -258,7 +260,7 @@ static int uadk_e_init_aead_cipher(void)
 			pthread_spin_unlock(&g_aead_engine.lock);
 			fprintf(stderr, "failed to initiate aead cipher.\n");
 			free(dev);
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		g_aead_engine.pid = getpid();
@@ -266,7 +268,7 @@ static int uadk_e_init_aead_cipher(void)
 		free(dev);
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey,
@@ -276,13 +278,13 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 
 	ret = uadk_e_init_aead_cipher();
 	if (!ret)
-		return 0;
+		return UADK_E_FAIL;
 
 	if (!priv->sess) {
 		priv->sess = wd_aead_alloc_sess(setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk engine failed to alloc aead session!\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 		ret = wd_aead_set_authsize(priv->sess, AES_GCM_TAG_LEN);
 		if (ret < 0) {
@@ -304,11 +306,11 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 		}
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 out:
 	wd_aead_free_sess(priv->sess);
 	priv->sess = 0;
-	return 0;
+	return UADK_E_FAIL;
 }
 
 static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
@@ -322,11 +324,11 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (!priv) {
 		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (unlikely(!ckey))
-		return 1;
+		return UADK_E_SUCCESS;
 
 	if (iv)
 		memcpy(priv->iv, iv, AES_GCM_IV_LEN);
@@ -364,11 +366,10 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	setup.sched_param = &params;
 
 	ckey_len = EVP_CIPHER_CTX_key_length(ctx);
-	ret = uadk_e_ctx_init(priv, ckey, ckey_len, &setup);
-	if (!ret)
-		return 0;
 
-	return 1;
+	ret = uadk_e_ctx_init(priv, ckey, ckey_len, &setup);
+
+	return ret;
 }
 
 static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)
@@ -378,7 +379,7 @@ static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (!priv) {
 		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (priv->sess) {
@@ -391,7 +392,7 @@ static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)
 		priv->data = NULL;
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr)
@@ -403,54 +404,56 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (!priv) {
 		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	switch (type) {
 	case EVP_CTRL_INIT:
 		priv->req.iv_bytes = 0;
-		return 1;
+		return UADK_E_SUCCESS;
 # if (OPENSSL_VERSION_NUMBER >= 0x1010106fL)
 	case EVP_CTRL_GET_IVLEN:
+		if (!ptr)
+			return UADK_E_FAIL;
 		*(int *)ptr = priv->req.iv_bytes;
-		return 1;
+		return UADK_E_SUCCESS;
 #endif
 	case EVP_CTRL_GCM_SET_IVLEN:
 		if (arg != AES_GCM_IV_LEN) {
 			fprintf(stderr, "invalid: aead gcm iv length only support 12B.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
-		return 1;
+		return UADK_E_SUCCESS;
 	case EVP_CTRL_GCM_GET_TAG:
 		if (arg <= 0 || arg > AES_GCM_TAG_LEN || !enc) {
 			fprintf(stderr, "cannot get tag when decrypt or arg is invalid.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
-		if (ctx_buf == NULL || ptr == NULL) {
+		if (!ctx_buf || !ptr) {
 			fprintf(stderr, "failed to get tag, ctx memory pointer is invalid.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		memcpy(ptr, ctx_buf, arg);
-		return 1;
+		return UADK_E_SUCCESS;
 	case EVP_CTRL_GCM_SET_TAG:
 		if (arg <= 0 || arg > AES_GCM_TAG_LEN || enc) {
 			fprintf(stderr, "cannot set tag when encrypt or arg is invalid.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
-		if (ctx_buf == NULL || ptr == NULL) {
+		if (!ctx_buf || !ptr) {
 			fprintf(stderr, "failed to set tag, ctx memory pointer is invalid.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		memcpy(ctx_buf, ptr, arg);
 		priv->taglen = arg;
-		return 1;
+		return UADK_E_SUCCESS;
 	default:
 		fprintf(stderr, "unsupported ctrl type: %d\n", type);
-		return 0;
+		return UADK_E_FAIL;
 	}
 }
 
@@ -484,21 +487,20 @@ static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *ou
 	/* Asynchronous jobs use the block mode. */
 	if (priv->mode == ASYNC_STREAM) {
 		memcpy(priv->data, in, inlen);
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	ret = do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
 	if (unlikely(ret < 0))
 		return RET_FAIL;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
 			const unsigned char *in, size_t inlen)
 {
-	size_t nblocks, nbytes;
-	__u8 tail;
+	size_t nblocks, nbytes, tail;
 	int ret;
 
 	/* Due to a hardware limitation, zero-length aad using block mode. */
@@ -575,7 +577,7 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 
 	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
 		fprintf(stderr, "aead input data length is too long!\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	do_aead_async_prepare(priv, out, in, inlen);
@@ -583,7 +585,7 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
 	if (unlikely(!cb_param)) {
 		fprintf(stderr, "failed to alloc cb_param.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	cb_param->op = op;
@@ -608,7 +610,7 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 				continue;
 
 			async_free_poll_task(op->idx, 0);
-			ret = 0;
+			ret = UADK_E_FAIL;
 			goto free_cb_param;
 		}
 	} while (ret == -EBUSY);
@@ -617,7 +619,7 @@ static int do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 	if (unlikely(!ret || priv->req.state)) {
 		fprintf(stderr, "do aead async job failed, ret: %d, state: %u!\n",
 			ret, priv->req.state);
-		ret = 0;
+		ret = UADK_E_FAIL;
 		goto free_cb_param;
 	}
 
@@ -713,7 +715,7 @@ static int do_aes_gcm_prepare(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *priv)
 		}
 	}
 
-	return 0;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
@@ -725,15 +727,15 @@ static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(!priv)) {
 		fprintf(stderr, "invalid: aead priv ctx is NULL.\n");
-		return 0;
+		return RET_FAIL;
 	}
 
 	if (in) {
 		ret = do_aes_gcm_prepare(ctx, priv);
-		if (unlikely(ret))
-			return ret;
+		if (unlikely(ret < 0))
+			return RET_FAIL;
 
-		if (out == NULL)
+		if (!out)
 			return uadk_e_do_aes_gcm_first(priv, out, in, inlen);
 
 		return uadk_e_do_aes_gcm_update(priv, out, in, inlen);
