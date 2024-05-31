@@ -42,7 +42,7 @@ struct uadk_e_cb_info {
 typedef int (*async_recv_t)(void *ctx);
 
 enum task_type {
-	ASYNC_TASK_CIPHER,
+	ASYNC_TASK_CIPHER = 0x1,
 	ASYNC_TASK_DIGEST,
 	ASYNC_TASK_AEAD,
 	ASYNC_TASK_RSA,
