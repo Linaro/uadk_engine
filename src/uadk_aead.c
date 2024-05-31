@@ -446,6 +446,26 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 	}
 }
 
+static int do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
+			      unsigned char *in, size_t inlen, enum wd_aead_msg_state state)
+{
+	int ret;
+
+	priv->req.msg_state = state;
+	priv->req.src = (__u8 *)in;
+	priv->req.dst = out;
+	priv->req.in_bytes = inlen;
+	priv->req.state = 0;
+	ret = wd_do_aead_sync(priv->sess, &priv->req);
+	if (unlikely(ret < 0 || priv->req.state)) {
+		fprintf(stderr, "do aead task failed, msg state: %d, ret: %d, state: %u!\n",
+			state, ret, priv->req.state);
+		return RET_FAIL;
+	}
+
+	return inlen;
+}
+
 static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
 				   const unsigned char *in, size_t inlen)
 {
@@ -459,14 +479,9 @@ static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *ou
 		return 1;
 	}
 
-	priv->req.src = (unsigned char *)in;
-	priv->req.msg_state = AEAD_MSG_FIRST;
-
-	ret = wd_do_aead_sync(priv->sess, &priv->req);
-	if (unlikely(ret < 0)) {
-		fprintf(stderr, "do aead first operation failed, ret: %d!\n", ret);
+	ret = do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
+	if (unlikely(ret < 0))
 		return RET_FAIL;
-	}
 
 	return 1;
 }
@@ -474,23 +489,29 @@ static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *ou
 static int do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
 			const unsigned char *in, size_t inlen)
 {
+	size_t nblocks, nbytes;
+	__u8 tail;
 	int ret;
 
 	/* Due to a hardware limitation, zero-length aad using block mode. */
-	if (priv->req.assoc_bytes)
-		priv->req.msg_state = AEAD_MSG_MIDDLE;
-	else
-		priv->req.msg_state = AEAD_MSG_BLOCK;
+	if (!priv->req.assoc_bytes)
+		return do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_BLOCK);
 
-	priv->req.src = (unsigned char *)in;
-	priv->req.dst = out;
-	priv->req.in_bytes = inlen;
-	priv->req.state = 0;
-	ret = wd_do_aead_sync(priv->sess, &priv->req);
-	if (ret < 0 || priv->req.state) {
-		fprintf(stderr, "do aead update operation failed, ret: %d, state: %u!\n",
-			ret, priv->req.state);
-		return RET_FAIL;
+	tail = inlen % AES_BLOCK_SIZE;
+	nblocks = inlen / AES_BLOCK_SIZE;
+	nbytes = inlen - tail;
+
+	/* If the data length is not 16-byte aligned, it is split according to the protocol. */
+	if (nblocks) {
+		ret = do_aead_sync_inner(priv, out, in, nbytes, AEAD_MSG_MIDDLE);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (tail) {
+		ret = do_aead_sync_inner(priv, out + nbytes, in + nbytes, tail, AEAD_MSG_END);
+		if (ret < 0)
+			return ret;
 	}
 
 	return inlen;
@@ -653,20 +674,13 @@ static int uadk_e_do_aes_gcm_final(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *pr
 
 	enc = EVP_CIPHER_CTX_encrypting(ctx);
 
-	if (ASYNC_get_current_job() || !priv->req.assoc_bytes)
+	if (ASYNC_get_current_job() || !priv->req.assoc_bytes ||
+	    priv->req.msg_state == AEAD_MSG_END)
 		goto out;
 
-	priv->req.msg_state = AEAD_MSG_END;
-	priv->req.src = NULL;
-	priv->req.in_bytes = 0;
-	priv->req.dst = out;
-	priv->req.state = 0;
-	ret = wd_do_aead_sync(priv->sess, &priv->req);
-	if (ret < 0 || priv->req.state) {
-		fprintf(stderr, "do aead final operation failed, ret: %d, state: %u!\n",
-			ret, priv->req.state);
+	ret = do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_END);
+	if (unlikely(ret < 0))
 		return RET_FAIL;
-	}
 
 out:
 	if (enc)
