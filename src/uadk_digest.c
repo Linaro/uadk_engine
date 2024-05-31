@@ -767,25 +767,33 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 
 static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 {
-	struct uadk_e_cb_info cb_param;
-	int idx, ret, cnt;
+	struct uadk_e_cb_info *cb_param;
+	int ret = 0;
+	int cnt = 0;
+	int idx;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "async cipher init failed.\n");
-		return 0;
+		return ret;
 	}
 
-	cb_param.op = op;
-	cb_param.priv = priv;
+	cb_param = malloc(sizeof(struct uadk_e_cb_info));
+	if (!cb_param) {
+		fprintf(stderr, "failed to alloc cb_param.\n");
+		return ret;
+	}
+
+	cb_param->op = op;
+	cb_param->priv = priv;
 	priv->req.cb = uadk_e_digest_cb;
-	priv->req.cb_param = &cb_param;
+	priv->req.cb_param = cb_param;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)
-		return 0;
+		goto free_cb_param;
 
 	op->idx = idx;
-	cnt = 0;
+
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (unlikely(ret < 0)) {
@@ -797,14 +805,17 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 				continue;
 
 			async_free_poll_task(op->idx, 0);
-			return 0;
+			ret = 0;
+			goto free_cb_param;
 		}
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
-	if (!ret)
-		return 0;
-	return 1;
+
+free_cb_param:
+	free(cb_param);
+	priv->req.cb_param = NULL;
+	return ret;
 }
 
 static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
@@ -871,7 +882,7 @@ sync_err:
 		fprintf(stderr, "do sec digest stream mode failed.\n");
 	}
 clear:
-	async_clear_async_event_notification();
+	(void)async_clear_async_event_notification();
 	free(op);
 	return ret;
 }
