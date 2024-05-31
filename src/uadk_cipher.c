@@ -636,13 +636,6 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 		return 0;
 	}
 
-	/*
-	 * If the length of the input data does not reach to hardware computing threshold,
-	 * directly switch to soft cipher.
-	 */
-	if (priv->req.in_bytes <= priv->switch_threshold)
-		return 0;
-
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
 	if (ret)
 		return 0;
@@ -802,13 +795,22 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
-	uadk_e_ctx_init(ctx, priv);
-
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
 		fprintf(stderr, "failed to setup async event notification.\n");
 		return 0;
 	}
+
+	/*
+	 * If the length of the input data does not reach to hardware computing threshold,
+	 * directly switch to soft cipher.
+	 */
+	if (priv->req.in_bytes <= priv->switch_threshold) {
+		ret = 0;
+		goto sync_err;
+	}
+
+	uadk_e_ctx_init(ctx, priv);
 
 	if (!op.job) {
 		/* Synchronous, only the synchronous mode supports soft computing */
@@ -816,14 +818,6 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		if (!ret)
 			goto sync_err;
 	} else {
-		/*
-		 * If the length of the input data
-		 * does not reach to hardware computing threshold,
-		 * directly switch to soft cipher.
-		 */
-		if (priv->req.in_bytes <= priv->switch_threshold)
-			goto sync_err;
-
 		ret = do_cipher_async(priv, &op);
 		if (!ret)
 			goto out_notify;
