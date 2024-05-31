@@ -458,7 +458,7 @@ static int uadk_e_aes_gcm_set_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void 
 }
 
 static int do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
-			      unsigned char *in, size_t inlen, enum wd_aead_msg_state state)
+			      const unsigned char *in, size_t inlen, enum wd_aead_msg_state state)
 {
 	int ret;
 
