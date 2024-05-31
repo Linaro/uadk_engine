@@ -631,11 +631,6 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 {
 	int ret;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "switch to soft cipher.\n");
-		return 0;
-	}
-
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
 	if (ret)
 		return 0;
@@ -648,11 +643,6 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	int ret = 0;
 	int cnt = 0;
 	int idx;
-
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "switch to soft cipher.\n");
-		return ret;
-	}
 
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
 	if (!cb_param) {
@@ -795,28 +785,29 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
-	ret = async_setup_async_event_notification(&op);
-	if (!ret) {
-		fprintf(stderr, "failed to setup async event notification.\n");
-		return 0;
-	}
-
 	/*
 	 * If the length of the input data does not reach to hardware computing threshold,
 	 * directly switch to soft cipher.
 	 */
-	if (priv->req.in_bytes <= priv->switch_threshold) {
-		ret = 0;
-		goto sync_err;
-	}
+	if (priv->req.in_bytes <= priv->switch_threshold)
+		goto out_soft;
 
 	uadk_e_ctx_init(ctx, priv);
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		fprintf(stderr, "switch to soft cipher.\n");
+		goto out_soft;
+	}
+
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		goto out_soft;
+	}
 
 	if (!op.job) {
-		/* Synchronous, only the synchronous mode supports soft computing */
 		ret = do_cipher_sync(priv);
 		if (!ret)
-			goto sync_err;
+			goto out_notify;
 	} else {
 		ret = do_cipher_async(priv, &op);
 		if (!ret)
@@ -826,12 +817,12 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 	return 1;
 
-sync_err:
+out_notify:
+	(void)async_clear_async_event_notification();
+out_soft:
 	ret = uadk_e_cipher_soft_work(ctx, out, in, inlen);
 	if (ret != 1)
 		fprintf(stderr, "do soft ciphers failed.\n");
-out_notify:
-	(void)async_clear_async_event_notification();
 	return ret;
 }
 
