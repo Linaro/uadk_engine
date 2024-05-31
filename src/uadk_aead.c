@@ -44,6 +44,12 @@
 /* The max data length is 16M-512B */
 #define AEAD_BLOCK_SIZE		0xFFFE00
 
+enum stream_mode {
+	UNINIT_STREAM,
+	ASYNC_STREAM,
+	SYNC_STREAM
+};
+
 struct aead_priv_ctx {
 	handle_t sess;
 	struct wd_aead_req req;
@@ -52,6 +58,7 @@ struct aead_priv_ctx {
 	unsigned char mac[AES_GCM_TAG_LEN];
 	int taglen;
 	bool is_req_tag_set;
+	enum stream_mode mode;
 };
 
 struct aead_engine {
@@ -289,13 +296,11 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 			goto out;
 		}
 
-		if (ASYNC_get_current_job()) {
-			/* Memory needs to be reserved for both input and output. */
-			priv->data = malloc(AEAD_BLOCK_SIZE << 1);
-			if (unlikely(!priv->data)) {
-				fprintf(stderr, "uadk engine failed to alloc data!\n");
-				goto out;
-			}
+		/* Memory needs to be reserved for both input and output. */
+		priv->data = malloc(AEAD_BLOCK_SIZE << 1);
+		if (unlikely(!priv->data)) {
+			fprintf(stderr, "uadk engine failed to alloc data!\n");
+			goto out;
 		}
 	}
 
@@ -343,6 +348,7 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 	priv->req.mac_bytes = AES_GCM_TAG_LEN;
 	priv->taglen = 0;
 	priv->is_req_tag_set = false;
+	priv->mode = UNINIT_STREAM;
 	priv->data = NULL;
 
 	if (enc)
@@ -476,7 +482,7 @@ static int uadk_e_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *ou
 	priv->req.assoc_bytes = inlen;
 
 	/* Asynchronous jobs use the block mode. */
-	if (ASYNC_get_current_job()) {
+	if (priv->mode == ASYNC_STREAM) {
 		memcpy(priv->data, in, inlen);
 		return 1;
 	}
@@ -629,7 +635,7 @@ static int uadk_e_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *o
 	struct async_op *op;
 	int ret;
 
-	if (ASYNC_get_current_job()) {
+	if (priv->mode == ASYNC_STREAM) {
 		op = malloc(sizeof(struct async_op));
 		if (unlikely(!op))
 			return RET_FAIL;
@@ -665,7 +671,7 @@ static int uadk_e_do_aes_gcm_final(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *pr
 
 	enc = EVP_CIPHER_CTX_encrypting(ctx);
 
-	if (ASYNC_get_current_job() || !priv->req.assoc_bytes ||
+	if (priv->mode == ASYNC_STREAM || !priv->req.assoc_bytes ||
 	    priv->req.msg_state == AEAD_MSG_END)
 		goto out;
 
@@ -679,6 +685,34 @@ out:
 	else
 		priv->is_req_tag_set = false;
 
+	priv->mode = UNINIT_STREAM;
+	return 0;
+}
+
+static int do_aes_gcm_prepare(EVP_CIPHER_CTX *ctx, struct aead_priv_ctx *priv)
+{
+	unsigned char *ctx_buf;
+	int enc;
+
+	if (priv->mode == UNINIT_STREAM) {
+		if (ASYNC_get_current_job())
+			priv->mode = ASYNC_STREAM;
+		else
+			priv->mode = SYNC_STREAM;
+	}
+
+	enc = EVP_CIPHER_CTX_encrypting(ctx);
+	if (!enc && !priv->is_req_tag_set) {
+		if (likely(priv->taglen == AES_GCM_TAG_LEN)) {
+			ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
+			memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
+			priv->is_req_tag_set = true;
+		} else {
+			fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
+			return RET_FAIL;
+		}
+	}
+
 	return 0;
 }
 
@@ -686,8 +720,7 @@ static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			     const unsigned char *in, size_t inlen)
 {
 	struct aead_priv_ctx *priv;
-	unsigned char *ctx_buf;
-	int enc;
+	int ret;
 
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(!priv)) {
@@ -696,17 +729,9 @@ static int uadk_e_do_aes_gcm(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	}
 
 	if (in) {
-		enc = EVP_CIPHER_CTX_encrypting(ctx);
-		if (!enc && !priv->is_req_tag_set) {
-			if (likely(priv->taglen == AES_GCM_TAG_LEN)) {
-				ctx_buf = EVP_CIPHER_CTX_buf_noconst(ctx);
-				memcpy(priv->req.mac, ctx_buf, AES_GCM_TAG_LEN);
-				priv->is_req_tag_set = true;
-			} else {
-				fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
-				return RET_FAIL;
-			}
-		}
+		ret = do_aes_gcm_prepare(ctx, priv);
+		if (unlikely(ret))
+			return ret;
 
 		if (out == NULL)
 			return uadk_e_do_aes_gcm_first(priv, out, in, inlen);
