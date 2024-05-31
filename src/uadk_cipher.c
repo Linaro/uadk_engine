@@ -67,6 +67,7 @@ struct cipher_priv_ctx {
 	/* Crypto small packet offload threshold */
 	size_t switch_threshold;
 	bool update_iv;
+	struct sched_params sched_param;
 };
 
 struct cipher_info {
@@ -690,11 +691,26 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	return 1;
 }
 
+static int uadk_e_cipher_ctrl(EVP_CIPHER_CTX *ctx, int type, int numa_node, void *ptr)
+{
+	struct cipher_priv_ctx *priv =
+		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
+
+	if (unlikely(!priv)) {
+		fprintf(stderr, "cipher priv ctx is NULL!\n");
+		return 0;
+	}
+
+	priv->sched_param.numa_id = numa_node;
+	priv->setup.sched_param = (void *)&(priv->sched_param);
+	return 1;
+}
+
 static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 {
 	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
-	struct sched_params params = {0};
-	int nid, ret;
+	struct sched_params *para;
+	int nid, ret, type;
 	__u32 i;
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
@@ -715,14 +731,17 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	 * the cipher algorithm does not distinguish between
 	 * encryption and decryption queues
 	 */
-	params.type = priv->req.op_type;
+	type = priv->req.op_type;
 	ret = uadk_e_is_env_enabled("cipher");
 	if (ret)
-		params.type = 0;
+		type = 0;
 
 	/* Use the default numa parameters */
-	params.numa_id = -1;
-	priv->setup.sched_param = &params;
+	if (priv->setup.sched_param != &priv->sched_param)
+		uadk_e_cipher_ctrl(ctx, 0, -1, NULL);
+
+	para = (struct sched_params *)priv->setup.sched_param;
+	para->type = type;
 
 	if (!priv->sess) {
 		nid = EVP_CIPHER_CTX_nid(ctx);
@@ -820,6 +839,7 @@ do { \
 	    !EVP_CIPHER_meth_set_init(uadk_##name, uadk_e_cipher_init) || \
 	    !EVP_CIPHER_meth_set_do_cipher(uadk_##name, uadk_e_do_cipher) || \
 	    !EVP_CIPHER_meth_set_cleanup(uadk_##name, uadk_e_cipher_cleanup) || \
+		!EVP_CIPHER_meth_set_ctrl(uadk_##name, uadk_e_cipher_ctrl) || \
 	    !EVP_CIPHER_meth_set_set_asn1_params(uadk_##name, EVP_CIPHER_set_asn1_iv) || \
 	    !EVP_CIPHER_meth_set_get_asn1_params(uadk_##name, EVP_CIPHER_get_asn1_iv)) \
 		return 0; \
