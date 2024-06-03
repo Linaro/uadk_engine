@@ -1,4 +1,19 @@
 
+# UADK engine Release v1.4 June 2024
+
+## New Features
+
+## Fixes
+- Add evp interface for rsa engine
+- Fix padding for cipher provider
+- Fix rsa provider in openssl 3.2
+
+## Working combination
+
+- UADK v2.7
+- OpenSSL 1.1.1f & OpenSSL 3.0+
+
+
 # UADK engine Release v1.3 Dec 2023
 
 ## New Features
