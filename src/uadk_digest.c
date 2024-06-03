@@ -100,6 +100,7 @@ struct digest_priv_ctx {
 	uint32_t app_datasize;
 	bool is_stream_copy;
 	size_t total_data_len;
+	struct sched_params sched_param;
 };
 
 struct digest_info {
@@ -529,12 +530,25 @@ static void digest_priv_ctx_reset(struct digest_priv_ctx *priv)
 	priv->is_stream_copy = false;
 }
 
+static int uadk_e_digest_ctrl(EVP_MD_CTX *ctx, int cmd, int numa_node, void *p2)
+{
+	struct digest_priv_ctx *priv =
+		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
+
+	if (unlikely(!priv)) {
+		fprintf(stderr, "digest priv ctx is NULL!\n");
+		return 0;
+	}
+	priv->sched_param.numa_id = numa_node;
+	priv->setup.sched_param = (void *)&(priv->sched_param);
+	return 1;
+}
+
 static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
 	__u32 digest_counts = ARRAY_SIZE(digest_info_table);
-	struct sched_params params = {0};
 	__u32 i;
 	int ret;
 
@@ -568,8 +582,9 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 	}
 
 	/* Use the default numa parameters */
-	params.numa_id = -1;
-	priv->setup.sched_param = &params;
+	if (priv->setup.sched_param != &priv->sched_param)
+		uadk_e_digest_ctrl(ctx, 0, -1, NULL);
+
 	if (!priv->sess) {
 		priv->sess = wd_digest_alloc_sess(&priv->setup);
 		if (unlikely(!priv->sess))
@@ -952,7 +967,7 @@ free_sess:
 
 
 #define UADK_DIGEST_DESCR(name, pkey_type, md_size, flags,		\
-	block_size, ctx_size, init, update, final, cleanup, copy)	\
+	block_size, ctx_size, init, update, final, cleanup, copy, ctrl)	\
 do { \
 	uadk_##name = EVP_MD_meth_new(NID_##name, NID_##pkey_type);	\
 	if (uadk_##name == 0 ||						\
@@ -964,7 +979,8 @@ do { \
 	    !EVP_MD_meth_set_update(uadk_##name, update) ||		\
 	    !EVP_MD_meth_set_final(uadk_##name, final) ||		\
 	    !EVP_MD_meth_set_cleanup(uadk_##name, cleanup) ||		\
-	    !EVP_MD_meth_set_copy(uadk_##name, copy))			\
+	    !EVP_MD_meth_set_copy(uadk_##name, copy) ||		\
+	    !EVP_MD_meth_set_ctrl(uadk_##name, ctrl))			\
 		return 0; \
 } while (0)
 
@@ -980,43 +996,43 @@ int uadk_e_bind_digest(ENGINE *e)
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sm3, sm3WithRSAEncryption, SM3_DIGEST_LENGTH,
 			  0, SM3_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sha1, sha1WithRSAEncryption, SHA_DIGEST_LENGTH,
 			  EVP_MD_FLAG_FIPS, SHA1_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sha224, sha224WithRSAEncryption, SHA224_DIGEST_LENGTH,
 			  EVP_MD_FLAG_FIPS, SHA224_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sha256, sha256WithRSAEncryption, SHA256_DIGEST_LENGTH,
 			  EVP_MD_FLAG_FIPS, SHA256_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sha384, sha384WithRSAEncryption, SHA384_DIGEST_LENGTH,
 			  EVP_MD_FLAG_FIPS, SHA384_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 	UADK_DIGEST_DESCR(sha512, sha512WithRSAEncryption, SHA512_DIGEST_LENGTH,
 			  EVP_MD_FLAG_FIPS, SHA512_CBLOCK,
 			  sizeof(EVP_MD *) + sizeof(struct digest_priv_ctx),
 			  uadk_e_digest_init, uadk_e_digest_update,
 			  uadk_e_digest_final, uadk_e_digest_cleanup,
-			  uadk_e_digest_copy);
+			  uadk_e_digest_copy, uadk_e_digest_ctrl);
 
 	return ENGINE_set_digests(e, uadk_engine_digests);
 }
