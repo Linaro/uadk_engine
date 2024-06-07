@@ -14,6 +14,11 @@ AC_ARG_ENABLE(kae,
 AC_SUBST(enable_kae)
 AM_CONDITIONAL([WD_KAE], [test "$enable_kae" = "yes"])
 
+AC_ARG_ENABLE(engine,
+	      AS_HELP_STRING([--enable-engine],[Enable engine in OpenSSL 3.0]))
+AC_SUBST(enable_engine)
+AM_CONDITIONAL([WD_ENGINE], [test "$enable_engine" = "yes"])
+
 PKG_CHECK_MODULES(WD, libwd libwd_crypto, [with_wd=yes], [with_wd=no])
 AM_CONDITIONAL(HAVE_WD, [test "$with_wd" != "no"])
 

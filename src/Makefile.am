@@ -3,11 +3,15 @@ ACLOCAL_AMFLAGS = -I m4
 
 if HAVE_CRYPTO
 lib_LTLIBRARIES=uadk_engine.la
-endif #HAVE_CRYPTO
+else
 
-if HAVE_CRYPTO3
 lib_LTLIBRARIES=uadk_provider.la
-endif #HAVE_CRYPTO3
+
+if WD_ENGINE
+lib_LTLIBRARIES+=uadk_engine.la
+endif #WD_ENGINE
+
+endif #HAVE_CRYPTO
 
 uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
 		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
@@ -20,6 +24,9 @@ uadk_engine_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
 uadk_engine_la_CFLAGS+=-DCRYPTO
 uadk_engine_la_CFLAGS+=-fPIC -fPIE -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
 		       -O2 -ftrapv -Wl,-z,relro,-z,now -Wl,-s
+if WD_ENGINE
+uadk_engine_la_CFLAGS+=-DOPENSSL_SUPPRESS_DEPRECATED
+endif #WD_ENGINE
 
 AUTOMAKE_OPTIONS = subdir-objects
 
