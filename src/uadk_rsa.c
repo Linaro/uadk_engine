@@ -508,9 +508,11 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
+# if OPENSSL_VERSION_NUMBER < 0x30000000
 	case RSA_SSLV23_PADDING:
 		ret = RSA_padding_add_SSLv23(buf, num, from, flen);
 		break;
+#endif
 	case RSA_NO_PADDING:
 		ret = RSA_padding_add_none(buf, num, from, flen);
 		break;
@@ -539,9 +541,11 @@ static int check_rsa_pridec_padding(unsigned char *to, int num,
 		if (!ret)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
+# if OPENSSL_VERSION_NUMBER < 0x30000000
 	case RSA_SSLV23_PADDING:
 		ret = RSA_padding_check_SSLv23(to, num, buf, len, num);
 		break;
+#endif
 	case RSA_NO_PADDING:
 		memcpy(to, buf, len);
 		ret = len;
