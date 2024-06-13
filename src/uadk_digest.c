@@ -41,7 +41,6 @@
 #define BUF_LEN      0xFFFE00
 
 #define SM3_DIGEST_LENGTH	32
-#define SM3_CBLOCK		64
 #define SHA1_CBLOCK		64
 #define SHA224_CBLOCK		64
 #define SHA384_CBLOCK		128
@@ -50,6 +49,21 @@
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MAX_DIGEST_LENGTH	64
 #define DIGEST_BLOCK_SIZE (512 * 1024)
+
+/* copied form openssl/include/internal/sm3.h
+ * OpenSSL 3.0 has no <openssl/sm3.h>
+ */
+# define SM3_DIGEST_LENGTH 32
+# define SM3_WORD unsigned int
+# define SM3_CBLOCK      64
+# define SM3_LBLOCK      (SM3_CBLOCK/4)
+
+typedef struct SM3state_st {
+	SM3_WORD A, B, C, D, E, F, G, H;
+	SM3_WORD Nl, Nh;
+	SM3_WORD data[SM3_LBLOCK];
+	unsigned int num;
+} SM3_CTX;
 
 enum sec_digestz_state {
 	SEC_DIGEST_INIT,
@@ -73,6 +87,7 @@ struct digest_engine {
 
 static struct digest_engine g_digest_engine;
 
+# if OPENSSL_VERSION_NUMBER < 0x30000000
 struct evp_md_ctx_st {
 	const EVP_MD *digest;
 	/* Functional reference if 'digest' is ENGINE-provided */
@@ -84,6 +99,28 @@ struct evp_md_ctx_st {
 	/* Update function: usually copied from EVP_MD */
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 };
+# else
+struct evp_md_ctx_st {
+	const EVP_MD *reqdigest;    /* The original requested digest */
+	const EVP_MD *digest;
+	ENGINE *engine;             /* functional reference if 'digest' is
+				     * ENGINE-provided
+				     */
+	unsigned long flags;
+	void *md_data;
+	/* Public key context for sign/verify */
+	EVP_PKEY_CTX *pctx;
+	/* Update function: usually copied from EVP_MD */
+	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
+
+	/*
+	 * Opaque ctx returned from a providers digest algorithm implementation
+	 * OSSL_FUNC_digest_newctx()
+	 */
+	void *algctx;
+	EVP_MD *fetched_digest;
+} /* EVP_MD_CTX */;
+#endif
 
 struct digest_priv_ctx {
 	handle_t sess;
@@ -92,6 +129,7 @@ struct digest_priv_ctx {
 	unsigned char *data;
 	unsigned char out[MAX_DIGEST_LENGTH];
 	EVP_MD_CTX *soft_ctx;
+	const EVP_MD *soft_md;
 	size_t last_update_bufflen;
 	uint32_t e_nid;
 	uint32_t state;
@@ -149,36 +187,88 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
-static const EVP_MD *uadk_e_digests_soft_md(uint32_t e_nid)
+static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 {
-	const EVP_MD *digest_md = NULL;
+	int app_datasize = 0;
 
-	switch (e_nid) {
+	if (priv->soft_md)
+		return 1;
+
+	switch (priv->e_nid) {
 	case NID_sm3:
-		digest_md = EVP_sm3();
+		priv->soft_md = EVP_sm3();
 		break;
 	case NID_md5:
-		digest_md = EVP_md5();
+		priv->soft_md = EVP_md5();
 		break;
 	case NID_sha1:
-		digest_md = EVP_sha1();
+		priv->soft_md = EVP_sha1();
 		break;
 	case NID_sha224:
-		digest_md = EVP_sha224();
+		priv->soft_md = EVP_sha224();
 		break;
 	case NID_sha256:
-		digest_md = EVP_sha256();
+		priv->soft_md = EVP_sha256();
 		break;
 	case NID_sha384:
-		digest_md = EVP_sha384();
+		priv->soft_md = EVP_sha384();
 		break;
 	case NID_sha512:
-		digest_md = EVP_sha512();
+		priv->soft_md = EVP_sha512();
 		break;
 	default:
 		break;
 	}
-	return digest_md;
+
+	if (unlikely(priv->soft_md == NULL))
+		return 0;
+
+	app_datasize = EVP_MD_meth_get_app_datasize(priv->soft_md);
+	if (app_datasize == 0) {
+		/* OpenSSL 3.0 has no app_datasize, need set manually
+		 * check crypto/evp/legacy_md5.c: md5_md as example
+		 */
+		switch (priv->e_nid) {
+		case NID_sm3:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SM3_CTX);
+			break;
+		case NID_md5:
+			app_datasize = sizeof(EVP_MD *) + sizeof(MD5_CTX);
+			break;
+		case NID_sha1:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SHA_CTX);
+			break;
+		case NID_sha224:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SHA256_CTX);
+			break;
+		case NID_sha256:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SHA256_CTX);
+			break;
+		case NID_sha384:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SHA512_CTX);
+			break;
+		case NID_sha512:
+			app_datasize = sizeof(EVP_MD *) + sizeof(SHA512_CTX);
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (priv->soft_ctx == NULL) {
+		EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+
+		if (ctx == NULL)
+			return 0;
+
+		ctx->md_data = OPENSSL_malloc(app_datasize);
+		if (ctx->md_data == NULL)
+			return 0;
+
+		priv->soft_ctx = ctx;
+		priv->app_datasize = app_datasize;
+	}
+	return 1;
 }
 
 static uint32_t sec_digest_get_sw_threshold(int n_id)
@@ -195,78 +285,22 @@ static uint32_t sec_digest_get_sw_threshold(int n_id)
 	return 0;
 }
 
-static int digest_soft_init(struct digest_priv_ctx *md_ctx)
+static int digest_soft_init(struct digest_priv_ctx *priv)
 {
-	uint32_t e_nid = md_ctx->e_nid;
-	const EVP_MD *digest_md = NULL;
-	EVP_MD_CTX *ctx = NULL;
-	int app_datasize;
+	if (uadk_e_digests_soft_md(priv) == 0)
+		return 0;
 
-	/* Allocate a soft ctx for hardware engine */
-	if (md_ctx->soft_ctx == NULL) {
-		md_ctx->soft_ctx = EVP_MD_CTX_new();
-		if (md_ctx->soft_ctx == NULL)
-			return 0;
-	}
-
-	ctx = md_ctx->soft_ctx;
-
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "get openssl software digest failed, nid = %u.\n", e_nid);
-		return  0;
-	}
-
-	app_datasize = EVP_MD_meth_get_app_datasize(digest_md);
-	if (ctx->md_data == NULL) {
-		ctx->md_data = OPENSSL_malloc(app_datasize);
-		if (ctx->md_data == NULL)
-			return  0;
-	}
-
-	md_ctx->app_datasize = app_datasize;
-
-	return EVP_MD_meth_get_init(digest_md)(ctx);
+	return EVP_MD_meth_get_init(priv->soft_md)(priv->soft_ctx);
 }
 
-static int digest_soft_update(struct digest_priv_ctx *md_ctx, const void *data, size_t len)
+static int digest_soft_update(struct digest_priv_ctx *priv, const void *data, size_t len)
 {
-	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
-	uint32_t e_nid = md_ctx->e_nid;
-	const EVP_MD *digest_md = NULL;
-
-	if (!ctx) {
-		fprintf(stderr, "failed to get soft ctx.\n");
-		return 0;
-	}
-
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "switch to soft: don't support by sec engine.\n");
-		return  0;
-	}
-
-	return EVP_MD_meth_get_update(digest_md)(ctx, data, len);
+	return EVP_MD_meth_get_update(priv->soft_md)(priv->soft_ctx, data, len);
 }
 
-static int digest_soft_final(struct digest_priv_ctx *md_ctx, unsigned char *digest)
+static int digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
-	EVP_MD_CTX *ctx = md_ctx->soft_ctx;
-	const EVP_MD *digest_md = NULL;
-	uint32_t e_nid = md_ctx->e_nid;
-
-	if (!ctx) {
-		fprintf(stderr, "failed to get soft ctx.\n");
-		return 0;
-	}
-
-	digest_md = uadk_e_digests_soft_md(e_nid);
-	if (unlikely(digest_md == NULL)) {
-		fprintf(stderr, "switch to soft:don't support by sec engine.\n");
-		return  0;
-	}
-
-	return EVP_MD_meth_get_final(digest_md)(ctx, digest);
+	return EVP_MD_meth_get_final(priv->soft_md)(priv->soft_ctx, digest);
 }
 
 static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
@@ -276,7 +310,7 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 	if (ctx != NULL) {
 		if (ctx->md_data) {
 			OPENSSL_free(ctx->md_data);
-			ctx->md_data  = NULL;
+			ctx->md_data = NULL;
 		}
 		EVP_MD_CTX_free(ctx);
 		md_ctx->soft_ctx = NULL;
