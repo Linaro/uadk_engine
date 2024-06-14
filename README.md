@@ -65,7 +65,7 @@ Build and install UADK
 
 Build and install UADK Engine
 -----------------------------
-For openssl 1.1
+OpenSSL 1.1
 ```
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
@@ -77,21 +77,45 @@ For openssl 1.1
     Option --enable-kae can be chosen to enable KAE for non-sva version
 ```
 
-For openssl 3.0
+OpenSSL 3.0 build provider
 ```
     git clone https://github.com/Linaro/uadk_engine.git
     cd uadk_engine
     autoreconf -i
-    ./configure --libdir=/usr/local/lib/ossl-modules/
+    ./configure --libdir=/usr/lib64/ossl-modules/
     make
     sudo make install
 
 ```
 
+OpenSSL 3.0 build engine using --enable-engine
+```
+    git clone https://github.com/Linaro/uadk_engine.git
+    cd uadk_engine
+    autoreconf -i
+    ./configure --libdir=/usr/lib64/engines-3/ --enable-engine
+    make
+    sudo make install
+
+```
 Testing
 -------
 ```
+    Test engine if OpenSSL1.1 or test provider if OpenSSL 3.0+
     ./test/sanity_test.sh
+
+    Test engine
+    ./test/sanity_test.sh engine
+
+    Test provider, OpenSSL 3.0+ required
+    ./test/sanity_test.sh provider
+
+    Test engine
+    ./test/sanity_test_engine.sh
+
+    Test provider, OpenSSL 3.0+ required
+    ./test/sanity_test_provider.sh
+
 ```
 
 Install libraries to the temp folder
