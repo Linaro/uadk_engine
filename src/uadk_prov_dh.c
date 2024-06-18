@@ -56,7 +56,9 @@ struct evp_keyexch_st {
 	const char *description;
 	OSSL_PROVIDER *prov;
 	CRYPTO_REF_COUNT refcnt;
-
+# if OPENSSL_VERSION_NUMBER < 0x30200000
+	CRYPTO_RWLOCK *lock;
+# endif
 	OSSL_FUNC_keyexch_newctx_fn *newctx;
 	OSSL_FUNC_keyexch_init_fn *init;
 	OSSL_FUNC_keyexch_set_peer_fn *set_peer;
@@ -247,9 +249,9 @@ typedef struct {
 	const char *description;
 	OSSL_PROVIDER *prov;
 
-	int refcnt;
+	CRYPTO_REF_COUNT refcnt;
 # if OPENSSL_VERSION_NUMBER < 0x30200000
-	void *lock;
+	CRYPTO_RWLOCK *lock;
 # endif
 
 	/* Constructor(s), destructor, information */
@@ -278,8 +280,14 @@ typedef struct {
 	/* Import and export routines */
 	OSSL_FUNC_keymgmt_import_fn *import;
 	OSSL_FUNC_keymgmt_import_types_fn *import_types;
+# if OPENSSL_VERSION_NUMBER >= 0x30200000
+	OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
+# endif
 	OSSL_FUNC_keymgmt_export_fn *export;
 	OSSL_FUNC_keymgmt_export_types_fn *export_types;
+# if OPENSSL_VERSION_NUMBER >= 0x30200000
+	OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
+# endif
 	OSSL_FUNC_keymgmt_dup_fn *dup;
 
 } UADK_DH_KEYMGMT;
