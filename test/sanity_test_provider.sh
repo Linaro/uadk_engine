@@ -26,18 +26,18 @@ if [[ $digest_algs =~ "uadk_provider" ]]; then
 	openssl speed -provider $engine_id -evp md5
 	openssl speed -provider $engine_id -evp sm3
 	openssl speed -provider $engine_id -evp sha1
-	openssl speed -provider $engine_id -evp sha2-224
-	openssl speed -provider $engine_id -evp sha2-256
-	openssl speed -provider $engine_id -evp sha2-384
-	openssl speed -provider $engine_id -evp sha2-512
+	openssl speed -provider $engine_id -evp sha224
+	openssl speed -provider $engine_id -evp sha256
+	openssl speed -provider $engine_id -evp sha384
+	openssl speed -provider $engine_id -evp sha512
 
 	openssl speed -provider $engine_id -async_jobs 1 -evp md5
 	openssl speed -provider $engine_id -async_jobs 1 -evp sm3
 	openssl speed -provider $engine_id -async_jobs 1 -evp sha1
-	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-224
-	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-256
-	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-384
-	openssl speed -provider $engine_id -async_jobs 1 -evp sha2-512
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha224
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha256
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha384
+	openssl speed -provider $engine_id -async_jobs 1 -evp sha512
 fi
 
 if [[ $cipher_algs =~ "uadk_provider" ]]; then
