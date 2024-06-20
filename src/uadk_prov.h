@@ -18,6 +18,12 @@
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
 
+/* Copy openssl/providers/implementations/include/prov/names.h */
+#define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"
+#define PROV_NAMES_SHA2_256 "SHA2-256:SHA-256:SHA256:2.16.840.1.101.3.4.2.1"
+#define PROV_NAMES_SHA2_384 "SHA2-384:SHA-384:SHA384:2.16.840.1.101.3.4.2.2"
+#define PROV_NAMES_SHA2_512 "SHA2-512:SHA-512:SHA512:2.16.840.1.101.3.4.2.3"
+
 typedef int CRYPTO_REF_COUNT;
 
 struct ossl_provider_st {

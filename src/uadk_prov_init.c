@@ -49,13 +49,13 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	  uadk_sm3_functions, "uadk_provider sm3" },
 	{ OSSL_DIGEST_NAME_SHA1, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha1_functions, "uadk_provider sha1" },
-	{ OSSL_DIGEST_NAME_SHA2_224, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_224, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha224_functions, "uadk_provider sha2-224" },
-	{ OSSL_DIGEST_NAME_SHA2_256, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_256, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha256_functions, "uadk_provider sha2-256" },
-	{ OSSL_DIGEST_NAME_SHA2_384, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_384, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha384_functions, "uadk_provider sha2-384" },
-	{ OSSL_DIGEST_NAME_SHA2_512, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_512, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_functions, "uadk_provider sha2-512" },
 	{ NULL, NULL, NULL }
 };
