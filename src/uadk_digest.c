@@ -811,6 +811,13 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 		return ret;
 	}
 
+	if (priv->req.in_bytes <= priv->switch_threshold &&
+		priv->state == SEC_DIGEST_INIT) {
+		/* hw v2 does not support in_bytes=0 refer digest_bd2_type_check
+		 * so switch to sw
+		 */
+		return 0;
+	}
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
 	if (!cb_param) {
 		fprintf(stderr, "failed to alloc cb_param.\n");
@@ -897,18 +904,18 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 
 		ret = do_digest_sync(priv);
 		if (!ret)
-			goto sync_err;
+			goto hw_err;
 	} else {
 		ret = do_digest_async(priv, op);
 		if (!ret)
-			goto clear;
+			goto hw_err;
 	}
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
 	free(op);
 	return 1;
 
-sync_err:
+hw_err:
 	if (priv->state == SEC_DIGEST_INIT) {
 		ret = uadk_e_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
