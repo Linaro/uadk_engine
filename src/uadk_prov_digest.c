@@ -64,7 +64,7 @@ struct digest_prov {
 	int pid;
 };
 
-static struct digest_prov prov;
+static struct digest_prov dprov;
 static pthread_mutex_t digest_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct evp_md_ctx_st {
@@ -223,12 +223,12 @@ static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
 	return UADK_DIGEST_SUCCESS;
 }
 
-static int uadk_digest_env_poll(void *ctx)
+static int uadk_digest_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
 	/* Poll one packet currently */
-	int expt = 1;
+	__u32 expt = 1;
 	int ret;
 
 	do {
@@ -251,14 +251,14 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 	int ret, i;
 
 	pthread_mutex_lock(&digest_mutex);
-	if (prov.pid != getpid()) {
+	if (dprov.pid != getpid()) {
 		ret = wd_digest_init2(priv->alg_name, 0, 0);
 		if (unlikely(ret)) {
 			priv->switch_flag = UADK_DO_SOFT;
 			goto soft_init;
 		}
-		prov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_env_poll);
+		dprov.pid = getpid();
+		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
 	}
 	pthread_mutex_unlock(&digest_mutex);
 
@@ -282,12 +282,15 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 	params.numa_id = -1;
 	priv->setup.sched_param = &params;
 	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (unlikely(!priv->sess))
+	if (unlikely(!priv->sess)) {
+		fprintf(stderr, "uadk failed to alloc sess.\n");
 		return UADK_DIGEST_FAIL;
+	}
 
-	priv->data = malloc(DIGEST_BLOCK_SIZE);
+	priv->data = OPENSSL_malloc(DIGEST_BLOCK_SIZE);
 	if (unlikely(!priv->data)) {
 		wd_digest_free_sess(priv->sess);
+		fprintf(stderr, "uadk failed to apply mem for data storage.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -336,7 +339,7 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
-			fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
+			fprintf(stderr, "do sec digest update failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
 
@@ -503,7 +506,7 @@ sync_err:
 		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
 		ret = 0;
-		fprintf(stderr, "do sec digest stream mode failed.\n");
+		fprintf(stderr, "do sec digest final failed.\n");
 	}
 clear:
 	async_clear_async_event_notification();
@@ -553,7 +556,7 @@ uadk_do_digest_err:
 	return ret;
 }
 
-static int uadk_digest_cleanup(struct digest_priv_ctx *priv)
+static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 {
 	if (priv->sess) {
 		wd_digest_free_sess(priv->sess);
@@ -562,8 +565,6 @@ static int uadk_digest_cleanup(struct digest_priv_ctx *priv)
 
 	if (priv->data)
 		OPENSSL_free(priv->data);
-
-	return UADK_DIGEST_SUCCESS;
 }
 
 /* some params related code is copied from OpenSSL v3.0 prov/digestcommon.h */
@@ -716,9 +717,9 @@ static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 void uadk_prov_destroy_digest(void)
 {
 	pthread_mutex_lock(&digest_mutex);
-	if (prov.pid == getpid()) {
+	if (dprov.pid == getpid()) {
 		wd_digest_uninit2();
-		prov.pid = 0;
+		dprov.pid = 0;
 	}
 	pthread_mutex_unlock(&digest_mutex);
 }
