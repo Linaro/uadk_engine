@@ -18,6 +18,8 @@
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
 
+#define FUNC_MAX_NUM	32
+
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"
 #define PROV_NAMES_SHA2_256 "SHA2-256:SHA-256:SHA256:2.16.840.1.101.3.4.2.1"
@@ -98,13 +100,16 @@ static inline OSSL_LIB_CTX *prov_libctx_of(struct uadk_prov_ctx *ctx)
 	return ctx->libctx;
 }
 
-extern const OSSL_DISPATCH uadk_md5_functions[];
-extern const OSSL_DISPATCH uadk_sm3_functions[];
-extern const OSSL_DISPATCH uadk_sha1_functions[];
-extern const OSSL_DISPATCH uadk_sha224_functions[];
-extern const OSSL_DISPATCH uadk_sha256_functions[];
-extern const OSSL_DISPATCH uadk_sha384_functions[];
-extern const OSSL_DISPATCH uadk_sha512_functions[];
+extern const OSSL_DISPATCH uadk_md5_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sm3_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha1_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha224_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha256_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha384_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha512_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha512_224_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sha512_256_functions[FUNC_MAX_NUM];
+
 
 extern const OSSL_DISPATCH uadk_aes_128_cbc_functions[];
 extern const OSSL_DISPATCH uadk_aes_192_cbc_functions[];
