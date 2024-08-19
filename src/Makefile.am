@@ -62,7 +62,8 @@ endif #WD_KAE
 
 uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
 			 uadk_prov_digest.c uadk_prov_cipher.c \
-			 uadk_prov_rsa.c uadk_prov_dh.c
+			 uadk_prov_rsa.c uadk_prov_dh.c \
+			 uadk_prov_bio.c
 
 uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread

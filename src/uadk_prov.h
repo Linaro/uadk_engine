@@ -88,10 +88,26 @@ struct ossl_provider_st {
 	const OSSL_DISPATCH *dispatch;
 };
 
-struct uadk_prov_ctx {
+typedef struct bio_method_st {
+	int type;
+	char *name;
+	int (*bwrite)(BIO *bio, const char *data, size_t datal, size_t *written);
+	int (*bwrite_old)(BIO *bio, const char *data, int datal);
+	int (*bread)(BIO *bio, char *data, size_t datal, size_t *read);
+	int (*bread_old)(BIO *bio, char *data, int datal);
+	int (*bputs)(BIO *bio, const char *buf);
+	int (*bgets)(BIO *bio, char *buf, int size);
+	long (*ctrl)(BIO *bio, int cmd, long larg, void *parg);
+	int (*create)(BIO *bio);
+	int (*destroy)(BIO *bio);
+	long (*callback_ctrl)(BIO *bio, int cmd, BIO_info_cb *fp);
+} UADK_BIO_METHOD;
+
+typedef struct uadk_prov_ctx {
 	const OSSL_CORE_HANDLE *handle;
 	OSSL_LIB_CTX *libctx;
-};
+	UADK_BIO_METHOD *corebiometh;
+} UADK_PROV_CTX;
 
 static inline OSSL_LIB_CTX *prov_libctx_of(struct uadk_prov_ctx *ctx)
 {

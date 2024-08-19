@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <openssl/bio.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
@@ -27,9 +28,15 @@
 
 #include "uadk_async.h"
 #include "uadk_prov.h"
+#include "uadk_prov_bio.h"
 
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
+
+/* Functions provided by the core */
+static OSSL_FUNC_core_gettable_params_fn *c_gettable_params;
+static OSSL_FUNC_core_get_params_fn *c_get_params;
+static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
 
 /* Functions provided by the core */
 static OSSL_FUNC_core_get_params_fn *c_get_params;
@@ -199,6 +206,41 @@ static void provider_init_child_at_fork_handler(void)
 		fprintf(stderr, "async_module_init fail!\n");
 }
 
+static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
+{
+	UADK_BIO_METHOD *core_bio;
+
+	core_bio = ossl_bio_prov_init_bio_method();
+	if (core_bio == NULL) {
+		fprintf(stderr, "failed to set bio  from dispatch\n");
+		return 0;
+	}
+
+	ctx->corebiometh = core_bio;
+
+	return 1;
+}
+
+static void ossl_prov_core_from_dispatch(const OSSL_DISPATCH *fns)
+{
+	for (fns; fns->function_id != 0; fns++) {
+		switch (fns->function_id) {
+		case OSSL_FUNC_CORE_GETTABLE_PARAMS:
+			c_gettable_params = OSSL_FUNC_core_gettable_params(fns);
+			break;
+		case OSSL_FUNC_CORE_GET_PARAMS:
+			c_get_params = OSSL_FUNC_core_get_params(fns);
+			break;
+		case OSSL_FUNC_CORE_GET_LIBCTX:
+			c_get_libctx = OSSL_FUNC_core_get_libctx(fns);
+			break;
+		default:
+			 /* Just ignore anything we don't understand */
+			break;
+		}
+	}
+}
+
 int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 		       const OSSL_DISPATCH *oin,
 		       const OSSL_DISPATCH **out,
@@ -207,30 +249,32 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	struct uadk_prov_ctx *ctx;
 	int ret;
 
-	for (; oin->function_id != 0; oin++) {
-		switch (oin->function_id) {
-		case OSSL_FUNC_CORE_GET_PARAMS:
-			c_get_params = OSSL_FUNC_core_get_params(oin);
-			break;
-		case OSSL_FUNC_CORE_GET_LIBCTX:
-			c_get_libctx = OSSL_FUNC_core_get_libctx(oin);
-			break;
-		default:
-			/* Just ignore anything we don't understand */
-			break;
-		}
+	if (oin == NULL) {
+		fprintf(stderr, "failed to get dispatch in\n");
+		return 0;
 	}
+
+	(void)ossl_prov_bio_from_dispatch(oin);
+	ossl_prov_core_from_dispatch(oin);
 
 	/* get parameters from uadk_provider.cnf */
 	if (!uadk_get_params_from_core(handle))
 		return 0;
 
 	ctx = OPENSSL_zalloc(sizeof(*ctx));
-	if (ctx == NULL)
+	if (ctx == NULL) {
+		fprintf(stderr, "failed to alloc ctx\n");
 		return 0;
+	}
 
+	/* Set handle from core to get core functions */
 	ctx->handle = handle;
 	ctx->libctx = (OSSL_LIB_CTX *)c_get_libctx(handle);
+
+	ret = uadk_prov_ctx_set_core_bio_method(ctx);
+	if (!ret)
+		return 0;
+
 	ret = async_module_init();
 	if (!ret)
 		fprintf(stderr, "async_module_init fail!\n");
@@ -238,5 +282,6 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	*provctx = (void *)ctx;
 	*out = uadk_dispatch_table;
+
 	return 1;
 }
