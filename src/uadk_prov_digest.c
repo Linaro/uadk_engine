@@ -660,16 +660,15 @@ static void uadk_prov_freectx(void *dctx)
 
 static void *uadk_prov_dupctx(void *dctx)
 {
-	struct digest_priv_ctx *in;
-	struct digest_priv_ctx *ret;
+	struct digest_priv_ctx *in, *ret;
+
 	if (!dctx)
 		return NULL;
 
 	in = (struct digest_priv_ctx *)dctx;
-	ret = OPENSSL_zalloc(sizeof(struct digest_priv_ctx *));
-
-	if (ret != NULL)
-		*ret = *in;
+	ret = OPENSSL_zalloc(sizeof(struct digest_priv_ctx));
+	if (ret)
+		memcpy(ret, in, sizeof(struct digest_priv_ctx));
 	return ret;
 }
 
