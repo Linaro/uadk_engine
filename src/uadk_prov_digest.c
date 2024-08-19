@@ -120,6 +120,10 @@ static struct digest_info digest_info_table[] = {
 	 48, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
 	{NID_sha512, WD_DIGEST_NORMAL, WD_DIGEST_SHA512,
 	 64, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha512_224, WD_DIGEST_NORMAL, WD_DIGEST_SHA512_224,
+	28, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
+	{NID_sha512_256, WD_DIGEST_NORMAL, WD_DIGEST_SHA512_256,
+	32, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
 };
 
 static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
@@ -327,6 +331,14 @@ static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv)
 	case NID_sha384:
 		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
 					WD_DIGEST_SHA384_FULL_LEN : WD_DIGEST_SHA384_LEN;
+		break;
+	case NID_sha512_224:
+		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+					WD_DIGEST_SHA512_224_FULL_LEN : WD_DIGEST_SHA512_224_LEN;
+		break;
+	case NID_sha512_256:
+		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+					WD_DIGEST_SHA512_256_FULL_LEN : WD_DIGEST_SHA512_256_LEN;
 		break;
 	default:
 		break;
@@ -759,8 +771,8 @@ static OSSL_FUNC_digest_newctx_fn uadk_##name##_newctx;				\
 static void *uadk_##name##_newctx(void *provctx)				\
 {										\
 	struct digest_priv_ctx *ctx = OPENSSL_zalloc(sizeof(*ctx));		\
-										\
-	if (ctx == NULL)							\
+	char *ptr;								\
+	if (!ctx)								\
 		return NULL;							\
 	ctx->blk_size = blksize;						\
 	ctx->md_size = mdsize;							\
@@ -769,6 +781,9 @@ static void *uadk_##name##_newctx(void *provctx)				\
 	if (ctx->soft_ctx == NULL)						\
 		fprintf(stderr, "EVP_MD_CTX_new failed.\n");			\
 	strncpy(ctx->alg_name, #name, ALG_NAME_SIZE - 1);			\
+	ptr = strchr(ctx->alg_name, '_');					\
+	if (ptr != NULL)							\
+		*ptr = '-';							\
 	return ctx;								\
 }										\
 static OSSL_FUNC_digest_get_params_fn uadk_##name##_get_params;			\
@@ -798,3 +813,5 @@ UADK_PROVIDER_IMPLEMENTATION(sha224, NID_sha224, 28, 64);
 UADK_PROVIDER_IMPLEMENTATION(sha256, NID_sha256, 32, 64);
 UADK_PROVIDER_IMPLEMENTATION(sha384, NID_sha384, 48, 128);
 UADK_PROVIDER_IMPLEMENTATION(sha512, NID_sha512, 64, 128);
+UADK_PROVIDER_IMPLEMENTATION(sha512_224, NID_sha512_224, 28, 128);
+UADK_PROVIDER_IMPLEMENTATION(sha512_256, NID_sha512_256, 32, 128);

@@ -57,6 +57,10 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	  uadk_sha384_functions, "uadk_provider sha2-384" },
 	{ PROV_NAMES_SHA2_512, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_functions, "uadk_provider sha2-512" },
+	{ "SHA2-512/224:SHA-512/224:SHA512-224", UADK_DEFAULT_PROPERTIES,
+	  uadk_sha512_224_functions, "uadk_provider sha2-512-224" },
+	{ "SHA2-512/256:SHA-512/256:SHA512-256", UADK_DEFAULT_PROPERTIES,
+	  uadk_sha512_256_functions, "uadk_provider sha2-512-256" },
 	{ NULL, NULL, NULL }
 };
 
