@@ -510,6 +510,49 @@ clear:
 	return ret;
 }
 
+static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, size_t data_len,
+			   unsigned char *digest)
+{
+	struct async_op op;
+	int ret;
+
+	priv->req.has_next = DIGEST_END;
+	priv->req.in = priv->data;
+	priv->req.out = priv->out;
+	priv->req.in_bytes = data_len;
+	uadk_memcpy(priv->data, data, data_len);
+
+	if (priv->e_nid == NID_sha224)
+		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
+
+	if (priv->e_nid == NID_sha384)
+		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
+
+	ret = async_setup_async_event_notification(&op);
+	if (unlikely(!ret)) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	if (op.job == NULL) {
+		ret = uadk_do_digest_sync(priv);
+		if (!ret)
+			goto uadk_do_digest_err;
+	} else {
+		ret = uadk_do_digest_async(priv, &op);
+		if (!ret)
+			goto uadk_do_digest_err;
+	}
+	memcpy(digest, priv->req.out, priv->req.out_bytes);
+
+	return UADK_DIGEST_SUCCESS;
+
+uadk_do_digest_err:
+	fprintf(stderr, "do sec single block digest failed.\n");
+	async_clear_async_event_notification();
+	return ret;
+}
+
 static int uadk_digest_cleanup(struct digest_priv_ctx *priv)
 {
 	if (priv->sess) {
@@ -627,6 +670,29 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 	return UADK_DIGEST_SUCCESS;
 }
 
+static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
+			   unsigned char *out, size_t *outl, size_t outsz)
+{
+	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
+	int ret;
+
+	if (!dctx || !in || !out) {
+		fprintf(stderr, "CTX or input or output data is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	if (outsz > 0) {
+		ret = uadk_digest_digest(priv, in, inl, out);
+		if (!ret)
+			return ret;
+	}
+
+	if (unlikely(outl != NULL))
+		*outl = priv->md_size;
+
+	return UADK_DIGEST_SUCCESS;
+}
+
 void uadk_prov_destroy_digest(void)
 {
 	pthread_mutex_lock(&digest_mutex);
@@ -642,6 +708,7 @@ static OSSL_FUNC_digest_dupctx_fn	uadk_prov_dupctx;
 static OSSL_FUNC_digest_init_fn		uadk_prov_init;
 static OSSL_FUNC_digest_update_fn	uadk_prov_update;
 static OSSL_FUNC_digest_final_fn	uadk_prov_final;
+static OSSL_FUNC_digest_digest_fn	uadk_prov_digest;
 static OSSL_FUNC_digest_gettable_params_fn
 					uadk_prov_gettable_params;
 
@@ -674,6 +741,7 @@ const OSSL_DISPATCH uadk_##name##_functions[] = {				\
 	{ OSSL_FUNC_DIGEST_INIT, (void (*)(void))uadk_prov_init },		\
 	{ OSSL_FUNC_DIGEST_UPDATE, (void (*)(void))uadk_prov_update },		\
 	{ OSSL_FUNC_DIGEST_FINAL, (void (*)(void))uadk_prov_final },		\
+	{ OSSL_FUNC_DIGEST_DIGEST, (void (*)(void))uadk_prov_digest },		\
 	{ OSSL_FUNC_DIGEST_GET_PARAMS,						\
 		(void (*)(void))uadk_##name##_get_params },			\
 	{ OSSL_FUNC_DIGEST_GETTABLE_PARAMS,					\
