@@ -615,6 +615,11 @@ static void uadk_prov_freectx(void *dctx)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
 
+	if (!dctx) {
+		fprintf(stderr, "the CTX to be free is NULL.\n");
+		return;
+	}
+
 	uadk_digest_cleanup(priv);
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
@@ -623,6 +628,8 @@ static void *uadk_prov_dupctx(void *dctx)
 {
 	struct digest_priv_ctx *in;
 	struct digest_priv_ctx *ret;
+	if (!dctx)
+		return NULL;
 
 	in = (struct digest_priv_ctx *)dctx;
 	ret = OPENSSL_zalloc(sizeof(struct digest_priv_ctx *));
@@ -634,14 +641,23 @@ static void *uadk_prov_dupctx(void *dctx)
 
 static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *) dctx;
+	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
+
+	if (!dctx) {
+		fprintf(stderr, "CTX is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
 
 	return uadk_digest_init(priv);
 }
 
 static int uadk_prov_update(void *dctx, const unsigned char *in, size_t inl)
 {
+	if (!dctx || !in) {
+		fprintf(stderr, "CTX or input data is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
 	return uadk_digest_update((struct digest_priv_ctx *)dctx, in, inl);
 }
 
@@ -654,9 +670,13 @@ static int uadk_prov_update(void *dctx, const unsigned char *in, size_t inl)
 static int uadk_prov_final(void *dctx, unsigned char *out,
 			   size_t *outl, size_t outsz)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *) dctx;
+	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
 	int ret;
+
+	if (!dctx || !out) {
+		fprintf(stderr, "CTX or output data is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
 
 	if (outsz > 0) {
 		ret = uadk_digest_final(priv, out);
