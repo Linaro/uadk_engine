@@ -32,17 +32,17 @@
 #include "uadk_prov.h"
 #include "uadk_utils.h"
 
-#define UADK_DO_SOFT	(-0xE0)
-#define CTX_SYNC	0
-#define CTX_ASYNC	1
-#define CTX_NUM		2
+#define UADK_DO_SOFT		(-0xE0)
+#define CTX_SYNC		0
+#define CTX_ASYNC		1
+#define CTX_NUM			2
 #define DIGEST_DOING		1
 #define DIGEST_END		0
 #define UADK_DIGEST_SUCCESS	1
 #define UADK_DIGEST_FAIL	0
 
 /* The max BD data length is 16M-512B */
-#define BUF_LEN		0xFFFE00
+#define BUF_LEN			0xFFFE00
 
 #define SM3_DIGEST_LENGTH	32
 #define SM3_CBLOCK		64
@@ -316,51 +316,69 @@ soft_init:
 	return uadk_digest_soft_init(priv);
 }
 
+static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv)
+{
+	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
+	switch (priv->e_nid) {
+	case NID_sha224:
+		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+					WD_DIGEST_SHA224_FULL_LEN : WD_DIGEST_SHA224_LEN;
+		break;
+	case NID_sha384:
+		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+					WD_DIGEST_SHA384_FULL_LEN : WD_DIGEST_SHA384_LEN;
+		break;
+	default:
+		break;
+	}
+}
+
 static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
-	const unsigned char *tmpdata = (const unsigned char *)data;
+	unsigned char *tmpdata = (unsigned char *)data;
 	size_t left_len = data_len;
-	int copy_to_bufflen;
+	size_t processing_len;
 	int ret;
 
-	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
-	if (priv->e_nid == NID_sha224)
-		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
-
-	if (priv->e_nid == NID_sha384)
-		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
-
 	priv->req.has_next = DIGEST_DOING;
+	uadk_fill_mac_buffer_len(priv);
 
-	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
-		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
-		uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
-			    copy_to_bufflen);
+	do {
+		if (left_len == data_len) {
+			processing_len = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
+			uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
+				processing_len);
 
-		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
-		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
-		priv->req.in = priv->data;
-		priv->req.out = priv->out;
-		left_len -= copy_to_bufflen;
-		tmpdata += copy_to_bufflen;
+			priv->req.in_bytes = DIGEST_BLOCK_SIZE;
+			priv->req.in = priv->data;
+		} else {
+			if (left_len > BUF_LEN)
+				processing_len = BUF_LEN;
+			else
+				processing_len = left_len - (left_len % DIGEST_BLOCK_SIZE);
+
+			priv->req.in_bytes = processing_len;
+			priv->req.in = tmpdata;
+		}
+
 		if (priv->state == SEC_DIGEST_INIT)
 			priv->state = SEC_DIGEST_FIRST_UPDATING;
 		else if (priv->state == SEC_DIGEST_FIRST_UPDATING)
 			priv->state = SEC_DIGEST_DOING;
+
+		priv->req.out = priv->out;
+		left_len -= processing_len;
+		tmpdata += processing_len;
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest update failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
+	} while (left_len > DIGEST_BLOCK_SIZE);
 
-		priv->last_update_bufflen = 0;
-		if (left_len <= DIGEST_BLOCK_SIZE) {
-			priv->last_update_bufflen = left_len;
-			uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
-			break;
-		}
-	}
+	priv->last_update_bufflen = left_len;
+	uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
 
 	return UADK_DIGEST_SUCCESS;
 
@@ -480,11 +498,7 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
 
-	if (priv->e_nid == NID_sha224)
-		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
-
-	if (priv->e_nid == NID_sha384)
-		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
+	uadk_fill_mac_buffer_len(priv);
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
@@ -536,11 +550,7 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 	priv->req.in_bytes = data_len;
 	uadk_memcpy(priv->data, data, data_len);
 
-	if (priv->e_nid == NID_sha224)
-		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
-
-	if (priv->e_nid == NID_sha384)
-		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
+	uadk_fill_mac_buffer_len(priv);
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
