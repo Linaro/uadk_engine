@@ -243,24 +243,11 @@ static int uadk_digest_poll(void *ctx)
 	return -ETIMEDOUT;
 }
 
-static int uadk_digest_init(struct digest_priv_ctx *priv)
+static int uadk_get_digest_info(struct digest_priv_ctx *priv)
 {
 	int digest_counts = ARRAY_SIZE(digest_info_table);
-	struct sched_params params = {0};
 	int nid = priv->e_nid;
-	int ret, i;
-
-	pthread_mutex_lock(&digest_mutex);
-	if (dprov.pid != getpid()) {
-		ret = wd_digest_init2(priv->alg_name, 0, 0);
-		if (unlikely(ret)) {
-			priv->switch_flag = UADK_DO_SOFT;
-			goto soft_init;
-		}
-		dprov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
-	}
-	pthread_mutex_unlock(&digest_mutex);
+	int i;
 
 	for (i = 0; i < digest_counts; i++) {
 		if (nid == digest_info_table[i].nid) {
@@ -277,6 +264,30 @@ static int uadk_digest_init(struct digest_priv_ctx *priv)
 		fprintf(stderr, "failed to setup the private ctx.\n");
 		return UADK_DIGEST_FAIL;
 	}
+
+	return UADK_DIGEST_SUCCESS;
+}
+
+static int uadk_digest_init(struct digest_priv_ctx *priv)
+{
+	struct sched_params params = {0};
+	int ret;
+
+	pthread_mutex_lock(&digest_mutex);
+	if (dprov.pid != getpid()) {
+		ret = wd_digest_init2(priv->alg_name, 0, 0);
+		if (unlikely(ret)) {
+			priv->switch_flag = UADK_DO_SOFT;
+			goto soft_init;
+		}
+		dprov.pid = getpid();
+		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
+	}
+	pthread_mutex_unlock(&digest_mutex);
+
+	ret = uadk_get_digest_info(priv);
+	if (unlikely(!ret))
+		return ret;
 
 	/* Use the default numa parameters */
 	params.numa_id = -1;
