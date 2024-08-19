@@ -673,8 +673,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
-	int copy_to_bufflen;
-	int ret;
+	int ret, processing_len;
 
 	if (unlikely(!priv)) {
 		fprintf(stderr, "priv get from digest ctx is NULL.\n");
@@ -684,36 +683,43 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 	digest_update_out_length(ctx);
 	digest_set_msg_state(priv, false);
 
-	while (priv->last_update_bufflen + left_len > DIGEST_BLOCK_SIZE) {
-		copy_to_bufflen = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
-		uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
-			    copy_to_bufflen);
+	do {
+		if (left_len == data_len) {
+			processing_len = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
+			uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
+				processing_len);
 
-		priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
-		priv->req.in_bytes = DIGEST_BLOCK_SIZE;
-		priv->req.in = priv->data;
-		priv->req.out = priv->out;
-		left_len -= copy_to_bufflen;
-		tmpdata += copy_to_bufflen;
+			priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
+			priv->req.in_bytes = DIGEST_BLOCK_SIZE;
+			priv->req.in = priv->data;
+		} else {
+			if (left_len > BUF_LEN)
+				processing_len = BUF_LEN;
+			else
+				processing_len = left_len - (left_len % DIGEST_BLOCK_SIZE);
+
+			priv->req.in_bytes = processing_len;
+			priv->req.in = tmpdata;
+		}
 
 		if (priv->state == SEC_DIGEST_INIT)
 			priv->state = SEC_DIGEST_FIRST_UPDATING;
 		else if (priv->state == SEC_DIGEST_FIRST_UPDATING)
 			priv->state = SEC_DIGEST_DOING;
 
+		priv->req.out = priv->out;
+		left_len -= processing_len;
+		tmpdata += processing_len;
+
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
+	} while (left_len > DIGEST_BLOCK_SIZE);
 
-		priv->last_update_bufflen = 0;
-		if (left_len <= DIGEST_BLOCK_SIZE) {
-			priv->last_update_bufflen = left_len;
-			uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
-			break;
-		}
-	}
+	priv->last_update_bufflen = left_len;
+	uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
 
 	return 1;
 do_soft_digest:
