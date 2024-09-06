@@ -699,7 +699,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 				processing_len = left_len - (left_len % DIGEST_BLOCK_SIZE);
 
 			priv->req.in_bytes = processing_len;
-			priv->req.in = tmpdata;
+			priv->req.in = (unsigned char *)tmpdata;
 		}
 
 		if (priv->state == SEC_DIGEST_INIT)
