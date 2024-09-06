@@ -305,9 +305,9 @@ static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 		return UADK_E_FAIL;
 	}
 
-	memcpy(ecx_key->pubkey, (const unsigned char *)pubkey->x.data, key_size);
+	memcpy(ecx_key->pubkey, (const unsigned char *)pubkey->x.data, pubkey->x.dsize);
 	/* Trans public key from big-endian to little-endian */
-	ret = reverse_bytes(ecx_key->pubkey, key_size);
+	ret = reverse_bytes(ecx_key->pubkey, pubkey->x.dsize);
 	if (!ret) {
 		fprintf(stderr, "failed to trans public key\n");
 		return UADK_E_FAIL;
