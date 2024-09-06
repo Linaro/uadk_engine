@@ -35,11 +35,13 @@ struct ossl_provider_st {
 	unsigned int flag_fallback:1; /* Can be used as fallback */
 
 	/* Getting and setting the flags require synchronization */
-	CRYPTO_RWLOCK *flag_lock;
+	void *flag_lock;
 
 	/* OpenSSL library side data */
-	CRYPTO_REF_COUNT refcnt;
-	CRYPTO_RWLOCK *refcnt_lock;  /* For the ref counter */
+	/* Crypto reference counter */
+	int refcnt;
+	/* Lock for the ref counter */
+	void *refcnt_lock;
 	int activatecnt;
 	char *name;
 	char *path;
@@ -75,7 +77,7 @@ struct ossl_provider_st {
 	 */
 	unsigned char *operation_bits;
 	size_t operation_bits_sz;
-	CRYPTO_RWLOCK *opbits_lock;
+	void *opbits_lock;
 
 #ifndef FIPS_MODULE
 	/* Whether this provider is the child of some other provider */
@@ -147,10 +149,15 @@ extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[];
 extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[];
 extern const OSSL_DISPATCH uadk_dh_keyexch_functions[];
 
+extern const OSSL_DISPATCH uadk_sm2_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sm2_signature_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_sm2_asym_cipher_functions[FUNC_MAX_NUM];
+
 void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_rsa(void);
 void uadk_prov_destroy_dh(void);
+void uadk_prov_sm2_uninit(void);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;

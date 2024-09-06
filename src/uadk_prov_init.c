@@ -29,6 +29,7 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 #include "uadk_prov_bio.h"
+#include "uadk_prov_pkey.h"
 
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
@@ -102,6 +103,8 @@ const OSSL_ALGORITHM uadk_prov_ciphers[] = {
 static const OSSL_ALGORITHM uadk_prov_signature[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
+	{ "SM2", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm2_signature_functions, "uadk_provider sm2_signature" },
 	{ NULL, NULL, NULL }
 };
 
@@ -109,11 +112,15 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
+	{ "SM2", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation."},
 	{ NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES, uadk_rsa_asym_cipher_functions },
+	{ "SM2", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm2_asym_cipher_functions, "uadk SM2 asym cipher implementation." },
 	{ NULL, NULL, NULL }
 };
 
@@ -144,10 +151,13 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 	case OSSL_OP_CIPHER:
 		return uadk_prov_ciphers;
 	case OSSL_OP_SIGNATURE:
+		(void)uadk_prov_signature_alg();
 		return uadk_prov_signature;
 	case OSSL_OP_KEYMGMT:
+		(void)uadk_prov_keymgmt_alg();
 		return uadk_prov_keymgmt;
 	case OSSL_OP_ASYM_CIPHER:
+		(void)uadk_prov_asym_cipher_alg();
 		return uadk_prov_asym_cipher;
 	case OSSL_OP_KEYEXCH:
 		return uadk_prov_keyexch;
@@ -164,6 +174,7 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
 	uadk_prov_destroy_rsa();
+	uadk_prov_sm2_uninit();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
 	async_poll_task_free();
@@ -223,7 +234,7 @@ static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
 
 static void ossl_prov_core_from_dispatch(const OSSL_DISPATCH *fns)
 {
-	for (fns; fns->function_id != 0; fns++) {
+	while (fns && fns->function_id != 0) {
 		switch (fns->function_id) {
 		case OSSL_FUNC_CORE_GETTABLE_PARAMS:
 			c_gettable_params = OSSL_FUNC_core_gettable_params(fns);
@@ -238,6 +249,7 @@ static void ossl_prov_core_from_dispatch(const OSSL_DISPATCH *fns)
 			 /* Just ignore anything we don't understand */
 			break;
 		}
+		fns++;
 	}
 }
 
