@@ -26,7 +26,7 @@ static OSSL_FUNC_BIO_vprintf_fn *c_bio_vprintf;
 
 int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
 {
-	for (fns; fns->function_id != 0; fns++) {
+	while (fns && fns->function_id != 0) {
 		switch (fns->function_id) {
 		case OSSL_FUNC_BIO_NEW_FILE:
 			if (c_bio_new_file == NULL)
@@ -69,6 +69,7 @@ int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
 				c_bio_vprintf = OSSL_FUNC_BIO_vprintf(fns);
 			break;
 		}
+		fns++;
 	}
 
 	return 1;
