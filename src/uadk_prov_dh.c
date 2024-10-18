@@ -192,165 +192,165 @@ typedef struct {
 
 static void *uadk_keymgmt_dh_new(void *provctx)
 {
-	if (get_default_keymgmt().new_fun == NULL)
+	if (get_default_dh_keymgmt().new_fun == NULL)
 		return NULL;
 
-	return get_default_keymgmt().new_fun(provctx);
+	return get_default_dh_keymgmt().new_fun(provctx);
 }
 
 static void uadk_keymgmt_dh_free(void *keydata)
 {
-	if (get_default_keymgmt().free == NULL)
+	if (get_default_dh_keymgmt().free == NULL)
 		return;
 
-	get_default_keymgmt().free(keydata);
+	get_default_dh_keymgmt().free(keydata);
 }
 
 static int uadk_keymgmt_dh_has(const void *keydata, int selection)
 {
-	if (get_default_keymgmt().has == NULL)
+	if (get_default_dh_keymgmt().has == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().has(keydata, selection);
+	return get_default_dh_keymgmt().has(keydata, selection);
 }
 
 static int uadk_keymgmt_dh_match(const void *keydata1, const void *keydata2, int selection)
 {
-	if (get_default_keymgmt().match == NULL)
+	if (get_default_dh_keymgmt().match == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().match(keydata1, keydata2, selection);
+	return get_default_dh_keymgmt().match(keydata1, keydata2, selection);
 }
 
 static int uadk_keymgmt_dh_import(void *keydata, int selection, const OSSL_PARAM params[])
 {
-	if (get_default_keymgmt().import == NULL)
+	if (get_default_dh_keymgmt().import == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().import(keydata, selection, params);
+	return get_default_dh_keymgmt().import(keydata, selection, params);
 }
 
 static int uadk_keymgmt_dh_export(void *keydata, int selection, OSSL_CALLBACK *cb, void *cb_params)
 {
-	if (get_default_keymgmt().export_fun == NULL)
+	if (get_default_dh_keymgmt().export_fun == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().export_fun(keydata, selection, cb, cb_params);
+	return get_default_dh_keymgmt().export_fun(keydata, selection, cb, cb_params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_import_types(int selection)
 {
-	if (get_default_keymgmt().import_types == NULL)
+	if (get_default_dh_keymgmt().import_types == NULL)
 		return NULL;
 
-	return get_default_keymgmt().import_types(selection);
+	return get_default_dh_keymgmt().import_types(selection);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_export_types(int selection)
 {
-	if (get_default_keymgmt().export_types == NULL)
+	if (get_default_dh_keymgmt().export_types == NULL)
 		return NULL;
 
-	return get_default_keymgmt().export_types(selection);
+	return get_default_dh_keymgmt().export_types(selection);
 }
 
 static ossl_inline int uadk_keymgmt_dh_get_params(void *key, OSSL_PARAM params[])
 {
-	if (get_default_keymgmt().get_params == NULL)
+	if (get_default_dh_keymgmt().get_params == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().get_params(key, params);
+	return get_default_dh_keymgmt().get_params(key, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_gettable_params(void *provctx)
 {
-	if (get_default_keymgmt().gettable_params == NULL)
+	if (get_default_dh_keymgmt().gettable_params == NULL)
 		return NULL;
 
-	return get_default_keymgmt().gettable_params(provctx);
+	return get_default_dh_keymgmt().gettable_params(provctx);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_settable_params(void *provctx)
 {
-	if (get_default_keymgmt().settable_params == NULL)
+	if (get_default_dh_keymgmt().settable_params == NULL)
 		return NULL;
 
-	return get_default_keymgmt().settable_params(provctx);
+	return get_default_dh_keymgmt().settable_params(provctx);
 }
 
 static int uadk_keymgmt_dh_set_params(void *key, const OSSL_PARAM params[])
 {
-	if (get_default_keymgmt().set_params == NULL)
+	if (get_default_dh_keymgmt().set_params == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().set_params(key, params);
+	return get_default_dh_keymgmt().set_params(key, params);
 }
 
 static int uadk_keymgmt_dh_validate(const void *keydata, int selection, int checktype)
 {
-	if (get_default_keymgmt().validate == NULL)
+	if (get_default_dh_keymgmt().validate == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().validate(keydata, selection, checktype);
+	return get_default_dh_keymgmt().validate(keydata, selection, checktype);
 }
 
 static void *uadk_keymgmt_dh_gen_init(void *provctx, int selection,
 				      const OSSL_PARAM params[])
 {
-	if (get_default_keymgmt().gen_init == NULL)
+	if (get_default_dh_keymgmt().gen_init == NULL)
 		return NULL;
 
-	return get_default_keymgmt().gen_init(provctx, selection, params);
+	return get_default_dh_keymgmt().gen_init(provctx, selection, params);
 }
 
 static int uadk_keymgmt_dh_gen_set_template(void *genctx, void *templ)
 {
-	if (get_default_keymgmt().gen_set_template == NULL)
+	if (get_default_dh_keymgmt().gen_set_template == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().gen_set_template(genctx, templ);
+	return get_default_dh_keymgmt().gen_set_template(genctx, templ);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_gen_settable_params(ossl_unused void *genctx,
 						ossl_unused void *provctx)
 {
-	if (get_default_keymgmt().gen_settable_params == NULL)
+	if (get_default_dh_keymgmt().gen_settable_params == NULL)
 		return NULL;
 
-	return get_default_keymgmt().gen_settable_params(genctx, provctx);
+	return get_default_dh_keymgmt().gen_settable_params(genctx, provctx);
 }
 
 static int uadk_keymgmt_dh_gen_set_params(void *genctx,
 					  const OSSL_PARAM params[])
 {
-	if (get_default_keymgmt().gen_set_params == NULL)
+	if (get_default_dh_keymgmt().gen_set_params == NULL)
 		return UADK_P_FAIL;
 
-	return get_default_keymgmt().gen_set_params(genctx, params);
+	return get_default_dh_keymgmt().gen_set_params(genctx, params);
 }
 
 static void uadk_keymgmt_dh_gen_cleanup(void *genctx)
 {
-	if (get_default_keymgmt().gen_cleanup == NULL)
+	if (get_default_dh_keymgmt().gen_cleanup == NULL)
 		return;
 
-	get_default_keymgmt().gen_cleanup(genctx);
+	get_default_dh_keymgmt().gen_cleanup(genctx);
 }
 
 static void *uadk_keymgmt_dh_load(const void *reference, size_t reference_sz)
 {
-	if (get_default_keymgmt().load == NULL)
+	if (get_default_dh_keymgmt().load == NULL)
 		return NULL;
 
-	return get_default_keymgmt().load(reference, reference_sz);
+	return get_default_dh_keymgmt().load(reference, reference_sz);
 }
 
 static void *uadk_keymgmt_dh_dup(const void *keydata_from, int selection)
 {
-	if (get_default_keymgmt().dup == NULL)
+	if (get_default_dh_keymgmt().dup == NULL)
 		return NULL;
 
-	return get_default_keymgmt().dup(keydata_from, selection);
+	return get_default_dh_keymgmt().dup(keydata_from, selection);
 }
 
 static int uadk_DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)

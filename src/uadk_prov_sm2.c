@@ -22,7 +22,6 @@
 #include <openssl/bn.h>
 #include <uadk/wd_ecc.h>
 #include <uadk/wd_sched.h>
-#include "uadk.h"
 #include "uadk_async.h"
 #include "uadk_prov.h"
 #include "uadk_prov_der_writer.h"
@@ -208,12 +207,12 @@ IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
  */
 static void *uadk_keymgmt_sm2_new(void *provctx)
 {
-	if (!get_default_keymgmt().new_fun) {
+	if (!get_default_sm2_keymgmt().new_fun) {
 		fprintf(stderr, "failed to get keymgmt new function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().new_fun(provctx);
+	return get_default_sm2_keymgmt().new_fun(provctx);
 }
 
 /**
@@ -223,92 +222,92 @@ static void *uadk_keymgmt_sm2_new(void *provctx)
  */
 static void uadk_keymgmt_sm2_free(void *keydata)
 {
-	if (!get_default_keymgmt().free) {
+	if (!get_default_sm2_keymgmt().free) {
 		fprintf(stderr, "failed to get keymgmt free function\n");
 		return;
 	}
 
-	get_default_keymgmt().free(keydata);
+	get_default_sm2_keymgmt().free(keydata);
 }
 
 static int uadk_keymgmt_sm2_get_params(void *key, OSSL_PARAM params[])
 {
-	if (!get_default_keymgmt().get_params) {
+	if (!get_default_sm2_keymgmt().get_params) {
 		fprintf(stderr, "failed to get keymgmt get_params function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().get_params(key, params);
+	return get_default_sm2_keymgmt().get_params(key, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_sm2_gettable_params(void *provctx)
 {
-	if (!get_default_keymgmt().gettable_params) {
+	if (!get_default_sm2_keymgmt().gettable_params) {
 		fprintf(stderr, "failed to get keymgmt gettable_params function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().gettable_params(provctx);
+	return get_default_sm2_keymgmt().gettable_params(provctx);
 }
 
 static int uadk_keymgmt_sm2_set_params(void *key, const OSSL_PARAM params[])
 {
-	if (!get_default_keymgmt().set_params) {
+	if (!get_default_sm2_keymgmt().set_params) {
 		fprintf(stderr, "failed to get keymgmt set_params function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().set_params(key, params);
+	return get_default_sm2_keymgmt().set_params(key, params);
 }
 
 static int uadk_keymgmt_sm2_gen_set_template(void *genctx, void *templates)
 {
-	if (!get_default_keymgmt().gen_set_template) {
+	if (!get_default_sm2_keymgmt().gen_set_template) {
 		fprintf(stderr, "failed to get keymgmt gen_set_template function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().gen_set_template(genctx, templates);
+	return get_default_sm2_keymgmt().gen_set_template(genctx, templates);
 }
 
 static void uadk_keymgmt_sm2_gen_cleanup(void *genctx)
 {
-	if (!get_default_keymgmt().gen_cleanup) {
+	if (!get_default_sm2_keymgmt().gen_cleanup) {
 		fprintf(stderr, "failed to get keymgmt gen_cleanup function\n");
 		return;
 	}
 
-	get_default_keymgmt().gen_cleanup(genctx);
+	get_default_sm2_keymgmt().gen_cleanup(genctx);
 }
 
 static void *uadk_keymgmt_sm2_load(const void *reference, size_t reference_sz)
 {
-	if (!get_default_keymgmt().load) {
+	if (!get_default_sm2_keymgmt().load) {
 		fprintf(stderr, "failed to get keymgmt load function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().load(reference, reference_sz);
+	return get_default_sm2_keymgmt().load(reference, reference_sz);
 }
 
 static int uadk_keymgmt_sm2_validate(const void *keydata, int selection, int checktype)
 {
-	if (!get_default_keymgmt().validate) {
+	if (!get_default_sm2_keymgmt().validate) {
 		fprintf(stderr, "failed to get keymgmt validate function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().validate(keydata, selection, checktype);
+	return get_default_sm2_keymgmt().validate(keydata, selection, checktype);
 }
 
 static int uadk_keymgmt_sm2_match(const void *keydata1, const void *keydata2, int selection)
 {
-	if (!get_default_keymgmt().match) {
+	if (!get_default_sm2_keymgmt().match) {
 		fprintf(stderr, "failed to get keymgmt validate function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().match(keydata1, keydata2, selection);
+	return get_default_sm2_keymgmt().match(keydata1, keydata2, selection);
 }
 
 /**
@@ -321,12 +320,12 @@ static int uadk_keymgmt_sm2_match(const void *keydata1, const void *keydata2, in
  */
 static int uadk_keymgmt_sm2_has(const void *keydata, int selection)
 {
-	if (!get_default_keymgmt().has) {
+	if (!get_default_sm2_keymgmt().has) {
 		fprintf(stderr, "failed to get keymgmt has function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().has(keydata, selection);
+	return get_default_sm2_keymgmt().has(keydata, selection);
 }
 
 /**
@@ -339,12 +338,12 @@ static int uadk_keymgmt_sm2_has(const void *keydata, int selection)
  */
 static int uadk_keymgmt_sm2_import(void *keydata, int selection, const OSSL_PARAM params[])
 {
-	if (!get_default_keymgmt().import) {
+	if (!get_default_sm2_keymgmt().import) {
 		fprintf(stderr, "failed to get keymgmt import function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().import(keydata, selection, params);
+	return get_default_sm2_keymgmt().import(keydata, selection, params);
 }
 
 /**
@@ -355,43 +354,43 @@ static int uadk_keymgmt_sm2_import(void *keydata, int selection, const OSSL_PARA
  */
 static const OSSL_PARAM *uadk_keymgmt_sm2_import_types(int selection)
 {
-	if (!get_default_keymgmt().import_types) {
+	if (!get_default_sm2_keymgmt().import_types) {
 		fprintf(stderr, "failed to get keymgmt import_types function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().import_types(selection);
+	return get_default_sm2_keymgmt().import_types(selection);
 }
 
 static int uadk_keymgmt_sm2_export(void *keydata, int selection,
 				   OSSL_CALLBACK *param_callback, void *cbarg)
 {
-	if (!get_default_keymgmt().export_fun) {
+	if (!get_default_sm2_keymgmt().export_fun) {
 		fprintf(stderr, "failed to get keymgmt export function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().export_fun(keydata, selection, param_callback, cbarg);
+	return get_default_sm2_keymgmt().export_fun(keydata, selection, param_callback, cbarg);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_sm2_export_types(int selection)
 {
-	if (!get_default_keymgmt().export_types) {
+	if (!get_default_sm2_keymgmt().export_types) {
 		fprintf(stderr, "failed to get keymgmt export_types function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().export_types(selection);
+	return get_default_sm2_keymgmt().export_types(selection);
 }
 
 static void *uadk_keymgmt_sm2_dup(const void *keydata_from, int selection)
 {
-	if (!get_default_keymgmt().dup) {
+	if (!get_default_sm2_keymgmt().dup) {
 		fprintf(stderr, "failed to get keymgmt dup function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().dup(keydata_from, selection);
+	return get_default_sm2_keymgmt().dup(keydata_from, selection);
 }
 
 /**
@@ -405,12 +404,12 @@ static void *uadk_keymgmt_sm2_dup(const void *keydata_from, int selection)
 static void *uadk_keymgmt_sm2_gen_init(void *provctx, int selection,
 				const OSSL_PARAM params[])
 {
-	if (!get_default_keymgmt().gen_init) {
+	if (!get_default_sm2_keymgmt().gen_init) {
 		fprintf(stderr, "failed to get keymgmt gen_init function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().gen_init(provctx, selection, params);
+	return get_default_sm2_keymgmt().gen_init(provctx, selection, params);
 }
 
 /**
@@ -422,22 +421,22 @@ static void *uadk_keymgmt_sm2_gen_init(void *provctx, int selection,
  */
 static int uadk_keymgmt_sm2_gen_set_params(void *genctx, const OSSL_PARAM params[])
 {
-	if (!get_default_keymgmt().gen_set_params) {
+	if (!get_default_sm2_keymgmt().gen_set_params) {
 		fprintf(stderr, "failed to get keymgmt gen_set_params function\n");
 		return UADK_P_FAIL;
 	}
 
-	return get_default_keymgmt().gen_set_params(genctx, params);
+	return get_default_sm2_keymgmt().gen_set_params(genctx, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_sm2_settable_params(ossl_unused void *provctx)
 {
-	if (!get_default_keymgmt().settable_params) {
+	if (!get_default_sm2_keymgmt().settable_params) {
 		fprintf(stderr, "failed to get keymgmt settable_params function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().settable_params(provctx);
+	return get_default_sm2_keymgmt().settable_params(provctx);
 }
 
 /**
@@ -450,12 +449,12 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_settable_params(ossl_unused void *prov
 static const OSSL_PARAM *uadk_keymgmt_sm2_gen_settable_params(ossl_unused void *genctx,
 							ossl_unused void *provctx)
 {
-	if (!get_default_keymgmt().gen_settable_params) {
+	if (!get_default_sm2_keymgmt().gen_settable_params) {
 		fprintf(stderr, "failed to get keymgmt gen_settable_params function\n");
 		return NULL;
 	}
 
-	return get_default_keymgmt().gen_settable_params(genctx, provctx);
+	return get_default_sm2_keymgmt().gen_settable_params(genctx, provctx);
 }
 
 static void uadk_prov_sm2_mutex_infork(void)
