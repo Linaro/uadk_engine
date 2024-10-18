@@ -29,6 +29,7 @@
 #include "uadk_async.h"
 #include "uadk.h"
 #include "uadk_prov.h"
+#include "uadk_prov_pkey.h"
 
 #define UN_SET				0
 #define IS_SET				1
@@ -63,6 +64,10 @@
 #define GENCB_RETRY			3
 #define PRIME_CHECK_BIT_NUM		4
 #define SOFT_SWITCH			0
+
+UADK_PKEY_KEYMGMT_DESCR(rsa, RSA);
+UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
+UADK_PKEY_ASYM_CIPHER_DESCR(rsa, RSA);
 
 struct bignum_st {
 	BN_ULONG *d;
@@ -233,117 +238,6 @@ struct rsa_st {
 
 	int dirty_cnt;
 };
-
-typedef struct rsa_st RSA;
-
-/* EVP_SIGNATURE */
-struct evp_signature_st {
-	int name_id;
-	char *type_name;
-	const char *description;
-	OSSL_PROVIDER *prov;
-	CRYPTO_REF_COUNT refcnt;
-# if OPENSSL_VERSION_NUMBER < 0x30200000
-	CRYPTO_RWLOCK *lock;
-# endif
-	OSSL_FUNC_signature_newctx_fn *newctx;
-	OSSL_FUNC_signature_sign_init_fn *sign_init;
-	OSSL_FUNC_signature_sign_fn *sign;
-	OSSL_FUNC_signature_verify_init_fn *verify_init;
-	OSSL_FUNC_signature_verify_fn *verify;
-	OSSL_FUNC_signature_verify_recover_init_fn *verify_recover_init;
-	OSSL_FUNC_signature_verify_recover_fn *verify_recover;
-	OSSL_FUNC_signature_digest_sign_init_fn *digest_sign_init;
-	OSSL_FUNC_signature_digest_sign_update_fn *digest_sign_update;
-	OSSL_FUNC_signature_digest_sign_final_fn *digest_sign_final;
-	OSSL_FUNC_signature_digest_sign_fn *digest_sign;
-	OSSL_FUNC_signature_digest_verify_init_fn *digest_verify_init;
-	OSSL_FUNC_signature_digest_verify_update_fn *digest_verify_update;
-	OSSL_FUNC_signature_digest_verify_final_fn *digest_verify_final;
-	OSSL_FUNC_signature_digest_verify_fn *digest_verify;
-	OSSL_FUNC_signature_freectx_fn *freectx;
-	OSSL_FUNC_signature_dupctx_fn *dupctx;
-	OSSL_FUNC_signature_get_ctx_params_fn *get_ctx_params;
-	OSSL_FUNC_signature_gettable_ctx_params_fn *gettable_ctx_params;
-	OSSL_FUNC_signature_set_ctx_params_fn *set_ctx_params;
-	OSSL_FUNC_signature_settable_ctx_params_fn *settable_ctx_params;
-	OSSL_FUNC_signature_get_ctx_md_params_fn *get_ctx_md_params;
-	OSSL_FUNC_signature_gettable_ctx_md_params_fn *gettable_ctx_md_params;
-	OSSL_FUNC_signature_set_ctx_md_params_fn *set_ctx_md_params;
-	OSSL_FUNC_signature_settable_ctx_md_params_fn *settable_ctx_md_params;
-};
-
-/* EVP_ASYM_CIPHER */
-struct evp_asym_cipher_st {
-	int name_id;
-	char *type_name;
-	const char *description;
-	OSSL_PROVIDER *prov;
-	CRYPTO_REF_COUNT refcnt;
-# if OPENSSL_VERSION_NUMBER < 0x30200000
-	CRYPTO_RWLOCK *lock;
-#endif
-	OSSL_FUNC_asym_cipher_newctx_fn *newctx;
-	OSSL_FUNC_asym_cipher_encrypt_init_fn *encrypt_init;
-	OSSL_FUNC_asym_cipher_encrypt_fn *encrypt;
-	OSSL_FUNC_asym_cipher_decrypt_init_fn *decrypt_init;
-	OSSL_FUNC_asym_cipher_decrypt_fn *decrypt;
-	OSSL_FUNC_asym_cipher_freectx_fn *freectx;
-	OSSL_FUNC_asym_cipher_dupctx_fn *dupctx;
-	OSSL_FUNC_asym_cipher_get_ctx_params_fn *get_ctx_params;
-	OSSL_FUNC_asym_cipher_gettable_ctx_params_fn *gettable_ctx_params;
-	OSSL_FUNC_asym_cipher_set_ctx_params_fn *set_ctx_params;
-	OSSL_FUNC_asym_cipher_settable_ctx_params_fn *settable_ctx_params;
-};
-
-typedef struct{
-	int id; /* libcrypto internal */
-	int name_id;
-	char *type_name;
-	const char *description;
-	OSSL_PROVIDER *prov;
-
-	CRYPTO_REF_COUNT refcnt;
-# if OPENSSL_VERSION_NUMBER < 0x30200000
-	CRYPTO_RWLOCK *lock;
-# endif
-
-	/* Constructor(s), destructor, information */
-	OSSL_FUNC_keymgmt_new_fn *new_fun;
-	OSSL_FUNC_keymgmt_free_fn *free;
-	OSSL_FUNC_keymgmt_get_params_fn *get_params;
-	OSSL_FUNC_keymgmt_gettable_params_fn *gettable_params;
-	OSSL_FUNC_keymgmt_set_params_fn *set_params;
-	OSSL_FUNC_keymgmt_settable_params_fn *settable_params;
-
-	/* Generation, a complex constructor */
-	OSSL_FUNC_keymgmt_gen_init_fn *gen_init;
-	OSSL_FUNC_keymgmt_gen_set_template_fn *gen_set_template;
-	OSSL_FUNC_keymgmt_gen_set_params_fn *gen_set_params;
-	OSSL_FUNC_keymgmt_gen_settable_params_fn *gen_settable_params;
-	OSSL_FUNC_keymgmt_gen_fn *gen;
-	OSSL_FUNC_keymgmt_gen_cleanup_fn *gen_cleanup;
-	OSSL_FUNC_keymgmt_load_fn *load;
-
-	/* Key object checking */
-	OSSL_FUNC_keymgmt_query_operation_name_fn *query_operation_name;
-	OSSL_FUNC_keymgmt_has_fn *has;
-	OSSL_FUNC_keymgmt_validate_fn *validate;
-	OSSL_FUNC_keymgmt_match_fn *match;
-
-	/* Import and export routines */
-	OSSL_FUNC_keymgmt_import_fn *import;
-	OSSL_FUNC_keymgmt_import_types_fn *import_types;
-# if OPENSSL_VERSION_NUMBER >= 0x30200000
-	OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
-# endif
-	OSSL_FUNC_keymgmt_export_fn *export_fun;
-	OSSL_FUNC_keymgmt_export_types_fn *export_types;
-# if OPENSSL_VERSION_NUMBER >= 0x30200000
-	OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
-# endif
-	OSSL_FUNC_keymgmt_dup_fn *dup;
-} UADK_RSA_KEYMGMT;
 
 typedef struct {
 	OSSL_LIB_CTX *libctx;
@@ -1987,44 +1881,6 @@ free_pkey:
 	return ret;
 }
 
-static EVP_SIGNATURE get_default_rsa_signature(void)
-{
-	static EVP_SIGNATURE s_signature;
-	static int initilazed;
-
-	if (!initilazed) {
-		EVP_SIGNATURE *signature =
-			(EVP_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "RSA", "provider=default");
-		if (signature) {
-			s_signature = *signature;
-			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
-			initilazed = 1;
-		} else {
-			fprintf(stderr, "EVP_SIGNATURE_fetch from default provider failed");
-		}
-	}
-	return s_signature;
-}
-
-static EVP_ASYM_CIPHER get_default_asym_cipher(void)
-{
-	static EVP_ASYM_CIPHER s_asym_cipher;
-	static int initilazed;
-
-	if (!initilazed) {
-		EVP_ASYM_CIPHER *asym_cipher =
-			(EVP_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "RSA", "provider=default");
-		if (asym_cipher) {
-			s_asym_cipher = *asym_cipher;
-			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
-			initilazed = 1;
-		} else {
-			fprintf(stderr, "EVP_ASYM_CIPHER_fetch from default provider failed");
-		}
-	}
-	return s_asym_cipher;
-}
-
 static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 			      const OSSL_PARAM params[], int operation)
 {
@@ -2084,26 +1940,26 @@ static int uadk_rsa_init(void *vprsactx, void *vrsa,
 	return UADK_E_SUCCESS;
 }
 
-static int uadk_rsa_verify_recover_init(void *vprsactx, void *vrsa,
-					const OSSL_PARAM params[])
+static int uadk_signature_rsa_verify_recover_init(void *vprsactx, void *vrsa,
+						  const OSSL_PARAM params[])
 {
 	return UADK_E_SUCCESS;
 }
 
-static int uadk_rsa_verify_recover(void *vprsactx, unsigned char *rout,
-				   size_t *routlen, size_t routsize,
-				   const unsigned char *sig, size_t siglen)
+static int uadk_signature_rsa_verify_recover(void *vprsactx, unsigned char *rout,
+					     size_t *routlen, size_t routsize,
+					     const unsigned char *sig, size_t siglen)
 {
 	return UADK_E_SUCCESS;
 }
 
-static int uadk_rsa_verify_init(void *vprsactx, void *vrsa,
+static int uadk_signature_rsa_verify_init(void *vprsactx, void *vrsa,
 				const OSSL_PARAM params[])
 {
 	return uadk_rsa_init(vprsactx, vrsa, params, EVP_PKEY_OP_VERIFY);
 }
 
-static int uadk_rsa_verify(void *vprsactx, const unsigned char *sig,
+static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 			   size_t siglen, const unsigned char *tbs,
 			   size_t tbslen)
 {
@@ -2138,13 +1994,13 @@ static int uadk_rsa_verify(void *vprsactx, const unsigned char *sig,
 
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_signature().verify)
+	if (!get_default_signature().verify)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
+	return get_default_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
 }
 
-static int uadk_rsa_sign(void *vprsactx, unsigned char *sig,
+static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 			 size_t *siglen, size_t sigsize,
 			 const unsigned char *tbs, size_t tbslen)
 {
@@ -2184,18 +2040,18 @@ static int uadk_rsa_sign(void *vprsactx, unsigned char *sig,
 	return UADK_E_SUCCESS;
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_signature().sign)
+	if (!get_default_signature().sign)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
+	return get_default_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
 }
 
-static int uadk_rsa_sign_init(void *vprsactx, void *vrsa, const OSSL_PARAM params[])
+static int uadk_signature_rsa_sign_init(void *vprsactx, void *vrsa, const OSSL_PARAM params[])
 {
 	return uadk_rsa_init(vprsactx, vrsa, params, EVP_PKEY_OP_SIGN);
 }
 
-static void *uadk_rsa_signature_newctx(void *provctx, const char *propq)
+static void *uadk_signature_rsa_newctx(void *provctx, const char *propq)
 {
 	PROV_RSA_SIG_CTX *priv = OPENSSL_zalloc(sizeof(PROV_RSA_SIG_CTX));
 	char *propq_copy = NULL;
@@ -2220,7 +2076,7 @@ err:
 	return NULL;
 }
 
-static void uadk_rsa_signature_freectx(void *vprsactx)
+static void uadk_signature_rsa_freectx(void *vprsactx)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
@@ -2231,7 +2087,7 @@ static void uadk_rsa_signature_freectx(void *vprsactx)
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
-static void *uadk_rsa_asym_newctx(void *provctx)
+static void *uadk_asym_cipher_rsa_newctx(void *provctx)
 {
 	PROV_RSA_ASYM_CTX *priv = NULL;
 
@@ -2243,7 +2099,7 @@ static void *uadk_rsa_asym_newctx(void *provctx)
 	return priv;
 }
 
-static void uadk_rsa_asym_freectx(void *vprsactx)
+static void uadk_asym_cipher_rsa_freectx(void *vprsactx)
 {
 	PROV_RSA_ASYM_CTX *priv = (PROV_RSA_ASYM_CTX *)vprsactx;
 
@@ -2253,7 +2109,7 @@ static void uadk_rsa_asym_freectx(void *vprsactx)
 	OPENSSL_free(priv);
 }
 
-static int uadk_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
+static int uadk_signature_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
@@ -2285,8 +2141,8 @@ static const OSSL_PARAM settable_ctx_params_no_digest[] = {
 	OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *uadk_rsa_settable_ctx_params(void *vprsactx,
-						      void *provctx)
+static const OSSL_PARAM *uadk_signature_rsa_settable_ctx_params(void *vprsactx,
+							       void *provctx)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
@@ -2296,16 +2152,16 @@ static const OSSL_PARAM *uadk_rsa_settable_ctx_params(void *vprsactx,
 	return settable_ctx_params;
 }
 
-static int uadk_rsa_digest_sign_init(void *vprsactx, const char *mdname,
-			  void *vrsa, const OSSL_PARAM params[])
+static int uadk_signature_rsa_digest_sign_init(void *vprsactx, const char *mdname,
+					      void *vrsa, const OSSL_PARAM params[])
 {
-	if (!get_default_rsa_signature().digest_sign_init)
+	if (!get_default_signature().digest_sign_init)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().digest_sign_init(vprsactx, mdname, vrsa, params);
+	return get_default_signature().digest_sign_init(vprsactx, mdname, vrsa, params);
 }
 
-static int uadk_rsa_digest_signverify_update(void *vprsactx,
+static int uadk_signature_rsa_digest_sign_update(void *vprsactx,
 					     const unsigned char *data,
 					     size_t datalen)
 {
@@ -2317,8 +2173,8 @@ static int uadk_rsa_digest_signverify_update(void *vprsactx,
 	return EVP_DigestUpdate(priv->mdctx, data, datalen);
 }
 
-static int uadk_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
-				      size_t *siglen, size_t sigsize)
+static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
+					       size_t *siglen, size_t sigsize)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
@@ -2343,20 +2199,29 @@ static int uadk_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
 			return UADK_E_FAIL;
 	}
 
-	return uadk_rsa_sign(vprsactx, sig, siglen, sigsize,
+	return uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize,
 				       digest, (size_t)dlen);
 }
 
-static int uadk_rsa_digest_verify_init(void *vprsactx, const char *mdname,
+static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
 				       void *vrsa, const OSSL_PARAM params[])
 {
-	if (!get_default_rsa_signature().digest_verify_init)
+	if (!get_default_signature().digest_verify_init)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().digest_verify_init(vprsactx, mdname, vrsa, params);
+	return get_default_signature().digest_verify_init(vprsactx, mdname, vrsa, params);
 }
 
-static int uadk_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
+static int uadk_signature_rsa_digest_verify_update(void *vprsactx, const unsigned char *data,
+						   size_t datalen)
+{
+	if (!get_default_signature().digest_verify_update)
+		return UADK_E_FAIL;
+
+	return get_default_signature().digest_verify_update(vprsactx, data, datalen);
+}
+
+static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
 					size_t siglen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
@@ -2376,80 +2241,79 @@ static int uadk_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig
 	if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 		return UADK_E_FAIL;
 
-	return uadk_rsa_verify(vprsactx, sig, siglen,
-			digest, (size_t)dlen);
+	return uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
 }
 
-static void *uadk_rsa_dupctx(void *vprsactx)
+static void *uadk_signature_rsa_dupctx(void *vprsactx)
 {
-	if (!get_default_rsa_signature().dupctx)
+	if (!get_default_signature().dupctx)
 		return NULL;
 
-	return get_default_rsa_signature().dupctx(vprsactx);
+	return get_default_signature().dupctx(vprsactx);
 }
 
-static int uadk_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
+static int uadk_signature_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
 {
-	if (!get_default_rsa_signature().get_ctx_params)
+	if (!get_default_signature().get_ctx_params)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().get_ctx_params(vprsactx, params);
+	return get_default_signature().get_ctx_params(vprsactx, params);
 }
 
-static const OSSL_PARAM *uadk_rsa_gettable_ctx_md_params(void *vprsactx)
+static const OSSL_PARAM *uadk_signature_rsa_gettable_ctx_md_params(void *vprsactx)
 {
-	if (!get_default_rsa_signature().gettable_ctx_md_params)
+	if (!get_default_signature().gettable_ctx_md_params)
 		return NULL;
 
-	return get_default_rsa_signature().gettable_ctx_md_params(vprsactx);
+	return get_default_signature().gettable_ctx_md_params(vprsactx);
 }
 
-static int uadk_rsa_set_ctx_md_params(void *vprsactx, const OSSL_PARAM params[])
+static int uadk_signature_rsa_set_ctx_md_params(void *vprsactx, const OSSL_PARAM params[])
 {
-	if (!get_default_rsa_signature().set_ctx_md_params)
+	if (!get_default_signature().set_ctx_md_params)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().set_ctx_md_params(vprsactx, params);
+	return get_default_signature().set_ctx_md_params(vprsactx, params);
 }
 
-static const OSSL_PARAM *uadk_rsa_settable_ctx_md_params(void *vprsactx)
+static const OSSL_PARAM *uadk_signature_rsa_settable_ctx_md_params(void *vprsactx)
 {
-	if (!get_default_rsa_signature().settable_ctx_md_params)
+	if (!get_default_signature().settable_ctx_md_params)
 		return NULL;
 
-	return get_default_rsa_signature().settable_ctx_md_params(vprsactx);
+	return get_default_signature().settable_ctx_md_params(vprsactx);
 }
 
-static const OSSL_PARAM *uadk_rsa_gettable_ctx_params(ossl_unused void *vprsactx,
+static const OSSL_PARAM *uadk_signature_rsa_gettable_ctx_params(ossl_unused void *vprsactx,
 						      ossl_unused void *provctx)
 {
-	if (!get_default_rsa_signature().gettable_ctx_params)
+	if (!get_default_signature().gettable_ctx_params)
 		return NULL;
 
-	return get_default_rsa_signature().gettable_ctx_params(vprsactx, provctx);
+	return get_default_signature().gettable_ctx_params(vprsactx, provctx);
 }
 
-static int uadk_rsa_get_ctx_md_params(void *vprsactx, OSSL_PARAM *params)
+static int uadk_signature_rsa_get_ctx_md_params(void *vprsactx, OSSL_PARAM *params)
 {
-	if (!get_default_rsa_signature().get_ctx_md_params)
+	if (!get_default_signature().get_ctx_md_params)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().get_ctx_md_params(vprsactx, params);
+	return get_default_signature().get_ctx_md_params(vprsactx, params);
 }
 
-static int uadk_rsa_asym_encrypt_init(void *vprsactx, void *vrsa,
+static int uadk_asym_cipher_rsa_encrypt_init(void *vprsactx, void *vrsa,
 				      const OSSL_PARAM params[])
 {
 	return uadk_rsa_asym_init(vprsactx, vrsa, params, EVP_PKEY_OP_ENCRYPT);
 }
 
-static int uadk_rsa_asym_decrypt_init(void *vprsactx, void *vrsa,
+static int uadk_asym_cipher_rsa_decrypt_init(void *vprsactx, void *vrsa,
 				      const OSSL_PARAM params[])
 {
 	return uadk_rsa_asym_init(vprsactx, vrsa, params, EVP_PKEY_OP_DECRYPT);
 }
 
-static int uadk_rsa_asym_encrypt(void *vprsactx, unsigned char *out,
+static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 				 size_t *outlen, size_t outsize,
 				 const unsigned char *in, size_t inlen)
 {
@@ -2491,7 +2355,7 @@ soft:
 	return get_default_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
-static int uadk_rsa_asym_decrypt(void *vprsactx, unsigned char *out,
+static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 				 size_t *outlen, size_t outsize,
 				 const unsigned char *in, size_t inlen)
 {
@@ -2537,7 +2401,7 @@ soft:
 	return get_default_asym_cipher().decrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
-static int uadk_rsa_asym_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
+static int uadk_asym_cipher_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
 {
 	if (!get_default_asym_cipher().get_ctx_params)
 		return UADK_E_FAIL;
@@ -2545,7 +2409,7 @@ static int uadk_rsa_asym_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
 	return get_default_asym_cipher().get_ctx_params(vprsactx, params);
 }
 
-static const OSSL_PARAM *uadk_rsa_asym_gettable_ctx_params(void *vprsactx,
+static const OSSL_PARAM *uadk_asym_cipher_rsa_gettable_ctx_params(void *vprsactx,
 							   void *provctx)
 {
 	if (!get_default_asym_cipher().gettable_ctx_params)
@@ -2554,7 +2418,7 @@ static const OSSL_PARAM *uadk_rsa_asym_gettable_ctx_params(void *vprsactx,
 	return get_default_asym_cipher().gettable_ctx_params(vprsactx, provctx);
 }
 
-static int uadk_rsa_asym_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
+static int uadk_asym_cipher_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
 {
 	if (!get_default_asym_cipher().set_ctx_params)
 		return UADK_E_FAIL;
@@ -2562,7 +2426,7 @@ static int uadk_rsa_asym_set_ctx_params(void *vprsactx, const OSSL_PARAM params[
 	return get_default_asym_cipher().set_ctx_params(vprsactx, params);
 }
 
-static const OSSL_PARAM *uadk_rsa_asym_settable_ctx_params(void *vprsactx,
+static const OSSL_PARAM *uadk_asym_cipher_rsa_settable_ctx_params(void *vprsactx,
 							   void *provctx)
 {
 	if (!get_default_asym_cipher().settable_ctx_params)
@@ -2571,27 +2435,7 @@ static const OSSL_PARAM *uadk_rsa_asym_settable_ctx_params(void *vprsactx,
 	return get_default_asym_cipher().settable_ctx_params(vprsactx, provctx);
 }
 
-static UADK_RSA_KEYMGMT get_default_keymgmt(void)
-{
-	static UADK_RSA_KEYMGMT s_keymgmt;
-	static int initialized;
-
-	if (!initialized) {
-		UADK_RSA_KEYMGMT *keymgmt =
-			(UADK_RSA_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "RSA",
-			 "provider=default");
-		if (keymgmt) {
-			s_keymgmt = *keymgmt;
-			EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
-			initialized = 1;
-		} else {
-			fprintf(stderr, "EVP_KEYMGMT_fetch from default provider failed\n");
-		}
-	}
-	return s_keymgmt;
-}
-
-static void *uadk_keymgmt_rsa_newdata(void *provctx)
+static void *uadk_keymgmt_rsa_new(void *provctx)
 {
 	if (!get_default_keymgmt().new_fun)
 		return NULL;
@@ -2599,7 +2443,7 @@ static void *uadk_keymgmt_rsa_newdata(void *provctx)
 	return get_default_keymgmt().new_fun(provctx);
 }
 
-static void uadk_keymgmt_rsa_freedata(void *keydata)
+static void uadk_keymgmt_rsa_free(void *keydata)
 {
 	if (!get_default_keymgmt().free)
 		return;
@@ -2646,6 +2490,16 @@ static int uadk_keymgmt_rsa_gen_set_params(void *genctx, const OSSL_PARAM params
 		return UADK_E_FAIL;
 
 	return get_default_keymgmt().gen_set_params(genctx, params);
+}
+
+static int uadk_keymgmt_rsa_gen_set_template(void *genctx, void *templates)
+{
+	if (!get_default_keymgmt().gen_set_template) {
+		fprintf(stderr, "failed to get keymgmt gen_set_template function\n");
+		return UADK_P_FAIL;
+	}
+
+	return get_default_keymgmt().gen_set_template(genctx, templates);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_rsa_gen_settable_params(ossl_unused void *genctx,
@@ -2718,7 +2572,7 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	ret = uadk_prov_rsa_keygen(rsa, (int)gctx->nbits, gctx->pub_exp, gencb);
 	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
 		BN_GENCB_free(gencb);
-		uadk_keymgmt_rsa_freedata(rsa);
+		uadk_keymgmt_rsa_free(rsa);
 
 		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
 			goto exe_soft;
@@ -2771,6 +2625,26 @@ static const OSSL_PARAM *uadk_keymgmt_rsa_gettable_params(void *provctx)
 	return get_default_keymgmt().gettable_params(provctx);
 }
 
+static int uadk_keymgmt_rsa_set_params(void *key, const OSSL_PARAM params[])
+{
+	if (!get_default_keymgmt().set_params) {
+		fprintf(stderr, "failed to get keymgmt set_params function\n");
+		return UADK_P_FAIL;
+	}
+
+	return get_default_keymgmt().set_params(key, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_rsa_settable_params(ossl_unused void *provctx)
+{
+	if (!get_default_keymgmt().settable_params) {
+		fprintf(stderr, "failed to get keymgmt settable_params function\n");
+		return NULL;
+	}
+
+	return get_default_keymgmt().settable_params(provctx);
+}
+
 static int uadk_keymgmt_rsa_match(const void *keydata1, const void *keydata2, int selection)
 {
 	if (!get_default_keymgmt().match)
@@ -2812,105 +2686,12 @@ static void *uadk_keymgmt_rsa_dup(const void *keydata_from, int selection)
 	return get_default_keymgmt().dup(keydata_from, selection);
 }
 
-const OSSL_DISPATCH uadk_rsa_keymgmt_functions[] = {
-	{ OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))uadk_keymgmt_rsa_newdata },
-	{ OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))uadk_keymgmt_rsa_freedata },
-	{ OSSL_FUNC_KEYMGMT_HAS, (void (*)(void))uadk_keymgmt_rsa_has },
-	{ OSSL_FUNC_KEYMGMT_IMPORT, (void (*)(void))uadk_keymgmt_rsa_import },
-	{ OSSL_FUNC_KEYMGMT_IMPORT_TYPES,
-		(void (*)(void))uadk_keymgmt_rsa_import_types },
-	{ OSSL_FUNC_KEYMGMT_GEN_INIT, (void (*)(void))uadk_keymgmt_rsa_gen_init },
-	{ OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS,
-		(void (*)(void))uadk_keymgmt_rsa_gen_set_params },
-	{ OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,
-		(void (*)(void))uadk_keymgmt_rsa_gen_settable_params },
-	{ OSSL_FUNC_KEYMGMT_GEN, (void (*)(void))uadk_keymgmt_rsa_gen },
-	{ OSSL_FUNC_KEYMGMT_GEN_CLEANUP, (void (*)(void))uadk_keymgmt_rsa_gen_cleanup },
-	{ OSSL_FUNC_KEYMGMT_LOAD, (void (*)(void))uadk_keymgmt_rsa_load },
-	{ OSSL_FUNC_KEYMGMT_GET_PARAMS, (void (*) (void))uadk_keymgmt_rsa_get_params },
-	{ OSSL_FUNC_KEYMGMT_GETTABLE_PARAMS,
-		(void (*) (void))uadk_keymgmt_rsa_gettable_params },
-	{ OSSL_FUNC_KEYMGMT_MATCH, (void (*)(void))uadk_keymgmt_rsa_match },
-	{ OSSL_FUNC_KEYMGMT_VALIDATE, (void (*)(void))uadk_keymgmt_rsa_validate },
-	{ OSSL_FUNC_KEYMGMT_EXPORT, (void (*)(void))uadk_keymgmt_rsa_export },
-	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_rsa_export_types },
-	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_rsa_dup },
-	{0, NULL}
-};
-
-const OSSL_DISPATCH uadk_rsa_signature_functions[] = {
-	{OSSL_FUNC_SIGNATURE_NEWCTX,
-		(void (*)(void))uadk_rsa_signature_newctx},
-	{OSSL_FUNC_SIGNATURE_SIGN_INIT,
-		(void (*)(void))uadk_rsa_sign_init},
-	{OSSL_FUNC_SIGNATURE_SIGN,
-		(void (*)(void))uadk_rsa_sign},
-	{OSSL_FUNC_SIGNATURE_VERIFY_INIT,
-		(void (*)(void))uadk_rsa_verify_init },
-	{OSSL_FUNC_SIGNATURE_VERIFY,
-		(void (*)(void))uadk_rsa_verify },
-	{OSSL_FUNC_SIGNATURE_VERIFY_RECOVER_INIT,
-		(void (*)(void))uadk_rsa_verify_recover_init },
-	{OSSL_FUNC_SIGNATURE_VERIFY_RECOVER,
-		(void (*)(void))uadk_rsa_verify_recover },
-	{OSSL_FUNC_SIGNATURE_FREECTX,
-		(void (*)(void))uadk_rsa_signature_freectx},
-	{OSSL_FUNC_SIGNATURE_SET_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_set_ctx_params},
-	{OSSL_FUNC_SIGNATURE_SETTABLE_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_settable_ctx_params},
-	{OSSL_FUNC_SIGNATURE_DIGEST_SIGN_INIT,
-		(void (*)(void))uadk_rsa_digest_sign_init },
-	{OSSL_FUNC_SIGNATURE_DIGEST_SIGN_UPDATE,
-		(void (*)(void))uadk_rsa_digest_signverify_update },
-	{OSSL_FUNC_SIGNATURE_DIGEST_SIGN_FINAL,
-		(void (*)(void))uadk_rsa_digest_sign_final },
-	{OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_INIT,
-		(void (*)(void))uadk_rsa_digest_verify_init },
-	{OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_UPDATE,
-		(void (*)(void))uadk_rsa_digest_signverify_update },
-	{OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_FINAL,
-		(void (*)(void))uadk_rsa_digest_verify_final },
-	{OSSL_FUNC_SIGNATURE_DUPCTX,
-		(void (*)(void))uadk_rsa_dupctx },
-	{OSSL_FUNC_SIGNATURE_GET_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_get_ctx_params },
-	{OSSL_FUNC_SIGNATURE_GETTABLE_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_gettable_ctx_params },
-	{OSSL_FUNC_SIGNATURE_GET_CTX_MD_PARAMS,
-		(void (*)(void))uadk_rsa_get_ctx_md_params },
-	{OSSL_FUNC_SIGNATURE_GETTABLE_CTX_MD_PARAMS,
-		(void (*)(void))uadk_rsa_gettable_ctx_md_params },
-	{OSSL_FUNC_SIGNATURE_SET_CTX_MD_PARAMS,
-		(void (*)(void))uadk_rsa_set_ctx_md_params },
-	{OSSL_FUNC_SIGNATURE_SETTABLE_CTX_MD_PARAMS,
-		(void (*)(void))uadk_rsa_settable_ctx_md_params },
-	{0, NULL}
-};
-
-const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[] = {
-	{ OSSL_FUNC_ASYM_CIPHER_NEWCTX,
-		(void (*)(void))uadk_rsa_asym_newctx },
-	{ OSSL_FUNC_ASYM_CIPHER_ENCRYPT_INIT,
-		(void (*)(void))uadk_rsa_asym_encrypt_init },
-	{ OSSL_FUNC_ASYM_CIPHER_ENCRYPT,
-		(void (*)(void))uadk_rsa_asym_encrypt },
-	{ OSSL_FUNC_ASYM_CIPHER_DECRYPT_INIT,
-		(void (*)(void))uadk_rsa_asym_decrypt_init },
-	{ OSSL_FUNC_ASYM_CIPHER_DECRYPT,
-		(void (*)(void))uadk_rsa_asym_decrypt },
-	{ OSSL_FUNC_ASYM_CIPHER_FREECTX,
-		(void (*)(void))uadk_rsa_asym_freectx },
-	{ OSSL_FUNC_ASYM_CIPHER_GET_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_asym_get_ctx_params },
-	{ OSSL_FUNC_ASYM_CIPHER_GETTABLE_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_asym_gettable_ctx_params },
-	{ OSSL_FUNC_ASYM_CIPHER_SET_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_asym_set_ctx_params },
-	{ OSSL_FUNC_ASYM_CIPHER_SETTABLE_CTX_PARAMS,
-		(void (*)(void))uadk_rsa_asym_settable_ctx_params },
-	{ 0, NULL }
-};
+static void *uadk_asym_cipher_rsa_dupctx(void *vprsactx)
+{
+	if (!get_default_asym_cipher().dupctx)
+		return UADK_E_FAIL;
+	return get_default_asym_cipher().dupctx(vprsactx);
+}
 
 void uadk_prov_destroy_rsa(void)
 {

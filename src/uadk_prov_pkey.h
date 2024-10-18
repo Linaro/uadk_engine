@@ -259,6 +259,8 @@ static OSSL_FUNC_signature_sign_init_fn uadk_signature_##nm##_sign_init; \
 static OSSL_FUNC_signature_verify_init_fn uadk_signature_##nm##_verify_init; \
 static OSSL_FUNC_signature_sign_fn uadk_signature_##nm##_sign; \
 static OSSL_FUNC_signature_verify_fn uadk_signature_##nm##_verify; \
+static OSSL_FUNC_signature_verify_recover_init_fn uadk_signature_##nm##_verify_recover_init; \
+static OSSL_FUNC_signature_verify_recover_fn uadk_signature_##nm##_verify_recover; \
 static OSSL_FUNC_signature_digest_sign_init_fn uadk_signature_##nm##_digest_sign_init; \
 static OSSL_FUNC_signature_digest_sign_update_fn uadk_signature_##nm##_digest_sign_update; \
 static OSSL_FUNC_signature_digest_sign_final_fn uadk_signature_##nm##_digest_sign_final; \
@@ -301,6 +303,10 @@ const OSSL_DISPATCH uadk_##nm##_signature_functions[] = {	\
 	{ OSSL_FUNC_SIGNATURE_SIGN, (void (*)(void))uadk_signature_##nm##_sign }, \
 	{ OSSL_FUNC_SIGNATURE_VERIFY_INIT, (void (*)(void))uadk_signature_##nm##_verify_init }, \
 	{ OSSL_FUNC_SIGNATURE_VERIFY, (void (*)(void))uadk_signature_##nm##_verify }, \
+	{ OSSL_FUNC_SIGNATURE_VERIFY_RECOVER_INIT, \
+		(void (*)(void))uadk_signature_##nm##_verify_recover_init }, \
+	{ OSSL_FUNC_SIGNATURE_VERIFY_RECOVER, \
+		(void (*)(void))uadk_signature_##nm##_verify_recover }, \
 	{ OSSL_FUNC_SIGNATURE_DIGEST_SIGN_INIT, \
 		(void (*)(void))uadk_signature_##nm##_digest_sign_init }, \
 	{ OSSL_FUNC_SIGNATURE_DIGEST_SIGN_UPDATE, \
