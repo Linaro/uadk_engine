@@ -42,15 +42,18 @@
 #define IV_LEN			16
 #define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
-#define ALG_NAME_SIZE           128
+#define ALG_NAME_SIZE		128
 #define GENERIC_BLOCK_SIZE	16
 
+#define UADK_E_SUCCESS		1
+#define UADK_E_FAIL		0
+
 /* Internal flags that can be queried */
-#define PROV_CIPHER_FLAG_AEAD             0x0001
-#define PROV_CIPHER_FLAG_CUSTOM_IV        0x0002
-#define PROV_CIPHER_FLAG_CTS              0x0004
-#define PROV_CIPHER_FLAG_TLS1_MULTIBLOCK  0x0008
-#define PROV_CIPHER_FLAG_RAND_KEY         0x0010
+#define PROV_CIPHER_FLAG_AEAD			0x0001
+#define PROV_CIPHER_FLAG_CUSTOM_IV		0x0002
+#define PROV_CIPHER_FLAG_CTS			0x0004
+#define PROV_CIPHER_FLAG_TLS1_MULTIBLOCK	0x0008
+#define PROV_CIPHER_FLAG_RAND_KEY		0x0010
 
 /* Internal flags that are only used within the provider */
 #define PROV_CIPHER_FLAG_VARIABLE_LENGTH  0x0100
@@ -124,7 +127,7 @@ static struct cipher_info cipher_info_table[] = {
 static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 {
 	if (priv->sw_cipher)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	switch (priv->nid) {
 	case NID_aes_128_cbc:
@@ -198,9 +201,9 @@ static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 	}
 
 	if (unlikely(priv->sw_cipher == NULL))
-		return 0;
+		return UADK_E_FAIL;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
@@ -208,33 +211,33 @@ static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
 				    const unsigned char *iv)
 {
 	if (!uadk_fetch_sw_cipher(priv))
-		return 0;
+		return UADK_E_FAIL;
 
 	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, key, iv,
 				priv->enc, NULL)) {
 		fprintf(stderr, "SW cipher init error!\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned char *out,
 				      int *outl, const unsigned char *in, size_t len)
 {
 	if (priv->sw_cipher == NULL)
-		return 0;
+		return UADK_E_FAIL;
 
 	if (!EVP_CipherUpdate(priv->sw_ctx, out, outl, in, len)) {
 		fprintf(stderr, "EVP_CipherUpdate sw_ctx failed.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	priv->switch_flag = UADK_DO_SOFT;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_cipher_env_poll(void *ctx)
@@ -283,7 +286,7 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 
 	if (i == cipher_counts) {
 		fprintf(stderr, "failed to setup the private ctx.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (key)
@@ -292,7 +295,7 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 	if (enable_sw_offload)
 		uadk_prov_cipher_sw_init(priv, key, iv);
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static void async_cb(struct wd_cipher_req *req, void *data)
@@ -324,7 +327,7 @@ static void ctr_iv_inc(uint8_t *counter, __u32 c)
 
 	/*
 	 * Since the counter has been increased 1 by the hardware,
-	 * so the c need to  decrease 1.
+	 * so the c need to decrease 1.
 	 */
 	c_value -= 1;
 	do {
@@ -372,8 +375,9 @@ static int uadk_do_cipher_sync(struct cipher_priv_ctx *priv)
 
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
 	if (ret)
-		return 0;
-	return 1;
+		return UADK_E_FAIL;
+
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
@@ -383,7 +387,7 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "async cipher init failed.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	cb_param.op = op;
@@ -392,7 +396,7 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	priv->req.cb_param = &cb_param;
 	ret = async_get_free_task(&idx);
 	if (!ret)
-		return 0;
+		return UADK_E_FAIL;
 
 	op->idx = idx;
 	do {
@@ -400,17 +404,18 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec cipher failed, switch to soft cipher.\n");
 			async_free_poll_task(op->idx, 0);
-			return 0;
+			return UADK_E_FAIL;
 		}
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
 	if (!ret)
-		return 0;
-	return 1;
+		return UADK_E_FAIL;
+
+	return UADK_E_SUCCESS;
 }
 
-static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
+static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 {
 	struct sched_params params = {0};
 	int ret;
@@ -469,8 +474,10 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 
 	if (!priv->sess) {
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
-		if (!priv->sess)
+		if (!priv->sess) {
 			fprintf(stderr, "uadk failed to alloc session!\n");
+			return UADK_E_FAIL;
+		}
 	}
 
 	ret = wd_cipher_set_key(priv->sess, priv->key, priv->keylen);
@@ -478,7 +485,10 @@ static void uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 		wd_cipher_free_sess(priv->sess);
 		priv->sess = 0;
 		fprintf(stderr, "uadk failed to set key!\n");
+		return UADK_E_FAIL;
 	}
+
+	return UADK_E_SUCCESS;
 }
 
 /*
@@ -522,29 +532,29 @@ static size_t ossl_cipher_fillblock(unsigned char *buf, size_t *buflen,
  * Fills the buffer with trailing data from an encryption/decryption that didn't
  * fit into a full block.
  */
-int ossl_cipher_trailingdata(unsigned char *buf, size_t *buflen, size_t blocksize,
+static int ossl_cipher_trailingdata(unsigned char *buf, size_t *buflen, size_t blocksize,
 			     const unsigned char **in, size_t *inlen)
 {
 	if (*inlen == 0)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	if (*buflen + *inlen > blocksize) {
 		ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	memcpy(buf + *buflen, *in, *inlen);
 	*buflen += *inlen;
 	*inlen = 0;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 /* Pad the final block for encryption */
 static void ossl_cipher_padblock(unsigned char *buf, size_t *buflen, size_t blocksize)
 {
-	size_t i;
 	unsigned char pad = (unsigned char)(blocksize - *buflen);
+	size_t i;
 
 	for (i = *buflen; i < blocksize; i++)
 		buf[i] = pad;
@@ -552,12 +562,12 @@ static void ossl_cipher_padblock(unsigned char *buf, size_t *buflen, size_t bloc
 
 static int ossl_cipher_unpadblock(unsigned char *buf, size_t *buflen, size_t blocksize)
 {
-	size_t pad, i;
 	size_t len = *buflen;
+	size_t pad, i;
 
 	if (len != blocksize) {
 		ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	/*
@@ -567,16 +577,16 @@ static int ossl_cipher_unpadblock(unsigned char *buf, size_t *buflen, size_t blo
 	pad = buf[blocksize - 1];
 	if (pad == 0 || pad > blocksize) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_BAD_DECRYPT);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	for (i = 0; i < pad; i++) {
 		if (buf[--len] != pad) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_BAD_DECRYPT);
-			return 0;
+			return UADK_E_FAIL;
 		}
 	}
 	*buflen = len;
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
@@ -589,7 +599,7 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 
 	if (outsize < blksz) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	priv->switch_flag = UADK_DO_HW;
@@ -598,38 +608,34 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
-	uadk_prov_cipher_ctx_init(priv);
+	ret = uadk_prov_cipher_ctx_init(priv);
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
-	if (inlen <= blksz) {
-		/* small packet directly using sync? */
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return UADK_E_FAIL;
+	}
+
+	if (op.job == NULL) {
+		/* Synchronous, only the synchronous mode supports soft computing */
 		ret = uadk_do_cipher_sync(priv);
-		if (!ret)
-			return 0;
-	} else {
-		ret = async_setup_async_event_notification(&op);
 		if (!ret) {
-			fprintf(stderr, "failed to setup async event notification.\n");
-			return 0;
+			async_clear_async_event_notification();
+			return UADK_E_FAIL;
 		}
-
-		if (op.job == NULL) {
-			/* Synchronous, only the synchronous mode supports soft computing */
-			ret = uadk_do_cipher_sync(priv);
-			if (!ret) {
-				async_clear_async_event_notification();
-				return 0;
-			}
-		} else {
-			ret = uadk_do_cipher_async(priv, &op);
-			if (!ret) {
-				async_clear_async_event_notification();
-				return 0;
-			}
+	} else {
+		ret = uadk_do_cipher_async(priv, &op);
+		if (!ret) {
+			async_clear_async_event_notification();
+			return UADK_E_FAIL;
 		}
 	}
 
 	uadk_cipher_update_priv_ctx(priv);
-	return 1;
+
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
@@ -661,7 +667,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	 */
 	if (priv->bufsz == blksz && (priv->enc || inlen > 0 || !priv->pad)) {
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
-		if (ret != 1) {
+		if (ret != UADK_E_SUCCESS) {
 			fprintf(stderr, "do hw ciphers failed.\n");
 			if (priv->sw_cipher)
 				goto do_soft;
@@ -681,7 +687,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 
 	if (nextblocks > 0) {
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
-		if (ret != 1) {
+		if (ret != UADK_E_SUCCESS) {
 			fprintf(stderr, "do hw ciphers failed.\n");
 			if (priv->sw_cipher)
 				goto do_soft;
@@ -695,7 +701,7 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	if (inlen != 0
 	    && !ossl_cipher_trailingdata(priv->buf, &priv->bufsz,
 					 blksz, &in, &inlen))
-		return 0;
+		return UADK_E_FAIL;
 
 	*outl = outlint;
 	return inlen == 0;
@@ -710,11 +716,11 @@ do_soft:
 	ret = uadk_prov_cipher_soft_work(priv, out, &outlint, in, inlen);
 	if (ret) {
 		*outl = outlint;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	fprintf(stderr, "do soft ciphers failed.\n");
-	return 0;
+	return UADK_E_FAIL;
 }
 
 void uadk_prov_destroy_cipher(void)
@@ -747,20 +753,21 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
 
 	if (inl == 0) {
 		*outl = 0;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	if (outsize < inl) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_prov_do_cipher(priv, out, outl, outsize, in, inl);
-	if (ret != 1)
+	if (ret != UADK_E_SUCCESS)
 		return ret;
 
 	*outl = inl;
-	return 1;
+
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
@@ -784,36 +791,36 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 			ossl_cipher_padblock(priv->buf, &priv->bufsz, blksz);
 		} else if (priv->bufsz == 0) {
 			*outl = 0;
-			return 1;
+			return UADK_E_SUCCESS;
 		} else if (priv->bufsz != blksz) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		if (outsize < blksz) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
-		if (ret != 1) {
+		if (ret != UADK_E_SUCCESS) {
 			fprintf(stderr, "do hw ciphers failed.\n");
 			if (priv->sw_cipher)
 				goto do_soft;
 			return ret;
 		}
 		*outl = blksz;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	/* dec should handle last blk since pad */
 	if (priv->bufsz != blksz) {
 		if (priv->bufsz == 0 && !priv->pad) {
 			*outl = 0;
-			return 1;
+			return UADK_E_SUCCESS;
 		}
 		ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_prov_hw_cipher(priv, priv->buf, outl, outsize, priv->buf, blksz);
@@ -826,27 +833,27 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 
 	if (priv->pad && !ossl_cipher_unpadblock(priv->buf, &priv->bufsz, blksz)) {
 		/* ERR_raise already called */
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (outsize < priv->bufsz) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	memcpy(out, priv->buf, priv->bufsz);
 	*outl = priv->bufsz;
 	priv->bufsz = 0;
 
-	return 1;
+	return UADK_E_SUCCESS;
 
 do_soft:
 	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
 		fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
-		return 0;
+		return UADK_E_FAIL;
 	}
 	*outl = sw_final_len;
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
@@ -854,26 +861,21 @@ static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
 					 const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
-	int ret;
 
 	if (!vctx || !in || !out || !outl)
 		return UADK_E_FAIL;
 
 	if (inl == 0) {
 		*outl = 0;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	if (outsize < inl) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
-	ret = uadk_prov_do_cipher(priv, out, outl, outsize, in, inl);
-	if (ret != 1)
-		return ret;
-
-	return 1;
+	return uadk_prov_do_cipher(priv, out, outl, outsize, in, inl);
 }
 
 static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
@@ -881,6 +883,7 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 					  const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
+	int len = 0;
 	int ret;
 
 	if (!vctx || !in || !out || !outl)
@@ -888,12 +891,12 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 
 	if (inl == 0) {
 		*outl = 0;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	if (outsize < inl) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (priv->sw_cipher &&
@@ -904,27 +907,25 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 	}
 
 	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, inl);
-	if (ret != 1) {
+	if (ret != UADK_E_SUCCESS) {
 		if (priv->sw_cipher)
 			goto do_soft;
 		return ret;
 	}
 
 	*outl = inl;
-	return 1;
+	return UADK_E_SUCCESS;
 
 do_soft:
-	int len = 0;
-
 	/* have isseu if both using hw and soft partly */
 	ret = uadk_prov_cipher_soft_work(priv, out, &len, in, inl);
 	if (ret) {
 		*outl = len;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	fprintf(stderr, "do soft ciphers failed.\n");
-	return 0;
+	return UADK_E_FAIL;
 }
 
 static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
@@ -940,14 +941,14 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 	    priv->switch_flag == UADK_DO_SOFT) {
 		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
 			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
-			return 0;
+			return UADK_E_FAIL;
 		}
 		*outl = sw_final_len;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	*outl = 0;
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_prov_cipher_einit(void *vctx, const unsigned char *key, size_t keylen,
@@ -955,7 +956,6 @@ static int uadk_prov_cipher_einit(void *vctx, const unsigned char *key, size_t k
 				  const OSSL_PARAM params[])
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
-	int ret;
 
 	if (!vctx)
 		return UADK_E_FAIL;
@@ -963,11 +963,7 @@ static int uadk_prov_cipher_einit(void *vctx, const unsigned char *key, size_t k
 	priv->req.op_type = WD_CIPHER_ENCRYPTION;
 	priv->enc = 1;
 
-	ret = uadk_prov_cipher_init(priv, key, keylen, iv, ivlen);
-	if (unlikely(ret != 1))
-		return 0;
-
-	return 1;
+	return uadk_prov_cipher_init(priv, key, keylen, iv, ivlen);
 }
 
 static int uadk_prov_cipher_dinit(void *vctx, const unsigned char *key, size_t keylen,
@@ -975,7 +971,6 @@ static int uadk_prov_cipher_dinit(void *vctx, const unsigned char *key, size_t k
 				  const OSSL_PARAM params[])
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
-	int ret;
 
 	if (!vctx)
 		return UADK_E_FAIL;
@@ -983,11 +978,7 @@ static int uadk_prov_cipher_dinit(void *vctx, const unsigned char *key, size_t k
 	priv->req.op_type = WD_CIPHER_DECRYPTION;
 	priv->enc = 0;
 
-	ret = uadk_prov_cipher_init(priv, key, keylen, iv, ivlen);
-	if (unlikely(ret != 1))
-		return 0;
-
-	return 1;
+	return uadk_prov_cipher_init(priv, key, keylen, iv, ivlen);
 }
 
 static const OSSL_PARAM uadk_prov_settable_ctx_params[] = {
@@ -1016,7 +1007,7 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 
 		if (!OSSL_PARAM_get_uint(p, &pad)) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
-			return 0;
+			return UADK_E_FAIL;
 		}
 		priv->pad = pad ? 1 : 0;
 		EVP_CIPHER_CTX_set_padding(priv->sw_ctx, pad);
@@ -1028,11 +1019,11 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 
 		if (!OSSL_PARAM_get_size_t(p, &keylen)) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
-			return 0;
+			return UADK_E_FAIL;
 		}
 		if (priv->keylen != keylen) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
-			return 0;
+			return UADK_E_FAIL;
 		}
 	}
 
@@ -1050,31 +1041,31 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, priv->keylen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IVLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, priv->ivlen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_PADDING);
 	if (p != NULL && !OSSL_PARAM_set_uint(p, priv->pad)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
 	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
 	    && !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_UPDATED_IV);
 	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
 	    && !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static const OSSL_PARAM uadk_prov_default_ctx_params[] = {
@@ -1117,29 +1108,29 @@ static int ossl_cipher_generic_get_params(OSSL_PARAM params[], unsigned int md,
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_MODE);
 	if (p != NULL && !OSSL_PARAM_set_uint(p, md)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_CUSTOM_IV);
 	if (p != NULL && !OSSL_PARAM_set_int(p, (flags & PROV_CIPHER_FLAG_CUSTOM_IV) != 0)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, kbits)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_BLOCK_SIZE);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, blkbits)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IVLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, ivbits)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-		return 0;
+		return UADK_E_FAIL;
 	}
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static void uadk_prov_cipher_freectx(void *ctx)
@@ -1176,8 +1167,8 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	if (ctx->sw_ctx == NULL)						\
 		fprintf(stderr, "EVP_CIPHER_CTX_new failed.\n");		\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
-	if (strcmp(#typ, "block") == 0) \
-		ctx->pad = 1;\
+	if (strcmp(#typ, "block") == 0)						\
+		ctx->pad = 1;							\
 	return ctx;								\
 }                                                                               \
 static OSSL_FUNC_cipher_get_params_fn uadk_##nm##_get_params;			\

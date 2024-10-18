@@ -225,7 +225,7 @@ static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
 
 	core_bio = ossl_bio_prov_init_bio_method();
 	if (core_bio == NULL) {
-		fprintf(stderr, "failed to set bio  from dispatch\n");
+		fprintf(stderr, "failed to set bio from dispatch\n");
 		return 0;
 	}
 
@@ -268,7 +268,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 		return 0;
 	}
 
-	(void)ossl_prov_bio_from_dispatch(oin);
+	ossl_prov_bio_from_dispatch(oin);
 	ossl_prov_core_from_dispatch(oin);
 
 	/* get parameters from uadk_provider.cnf */
