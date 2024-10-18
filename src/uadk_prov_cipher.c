@@ -332,6 +332,22 @@ static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned cha
 	return UADK_E_SUCCESS;
 }
 
+static int uadk_prov_cipher_soft_final(struct cipher_priv_ctx *priv, unsigned char *out,
+					size_t *outl)
+{
+	size_t sw_final_len = 0;
+
+	if (priv->sw_cipher == NULL)
+		return UADK_E_FAIL;
+
+	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
+		fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
+		return UADK_E_FAIL;
+	}
+	*outl = sw_final_len;
+	return UADK_E_SUCCESS;
+}
+
 static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv);
 
 static int uadk_cipher_poll(void *ctx)
@@ -904,50 +920,45 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
 	return UADK_E_SUCCESS;
 }
 
-static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
-					size_t *outl, size_t outsize)
+static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv,
+		unsigned char *out, size_t *outl, size_t outsize)
 {
-	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	size_t blksz = priv->blksize;
-	int sw_final_len = 0;
 	int ret;
 
-	if (!vctx || !out || !outl)
-		return UADK_E_FAIL;
-
-	if (priv->sw_cipher &&
-	    priv->switch_flag == UADK_DO_SOFT) {
-		goto do_soft;
-	}
-
-	if (priv->enc) {
-		if (priv->pad) {
-			ossl_cipher_padblock(priv->buf, &priv->bufsz, blksz);
-		} else if (priv->bufsz == 0) {
-			*outl = 0;
-			return UADK_E_SUCCESS;
-		} else if (priv->bufsz != blksz) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
-			return UADK_E_FAIL;
-		}
-
-		if (outsize < blksz) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
-			return UADK_E_FAIL;
-		}
-
-		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
-		if (ret != UADK_E_SUCCESS) {
-			fprintf(stderr, "do hw ciphers failed.\n");
-			if (priv->sw_cipher)
-				goto do_soft;
-			return ret;
-		}
-		*outl = blksz;
+	if (priv->pad) {
+		ossl_cipher_padblock(priv->buf, &priv->bufsz, blksz);
+	} else if (priv->bufsz == 0) {
+		*outl = 0;
 		return UADK_E_SUCCESS;
+	} else if (priv->bufsz != blksz) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_WRONG_FINAL_BLOCK_LENGTH);
+		return UADK_E_FAIL;
 	}
 
-	/* dec should handle last blk since pad */
+	if (outsize < blksz) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		return UADK_E_FAIL;
+	}
+
+	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, priv->buf, blksz);
+	if (ret != UADK_E_SUCCESS) {
+		fprintf(stderr, "do hw ciphers failed, switch to soft ciphers.\n");
+		return uadk_prov_cipher_soft_final(priv, out, outl);
+	}
+
+	*outl = blksz;
+
+	return UADK_E_SUCCESS;
+}
+
+static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv,
+		unsigned char *out, size_t *outl, size_t outsize)
+{
+	size_t blksz = priv->blksize;
+	int ret;
+
+	/* Dec should handle last blk since pad */
 	if (priv->bufsz != blksz) {
 		if (priv->bufsz == 0 && !priv->pad) {
 			*outl = 0;
@@ -958,11 +969,9 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	}
 
 	ret = uadk_prov_hw_cipher(priv, priv->buf, outl, outsize, priv->buf, blksz);
-	if (ret != 1) {
-		fprintf(stderr, "do hw ciphers failed.\n");
-		if (priv->sw_cipher)
-			goto do_soft;
-		return ret;
+	if (ret != UADK_E_SUCCESS) {
+		fprintf(stderr, "do hw ciphers failed, switch to soft ciphers.\n");
+		return uadk_prov_cipher_soft_final(priv, out, outl);
 	}
 
 	if (priv->pad && !ossl_cipher_unpadblock(priv->buf, &priv->bufsz, blksz)) {
@@ -980,14 +989,26 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	priv->bufsz = 0;
 
 	return UADK_E_SUCCESS;
+}
 
-do_soft:
-	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
-		fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
+static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
+					size_t *outl, size_t outsize)
+{
+	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
+	int ret;
+
+	if (!vctx || !out || !outl)
 		return UADK_E_FAIL;
-	}
-	*outl = sw_final_len;
-	return UADK_E_SUCCESS;
+
+	if (priv->switch_flag == UADK_DO_SOFT)
+		return uadk_prov_cipher_soft_final(priv, out, outl);
+
+	if (priv->enc)
+		ret = uadk_prov_cipher_block_encrypto(priv, out, outl, outsize);
+	else
+		ret = uadk_prov_cipher_block_decrypto(priv, out, outl, outsize);
+
+	return ret;
 }
 
 static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
@@ -1066,20 +1087,12 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 					 size_t *outl, size_t outsize)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
-	int sw_final_len = 0;
 
 	if (!vctx || !out || !outl)
 		return UADK_E_FAIL;
 
-	if (priv->sw_cipher &&
-	    priv->switch_flag == UADK_DO_SOFT) {
-		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
-			fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
-			return UADK_E_FAIL;
-		}
-		*outl = sw_final_len;
-		return UADK_E_SUCCESS;
-	}
+	if (priv->switch_flag == UADK_DO_SOFT)
+		return uadk_prov_cipher_soft_final(priv, out, outl);
 
 	*outl = 0;
 	return UADK_E_SUCCESS;
