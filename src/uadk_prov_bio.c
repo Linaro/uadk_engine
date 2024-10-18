@@ -27,7 +27,7 @@ static OSSL_FUNC_BIO_up_ref_fn *c_bio_up_ref;
 static OSSL_FUNC_BIO_free_fn *c_bio_free;
 static OSSL_FUNC_BIO_vprintf_fn *c_bio_vprintf;
 
-int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
+void ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
 {
 	while (fns && fns->function_id != 0) {
 		switch (fns->function_id) {
@@ -74,8 +74,6 @@ int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
 		}
 		fns++;
 	}
-
-	return UADK_PRO_SUCCESS;
 }
 
 OSSL_CORE_BIO *ossl_prov_bio_new_file(const char *filename, const char *mode)

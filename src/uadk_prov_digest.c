@@ -322,7 +322,7 @@ soft_init:
 
 static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv)
 {
-	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
+	/* Sha224 and Sha384 and Sha512-XXX need full length mac buffer as doing long hash */
 	switch (priv->e_nid) {
 	case NID_sha224:
 		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?

@@ -13,7 +13,7 @@
 #include <openssl/core.h>
 #include "uadk_prov.h"
 
-int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns);
+void ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns);
 
 OSSL_CORE_BIO *ossl_prov_bio_new_file(const char *filename, const char *mode);
 OSSL_CORE_BIO *ossl_prov_bio_new_membuf(const char *filename, int len);

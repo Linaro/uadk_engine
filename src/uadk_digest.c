@@ -281,7 +281,7 @@ static uint32_t sec_digest_get_sw_threshold(int n_id)
 			return digest_pkt_threshold_table[i].threshold;
 	} while (++i < threshold_table_size);
 
-	fprintf(stderr, "nid %d not found in digest threshold table", n_id);
+	fprintf(stderr, "nid %d not found in digest threshold table.\n", n_id);
 	return 0;
 }
 
@@ -384,8 +384,8 @@ static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
 {
 	if (sched_mode)
 		return CTX_ASYNC;
-	else
-		return CTX_SYNC;
+
+	return CTX_SYNC;
 }
 
 static int sched_single_poll_policy(handle_t h_sched_ctx,
@@ -962,8 +962,7 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 		priv->sess = 0;
 	}
 
-	if (priv->soft_ctx)
-		digest_soft_cleanup(priv);
+	digest_soft_cleanup(priv);
 
 	return 1;
 }
