@@ -168,7 +168,7 @@ static OSSL_FUNC_keymgmt_import_types_fn uadk_keymgmt_##nm##_import_types;	\
 static OSSL_FUNC_keymgmt_export_fn uadk_keymgmt_##nm##_export;	\
 static OSSL_FUNC_keymgmt_export_types_fn uadk_keymgmt_##nm##_export_types;	\
 static OSSL_FUNC_keymgmt_dup_fn uadk_keymgmt_##nm##_dup;	\
-static UADK_PKEY_KEYMGMT get_default_keymgmt(void)	\
+static UADK_PKEY_KEYMGMT get_default_##nm##_keymgmt(void)	\
 {				\
 	static UADK_PKEY_KEYMGMT s_keymgmt;	\
 	static int initilazed;	\
@@ -277,7 +277,7 @@ static OSSL_FUNC_signature_get_ctx_md_params_fn uadk_signature_##nm##_get_ctx_md
 static OSSL_FUNC_signature_gettable_ctx_md_params_fn uadk_signature_##nm##_gettable_ctx_md_params; \
 static OSSL_FUNC_signature_set_ctx_md_params_fn uadk_signature_##nm##_set_ctx_md_params; \
 static OSSL_FUNC_signature_settable_ctx_md_params_fn uadk_signature_##nm##_settable_ctx_md_params; \
-static UADK_PKEY_SIGNATURE get_default_signature(void)	\
+static UADK_PKEY_SIGNATURE get_default_##nm##_signature(void)	\
 {				\
 	static UADK_PKEY_SIGNATURE s_signature;	\
 	static int initilazed;	\
@@ -373,7 +373,7 @@ static OSSL_FUNC_asym_cipher_get_ctx_params_fn uadk_asym_cipher_##nm##_get_ctx_p
 static OSSL_FUNC_asym_cipher_gettable_ctx_params_fn uadk_asym_cipher_##nm##_gettable_ctx_params; \
 static OSSL_FUNC_asym_cipher_set_ctx_params_fn uadk_asym_cipher_##nm##_set_ctx_params; \
 static OSSL_FUNC_asym_cipher_settable_ctx_params_fn uadk_asym_cipher_##nm##_settable_ctx_params; \
-static UADK_PKEY_ASYM_CIPHER get_default_asym_cipher(void)	\
+static UADK_PKEY_ASYM_CIPHER get_default_##nm##_asym_cipher(void)	\
 {				\
 	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;	\
 	static int initilazed;	\
@@ -444,7 +444,7 @@ typedef struct {
 	static OSSL_FUNC_keyexch_settable_ctx_params_fn uadk_keyexch_##nm##_settable_ctx_params; \
 	static OSSL_FUNC_keyexch_get_ctx_params_fn uadk_keyexch_##nm##_get_ctx_params;	\
 	static OSSL_FUNC_keyexch_gettable_ctx_params_fn uadk_keyexch_##nm##_gettable_ctx_params; \
-static UADK_PKEY_KEYEXCH get_default_keyexch(void)		\
+static UADK_PKEY_KEYEXCH get_default_##nm##_keyexch(void)		\
 {		\
 	UADK_PKEY_KEYEXCH s_keyexch;			\
 	static int initilazed;				\

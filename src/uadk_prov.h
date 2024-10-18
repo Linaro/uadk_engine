@@ -17,8 +17,15 @@
  */
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
+#include <openssl/core_dispatch.h>
 
-#define FUNC_MAX_NUM	32
+#define FUNC_MAX_NUM		32
+#define CTX_ASYNC		1
+#define CTX_SYNC		0
+#define UADK_UNINIT		0
+#define UADK_INIT_SUCCESS	1
+#define UADK_INIT_FAIL		2
+#define UADK_DEVICE_ERROR	3
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"
