@@ -311,18 +311,18 @@ static int ecx_keygen_set_private_key(struct ecx_ctx *ecx_ctx,
 static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 			       struct wd_ecc_req *req, struct ecx_key *ecx_key)
 {
-	__u32 key_size = ecx_ctx->key_size;
 	struct wd_ecc_point *pubkey = NULL;
 	int ret;
-
-	if (key_size > ECX_MAX_KEYLEN) {
-		fprintf(stderr, "invalid key size, key_size = %u\n", key_size);
-		return UADK_E_FAIL;
-	}
 
 	wd_ecxdh_get_out_params(req->dst, &pubkey);
 	if (!pubkey) {
 		fprintf(stderr, "failed to get pubkey\n");
+		return UADK_E_FAIL;
+	}
+
+	if (pubkey->x.dsize >= ECX_MAX_KEYLEN) {
+		fprintf(stderr, "invalid key size, pubkey->x.dsize = %u\n",
+			pubkey->x.dsize);
 		return UADK_E_FAIL;
 	}
 
@@ -334,7 +334,7 @@ static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 		return UADK_E_FAIL;
 	}
 	/* Trans private key from big-endian to little-endian */
-	ret = reverse_bytes(ecx_key->privkey, key_size);
+	ret = reverse_bytes(ecx_key->privkey, ecx_ctx->key_size);
 	if (!ret) {
 		fprintf(stderr, "failed to trans private key\n");
 		return UADK_E_FAIL;
