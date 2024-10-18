@@ -630,6 +630,9 @@ static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 
 	if (priv->data)
 		OPENSSL_free(priv->data);
+
+	if (priv->soft_ctx)
+		OPENSSL_free(priv->soft_ctx);
 }
 
 /* some params related code is copied from OpenSSL v3.0 prov/digestcommon.h */

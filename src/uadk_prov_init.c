@@ -39,10 +39,6 @@ static OSSL_FUNC_core_gettable_params_fn *c_gettable_params;
 static OSSL_FUNC_core_get_params_fn *c_get_params;
 static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
 
-/* Functions provided by the core */
-static OSSL_FUNC_core_get_params_fn *c_get_params;
-static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
-
 struct uadk_provider_params {
 	char *enable_sw_offload;
 } uadk_params;
