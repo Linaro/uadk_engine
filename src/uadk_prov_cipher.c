@@ -264,6 +264,11 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 	int cipher_counts = ARRAY_SIZE(cipher_info_table);
 	int i;
 
+	if (ivlen > IV_LEN || keylen > MAX_KEY_LEN) {
+		fprintf(stderr, "invalid keylen or ivlen.\n");
+		return UADK_E_FAIL;
+	}
+
 	if (iv)
 		memcpy(priv->iv, iv, ivlen);
 
