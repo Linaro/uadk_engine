@@ -679,28 +679,28 @@ static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 		out += blksz;
 	}
 
-	if (nextblocks > 0) {
-		if (!priv->enc && priv->pad && nextblocks == inlen)
-			nextblocks -= blksz;
-		outlint += nextblocks;
-	}
+	if (nextblocks == 0)
+		goto out;
+
+	if (!priv->enc && priv->pad && nextblocks == inlen)
+		nextblocks -= blksz;
 
 	if (nextblocks > 0) {
 		ret = uadk_prov_hw_cipher(priv, out, outl, outsize, in, nextblocks);
 		if (ret != UADK_E_SUCCESS) {
-			fprintf(stderr, "do hw ciphers failed.\n");
+			fprintf(stderr, "last block do hw ciphers failed.\n");
 			if (priv->sw_cipher)
 				goto do_soft;
 			return ret;
 		}
 
+		outlint += nextblocks;
 		in += nextblocks;
 		inlen -= nextblocks;
 	}
-
-	if (inlen != 0
-	    && !ossl_cipher_trailingdata(priv->buf, &priv->bufsz,
-					 blksz, &in, &inlen))
+out:
+	if (inlen != 0 && !ossl_cipher_trailingdata(priv->buf,
+	    &priv->bufsz, blksz, &in, &inlen))
 		return UADK_E_FAIL;
 
 	*outl = outlint;
