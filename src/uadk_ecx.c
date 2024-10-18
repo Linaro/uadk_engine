@@ -110,21 +110,6 @@ static int x25519_init(EVP_PKEY_CTX *ctx)
 	return UADK_E_SUCCESS;
 }
 
-static void x25519_uninit(EVP_PKEY_CTX *ctx)
-{
-	struct ecx_ctx *x25519_ctx = EVP_PKEY_CTX_get_data(ctx);
-
-	if (!x25519_ctx)
-		return;
-
-	if (x25519_ctx->sess)
-		wd_ecc_free_sess(x25519_ctx->sess);
-
-	free(x25519_ctx);
-
-	EVP_PKEY_CTX_set_data(ctx, NULL);
-}
-
 static int x448_init(EVP_PKEY_CTX *ctx)
 {
 	struct wd_ecc_sess_setup setup = {0};
@@ -164,19 +149,69 @@ static int x448_init(EVP_PKEY_CTX *ctx)
 	return UADK_E_SUCCESS;
 }
 
-static void x448_uninit(EVP_PKEY_CTX *ctx)
+static int ecx_get_nid(EVP_PKEY_CTX *ctx)
 {
-	struct ecx_ctx *x448_ctx = EVP_PKEY_CTX_get_data(ctx);
+	const EVP_PKEY_METHOD **pmeth_from_ctx;
+	int nid;
 
-	if (!x448_ctx)
+	pmeth_from_ctx = (const EVP_PKEY_METHOD **)ctx;
+
+	EVP_PKEY_meth_get0_info(&nid, NULL, *pmeth_from_ctx);
+	if (nid != EVP_PKEY_X25519 && nid != EVP_PKEY_X448)
+		return UADK_E_FAIL;
+
+	return nid;
+}
+
+static int ecx_init(EVP_PKEY_CTX *ctx)
+{
+	int nid = ecx_get_nid(ctx);
+
+	switch (nid) {
+	case EVP_PKEY_X25519:
+		return x25519_init(ctx);
+	case EVP_PKEY_X448:
+		return x448_init(ctx);
+	default:
+		fprintf(stderr, "failed to init ecx\n");
+	}
+
+	return UADK_E_FAIL;
+}
+
+static void ecx_uninit(EVP_PKEY_CTX *ctx)
+{
+	struct ecx_ctx *ecx_ctx = EVP_PKEY_CTX_get_data(ctx);
+
+	if (!ecx_ctx)
 		return;
 
-	if (x448_ctx->sess)
-		wd_ecc_free_sess(x448_ctx->sess);
+	if (ecx_ctx->sess)
+		wd_ecc_free_sess(ecx_ctx->sess);
 
-	free(x448_ctx);
+	free(ecx_ctx);
 
 	EVP_PKEY_CTX_set_data(ctx, NULL);
+}
+
+static int ecx_set_ctx(EVP_PKEY_CTX *ctx, struct ecx_ctx *ecx_ctx)
+{
+	int nid = ecx_get_nid(ctx);
+
+	switch (nid) {
+	case EVP_PKEY_X25519:
+		ecx_ctx->nid = EVP_PKEY_X25519;
+		ecx_ctx->key_size = X25519_KEYLEN;
+		return UADK_E_SUCCESS;
+	case EVP_PKEY_X448:
+		ecx_ctx->nid = EVP_PKEY_X448;
+		ecx_ctx->key_size = X448_KEYLEN;
+		return UADK_E_SUCCESS;
+	default:
+		fprintf(stderr, "failed to set ecx ctx\n");
+	}
+
+	return UADK_E_FAIL;
 }
 
 static int ecx_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
@@ -215,20 +250,6 @@ static int ecx_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 	uadk_ecc_fill_req(req, WD_ECXDH_GEN_KEY, NULL, ecx_out);
 
 	return UADK_E_SUCCESS;
-}
-
-static int ecx_get_nid(EVP_PKEY_CTX *ctx)
-{
-	const EVP_PKEY_METHOD **pmeth_from_ctx;
-	int nid;
-
-	pmeth_from_ctx = (const EVP_PKEY_METHOD **)ctx;
-
-	EVP_PKEY_meth_get0_info(&nid, NULL, *pmeth_from_ctx);
-	if (nid != EVP_PKEY_X25519 && nid != EVP_PKEY_X448)
-		return UADK_E_FAIL;
-
-	return nid;
 }
 
 static int ecx_create_privkey(struct ecx_key **ecx_key, __u32 key_size)
@@ -383,7 +404,7 @@ static int openssl_do_ecx_genkey(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 	return (*sw_fn_ptr)(ctx, pkey);
 }
 
-static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
+static int ecx_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 {
 	struct ecx_ctx *keygen_ctx = NULL;
 	struct ecx_key *ecx_key = NULL;
@@ -394,15 +415,17 @@ static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 	if (!ret)
 		goto do_soft;
 
-	ret = x25519_init(ctx);
+	ret = ecx_init(ctx);
 	if (!ret)
 		goto do_soft;
 
 	keygen_ctx = EVP_PKEY_CTX_get_data(ctx);
 	if (!keygen_ctx)
-		goto do_soft;
-	keygen_ctx->nid = EVP_PKEY_X25519;
-	keygen_ctx->key_size = X25519_KEYLEN;
+		goto uninit_ctx;
+
+	ret = ecx_set_ctx(ctx, keygen_ctx);
+	if (!ret)
+		goto uninit_ctx;
 
 	ret = ecx_create_privkey(&ecx_key, keygen_ctx->key_size);
 	if (!ret)
@@ -425,7 +448,7 @@ static int x25519_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 		goto uninit_iot;
 
 	wd_ecc_del_out(keygen_ctx->sess, req.dst);
-	x25519_uninit(ctx);
+	ecx_uninit(ctx);
 
 	return ret;
 
@@ -435,65 +458,7 @@ free_key:
 	OPENSSL_secure_free(ecx_key->privkey);
 	OPENSSL_free(ecx_key);
 uninit_ctx:
-	x25519_uninit(ctx);
-do_soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return openssl_do_ecx_genkey(ctx, pkey);
-}
-
-static int x448_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
-{
-	struct ecx_ctx *keygen_ctx = NULL;
-	struct ecx_key *ecx_key = NULL;
-	struct wd_ecc_req req = {0};
-	int ret;
-
-	ret = ecx_genkey_check(ctx, pkey);
-	if (!ret)
-		goto do_soft;
-
-	ret = x448_init(ctx);
-	if (!ret)
-		goto do_soft;
-
-	keygen_ctx = EVP_PKEY_CTX_get_data(ctx);
-	if (!keygen_ctx)
-		goto uninit_ctx;
-	keygen_ctx->nid = EVP_PKEY_X448;
-	keygen_ctx->key_size = X448_KEYLEN;
-
-	ret = ecx_create_privkey(&ecx_key, keygen_ctx->key_size);
-	if (!ret)
-		goto uninit_ctx;
-
-	ret = ecx_keygen_init_iot(keygen_ctx->sess, &req);
-	if (!ret)
-		goto free_key;
-
-	ret = ecx_keygen_set_private_key(keygen_ctx, ecx_key);
-	if (!ret)
-		goto uninit_iot;
-
-	ret = uadk_ecc_crypto(keygen_ctx->sess, &req, (void *)keygen_ctx->sess);
-	if (!ret)
-		goto uninit_iot;
-
-	ret = ecx_keygen_set_pkey(pkey, keygen_ctx, &req, ecx_key);
-	if (!ret)
-		goto uninit_iot;
-
-	wd_ecc_del_out(keygen_ctx->sess, req.dst);
-	x448_uninit(ctx);
-
-	return ret;
-
-uninit_iot:
-	wd_ecc_del_out(keygen_ctx->sess, req.dst);
-free_key:
-	OPENSSL_secure_free(ecx_key->privkey);
-	OPENSSL_free(ecx_key);
-uninit_ctx:
-	x448_uninit(ctx);
+	ecx_uninit(ctx);
 do_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_do_ecx_genkey(ctx, pkey);
@@ -633,79 +598,6 @@ static void x25519_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
 	}
 }
 
-/**
- * x25519_derive: generate shared key.
- * @ctx: the X25519 key ctx, contain own private key,
- * public key and peer public key.
- * @key: the output shared key.
- * @keylen: the length of output shared key.
- */
-static int x25519_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
-			 size_t *keylen)
-{
-	struct ecx_key *peer_ecx_key = NULL;
-	struct wd_ecc_point *s_key = NULL;
-	struct ecx_ctx *derive_ctx = NULL;
-	struct ecx_key *ecx_key = NULL;
-	struct wd_ecc_req req = {0};
-	int ret;
-
-	ret = x25519_init(ctx);
-	if (!ret)
-		goto do_soft;
-
-	if (!key || !(*keylen)) {
-		*keylen = (size_t) X25519_KEYLEN;
-		x25519_uninit(ctx);
-		return UADK_E_SUCCESS;
-	}
-
-	derive_ctx = EVP_PKEY_CTX_get_data(ctx);
-	if (!derive_ctx)
-		goto uninit_ctx;
-	derive_ctx->nid = EVP_PKEY_X25519;
-	derive_ctx->key_size = X25519_KEYLEN;
-
-	ret = ecx_get_key(ctx, &ecx_key, &peer_ecx_key);
-	if (!ret)
-		goto uninit_ctx;
-
-	ret = ecx_compkey_init_iot(derive_ctx, &req, peer_ecx_key, ecx_key);
-	if (!ret)
-		goto uninit_ctx;
-
-	ret = ecx_derive_set_private_key(derive_ctx, ecx_key);
-	if (!ret)
-		goto uninit_iot;
-
-	ret = uadk_ecc_crypto(derive_ctx->sess, &req, (void *)derive_ctx);
-	if (!ret)
-		goto uninit_iot;
-
-	wd_ecxdh_get_out_params(req.dst, &s_key);
-	if (!s_key)
-		goto uninit_iot;
-
-	ret = reverse_bytes((unsigned char *)s_key->x.data, s_key->x.dsize);
-	if (!ret)
-		goto uninit_iot;
-
-	x25519_pad_out_key(key, (unsigned char *)s_key->x.data, s_key->x.dsize);
-
-	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
-	x25519_uninit(ctx);
-
-	return ret;
-
-uninit_iot:
-	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
-uninit_ctx:
-	x25519_uninit(ctx);
-do_soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	return openssl_do_derive(ctx, key, keylen);
-}
-
 static void x448_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
 			     size_t len)
 {
@@ -719,15 +611,28 @@ static void x448_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
 	}
 }
 
+static void ecx_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
+			     size_t len, int nid)
+{
+	if (nid == EVP_PKEY_X25519) {
+		x25519_pad_out_key(dst_key, src_key, len);
+		return;
+	}
+
+	if (nid == EVP_PKEY_X448) {
+		x448_pad_out_key(dst_key, src_key, len);
+		return;
+	}
+}
+
 /**
- * x448_derive: generate shared key.
- * @ctx: the X448 key ctx, contain own private key,
+ * ecx_derive: generate shared key.
+ * @ctx: the ecx key ctx, contain own private key,
  * public key and peer public key.
  * @key: the output shared key.
  * @keylen: the length of output shared key.
  */
-static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
-		       size_t *keylen)
+static int ecx_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen)
 {
 	struct ecx_key *peer_ecx_key = NULL;
 	struct wd_ecc_point *s_key = NULL;
@@ -736,21 +641,27 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	struct wd_ecc_req req = {0};
 	int ret;
 
-	ret = x448_init(ctx);
+	if (!ctx) {
+		fprintf(stderr, "invalid: ctx is NULL\n");
+		goto do_soft;
+	}
+
+	ret = ecx_init(ctx);
 	if (!ret)
 		goto do_soft;
-
-	if (!key || !(*keylen)) {
-		*keylen = (size_t) X448_KEYLEN;
-		x448_uninit(ctx);
-		return UADK_E_SUCCESS;
-	}
 
 	derive_ctx = EVP_PKEY_CTX_get_data(ctx);
 	if (!derive_ctx)
 		goto uninit_ctx;
-	derive_ctx->nid = EVP_PKEY_X448;
-	derive_ctx->key_size = X448_KEYLEN;
+
+	ret = ecx_set_ctx(ctx, derive_ctx);
+	if (!ret)
+		goto uninit_ctx;
+
+	if (!key || !(*keylen)) {
+		*keylen = (size_t)derive_ctx->key_size;
+		return UADK_E_SUCCESS;
+	}
 
 	ret = ecx_get_key(ctx, &ecx_key, &peer_ecx_key);
 	if (!ret)
@@ -776,17 +687,17 @@ static int x448_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
 	if (!ret)
 		goto uninit_iot;
 
-	x448_pad_out_key(key, (unsigned char *)s_key->x.data, s_key->x.dsize);
+	ecx_pad_out_key(key, (unsigned char *)s_key->x.data, s_key->x.dsize, derive_ctx->nid);
 
 	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
-	x448_uninit(ctx);
+	ecx_uninit(ctx);
 
 	return ret;
 
 uninit_iot:
 	ecx_compkey_uninit_iot(derive_ctx->sess, &req);
 uninit_ctx:
-	x448_uninit(ctx);
+	ecx_uninit(ctx);
 do_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
 	return openssl_do_derive(ctx, key, keylen);
@@ -821,8 +732,8 @@ int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	EVP_PKEY_meth_set_ctrl(meth, ecx_ctrl, NULL);
-	EVP_PKEY_meth_set_keygen(meth, NULL, x25519_keygen);
-	EVP_PKEY_meth_set_derive(meth, NULL, x25519_derive);
+	EVP_PKEY_meth_set_keygen(meth, NULL, ecx_keygen);
+	EVP_PKEY_meth_set_derive(meth, NULL, ecx_derive);
 
 	pkey_meth->x25519 = meth;
 
@@ -867,8 +778,8 @@ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	}
 
 	EVP_PKEY_meth_set_ctrl(meth, ecx_ctrl, NULL);
-	EVP_PKEY_meth_set_keygen(meth, NULL, x448_keygen);
-	EVP_PKEY_meth_set_derive(meth, NULL, x448_derive);
+	EVP_PKEY_meth_set_keygen(meth, NULL, ecx_keygen);
+	EVP_PKEY_meth_set_derive(meth, NULL, ecx_derive);
 
 	pkey_meth->x448 = meth;
 
