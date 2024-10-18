@@ -473,6 +473,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 {
 	struct uadk_e_cb_info cb_param;
 	int idx, ret;
+	int cnt = 0;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		fprintf(stderr, "async cipher init failed.\n");
@@ -494,15 +495,24 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
 			fprintf(stderr, "do sec digest async failed.\n");
-			async_free_poll_task(op->idx, 0);
-			return UADK_DIGEST_FAIL;
+			goto free_poll_task;
+		}
+
+		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
+			fprintf(stderr, "do digest async operation timeout.\n");
+			goto free_poll_task;
 		}
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
 	if (!ret)
 		return UADK_DIGEST_FAIL;
+
 	return UADK_DIGEST_SUCCESS;
+
+free_poll_task:
+	async_free_poll_task(op->idx, 0);
+	return UADK_DIGEST_FAIL;
 }
 
 static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest)
