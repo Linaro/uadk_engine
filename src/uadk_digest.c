@@ -684,14 +684,19 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 	digest_set_msg_state(priv, false);
 
 	do {
-		if (left_len == data_len) {
+		/*
+		 * If there is data in the buffer, it will be filled and processed. Otherwise, it
+		 * will be processed according to the UADK package len(16M-512Byte). Finally the
+		 * remaining data less than the size of the buffer will be stored in the buffer.
+		 */
+		if (priv->last_update_bufflen != 0) {
 			processing_len = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
 			uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
 				processing_len);
 
-			priv->last_update_bufflen = DIGEST_BLOCK_SIZE;
 			priv->req.in_bytes = DIGEST_BLOCK_SIZE;
 			priv->req.in = priv->data;
+			priv->last_update_bufflen = 0;
 		} else {
 			if (left_len > BUF_LEN)
 				processing_len = BUF_LEN;
@@ -723,14 +728,15 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 
 	return 1;
 do_soft_digest:
-	if (priv->state == SEC_DIGEST_FIRST_UPDATING
-			&& priv->data
-			&& priv->last_update_bufflen != 0) {
+	if (priv->state == SEC_DIGEST_FIRST_UPDATING) {
 		priv->switch_flag = UADK_DO_SOFT;
 		(void)digest_soft_init(priv);
-		ret = digest_soft_update(priv, priv->data, priv->last_update_bufflen);
-		if (ret != 1)
-			return ret;
+		/* filling buf has been executed */
+		if (processing_len < DIGEST_BLOCK_SIZE) {
+			ret = digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
+			if (ret != 1)
+				return ret;
+		}
 
 		return digest_soft_update(priv, tmpdata, left_len);
 	}
