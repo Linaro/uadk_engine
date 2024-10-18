@@ -83,6 +83,8 @@ struct cipher_priv_ctx {
 	size_t switch_threshold;
 	unsigned int enc : 1;
 	unsigned int pad : 1;    /* Whether padding should be used or not */
+	unsigned int key_set : 1;    /* Whether key is copied to priv key buffers */
+	unsigned int iv_set : 1;    /* Whether key is copied to priv iv buffers */
 	size_t blksize;
 	size_t keylen;
 	size_t ivlen;
@@ -272,8 +274,10 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 		return UADK_E_FAIL;
 	}
 
-	if (iv)
+	if (iv) {
 		memcpy(priv->iv, iv, ivlen);
+		priv->iv_set = 1;
+	}
 
 	for (i = 0; i < cipher_counts; i++) {
 		if (priv->nid == cipher_info_table[i].nid) {
@@ -289,8 +293,10 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 		return UADK_E_FAIL;
 	}
 
-	if (key)
+	if (key) {
 		memcpy(priv->key, key, keylen);
+		priv->key_set = 1;
+	}
 
 	if (enable_sw_offload)
 		uadk_prov_cipher_sw_init(priv, key, iv);
@@ -419,6 +425,11 @@ static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 {
 	struct sched_params params = {0};
 	int ret;
+
+	if (!priv->key_set || (!priv->iv_set && priv->ivlen)) {
+		fprintf(stderr, "key or iv is not set yet!\n");
+		return UADK_E_FAIL;
+	}
 
 	priv->req.iv_bytes = priv->ivlen;
 	priv->req.iv = priv->iv;
