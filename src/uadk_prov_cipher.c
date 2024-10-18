@@ -55,6 +55,9 @@
 #define PROV_CIPHER_FLAG_TLS1_MULTIBLOCK	0x0008
 #define PROV_CIPHER_FLAG_RAND_KEY		0x0010
 
+#define UADK_CIPHER_DEF_CTXS	2
+#define UADK_CIPHER_OP_NUM	1
+
 /* Internal flags that are only used within the provider */
 #define PROV_CIPHER_FLAG_VARIABLE_LENGTH  0x0100
 #define PROV_CIPHER_FLAG_INVERSE_CIPHER   0x0200
@@ -242,7 +245,9 @@ static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned cha
 	return UADK_E_SUCCESS;
 }
 
-static int uadk_cipher_env_poll(void *ctx)
+static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv);
+
+static int uadk_cipher_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
@@ -299,7 +304,9 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 	}
 
 	if (enable_sw_offload)
-		uadk_prov_cipher_sw_init(priv, key, iv);
+		return uadk_prov_cipher_sw_init(priv, key, iv);
+
+	uadk_prov_cipher_dev_init(priv);
 
 	return UADK_E_SUCCESS;
 }
@@ -421,6 +428,59 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	return UADK_E_SUCCESS;
 }
 
+static void uadk_cipher_mutex_infork(void)
+{
+	/* Release the replication lock of the child process */
+	pthread_mutex_unlock(&cipher_mutex);
+}
+
+static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
+{
+	int ret;
+
+	pthread_atfork(NULL, NULL, uadk_cipher_mutex_infork);
+	pthread_mutex_lock(&cipher_mutex);
+	if (prov.pid != getpid()) {
+		struct wd_ctx_nums *ctx_set_num;
+		struct wd_ctx_params cparams = {0};
+
+		ctx_set_num = calloc(UADK_CIPHER_OP_NUM, sizeof(*ctx_set_num));
+		if (!ctx_set_num) {
+			fprintf(stderr, "failed to alloc ctx_set_size!\n");
+			goto init_err;
+		}
+
+		cparams.op_type_num = UADK_CIPHER_OP_NUM;
+		cparams.ctx_set_num = ctx_set_num;
+		cparams.bmp = numa_allocate_nodemask();
+		if (!cparams.bmp) {
+			fprintf(stderr, "failed to create nodemask!\n");
+			free(ctx_set_num);
+			goto init_err;
+		}
+
+		numa_bitmask_setall(cparams.bmp);
+
+		ctx_set_num->sync_ctx_num = UADK_CIPHER_DEF_CTXS;
+		ctx_set_num->async_ctx_num = UADK_CIPHER_DEF_CTXS;
+
+		ret = wd_cipher_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+		numa_free_nodemask(cparams.bmp);
+		free(ctx_set_num);
+
+		if (unlikely(ret)) {
+			fprintf(stderr, "failed to init cipher!\n");
+			goto init_err;
+		}
+
+		prov.pid = getpid();
+		async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
+	}
+
+init_err:
+	pthread_mutex_unlock(&cipher_mutex);
+}
+
 static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 {
 	struct sched_params params = {0};
@@ -435,47 +495,9 @@ static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 	priv->req.iv = priv->iv;
 
 	if (priv->switch_flag == UADK_DO_SOFT)
-		return;
+		return UADK_E_FAIL;
 
-	pthread_mutex_lock(&cipher_mutex);
-	if (prov.pid != getpid()) {
-		struct wd_ctx_nums *ctx_set_num;
-		struct wd_ctx_params cparams = {0};
-
-		ctx_set_num = calloc(1, sizeof(*ctx_set_num));
-		if (!ctx_set_num) {
-			fprintf(stderr, "failed to alloc ctx_set_size!\n");
-			return;
-		}
-
-		cparams.op_type_num = 1;
-		cparams.ctx_set_num = ctx_set_num;
-		cparams.bmp = numa_allocate_nodemask();
-		if (!cparams.bmp) {
-			fprintf(stderr, "failed to create nodemask!\n");
-			free(ctx_set_num);
-			return;
-		}
-
-		numa_bitmask_setall(cparams.bmp);
-
-		ctx_set_num[0].sync_ctx_num = 2;
-		ctx_set_num[0].async_ctx_num = 2;
-
-		ret = wd_cipher_init2_(priv->alg_name, 0, 0, &cparams);
-		numa_free_nodemask(cparams.bmp);
-		free(ctx_set_num);
-
-		if (unlikely(ret)) {
-			if (priv->sw_cipher)
-				priv->switch_flag = UADK_DO_SOFT;
-			pthread_mutex_unlock(&cipher_mutex);
-			return;
-		}
-		prov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_env_poll);
-	}
-	pthread_mutex_unlock(&cipher_mutex);
+	uadk_prov_cipher_dev_init(priv);
 
 	/* dec and enc use the same op */
 	params.type = 0;
