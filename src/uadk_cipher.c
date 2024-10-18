@@ -362,7 +362,7 @@ static int uadk_e_cipher_env_poll(void *ctx)
 
 	do {
 		ret = wd_cipher_poll(expt, &recv);
-		if (ret < 0 || recv == expt)
+		if (ret < 0 || recv >= expt)
 			return ret;
 		rx_cnt++;
 	} while (rx_cnt < ENGINE_ENV_RECV_MAX_CNT);

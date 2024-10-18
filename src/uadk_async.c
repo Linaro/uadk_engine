@@ -325,7 +325,7 @@ static void *async_poll_process_func(void *args)
 {
 	struct async_poll_task *task;
 	struct async_op *op;
-	int ret, idx;
+	int ret, idx, empty_num;
 
 	while (uadk_e_get_async_poll_state()) {
 		if (sem_wait(&poll_queue.full_sem)) {
@@ -342,7 +342,9 @@ static void *async_poll_process_func(void *args)
 
 		task = async_get_queue_task();
 		if (!task) {
-			(void)sem_post(&poll_queue.full_sem);
+			(void)sem_getvalue(&poll_queue.empty_sem, &empty_num);
+			if (empty_num != ASYNC_QUEUE_TASK_NUM)
+				(void)sem_post(&poll_queue.full_sem);
 			usleep(1);
 			continue;
 		}

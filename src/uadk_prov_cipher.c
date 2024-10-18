@@ -257,7 +257,7 @@ static int uadk_cipher_poll(void *ctx)
 
 	do {
 		ret = wd_cipher_poll(expt, &recv);
-		if (ret < 0 || recv == expt)
+		if (ret < 0 || recv >= expt)
 			return ret;
 		rx_cnt++;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
