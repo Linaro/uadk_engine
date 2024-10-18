@@ -2273,6 +2273,19 @@ static const OSSL_PARAM *uadk_signature_sm2_gettable_ctx_md_params(void *vpsm2ct
 	return EVP_MD_gettable_ctx_params(smctx->sm2_md->md);
 }
 
+static int uadk_signature_sm2_verify_recover_init(void *vpsm2ctx, void *vsm2,
+					const OSSL_PARAM params[])
+{
+	return UADK_P_SUCCESS;
+}
+
+static int uadk_signature_sm2_verify_recover(void *vpsm2ctx, unsigned char *rout,
+				   size_t *routlen, size_t routsize,
+				   const unsigned char *sig, size_t siglen)
+{
+	return UADK_P_SUCCESS;
+}
+
 static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 {
 	PROV_SM2_ASYM_CTX *psm2ctx = OPENSSL_zalloc(sizeof(PROV_SM2_ASYM_CTX));
