@@ -12,6 +12,9 @@
 #include <openssl/bio.h>
 #include "uadk_prov_bio.h"
 
+#define UADK_PRO_SUCCESS	1
+#define UADK_PRO_FAIL		0
+
 /* Functions provided by bio */
 static OSSL_FUNC_BIO_new_file_fn *c_bio_new_file;
 static OSSL_FUNC_BIO_new_membuf_fn *c_bio_new_membuf;
@@ -72,7 +75,7 @@ int ossl_prov_bio_from_dispatch(const OSSL_DISPATCH *fns)
 		fns++;
 	}
 
-	return 1;
+	return UADK_PRO_SUCCESS;
 }
 
 OSSL_CORE_BIO *ossl_prov_bio_new_file(const char *filename, const char *mode)
@@ -95,7 +98,7 @@ int ossl_prov_bio_read_ex(OSSL_CORE_BIO *bio, void *data, size_t data_len,
 			  size_t *bytes_read)
 {
 	if (c_bio_read_ex == NULL)
-		return 0;
+		return UADK_PRO_FAIL;
 
 	return c_bio_read_ex(bio, data, data_len, bytes_read);
 }
@@ -104,7 +107,7 @@ int ossl_prov_bio_write_ex(OSSL_CORE_BIO *bio, const void *data, size_t data_len
 			   size_t *written)
 {
 	if (c_bio_write_ex == NULL)
-		return 0;
+		return UADK_PRO_FAIL;
 
 	return c_bio_write_ex(bio, data, data_len, written);
 }
@@ -136,7 +139,7 @@ int ossl_prov_bio_ctrl(OSSL_CORE_BIO *bio, int cmd, long num, void *ptr)
 int ossl_prov_bio_up_ref(OSSL_CORE_BIO *bio)
 {
 	if (c_bio_up_ref == NULL)
-		return 0;
+		return UADK_PRO_FAIL;
 
 	return c_bio_up_ref(bio);
 }
@@ -144,7 +147,7 @@ int ossl_prov_bio_up_ref(OSSL_CORE_BIO *bio)
 int ossl_prov_bio_free(OSSL_CORE_BIO *bio)
 {
 	if (c_bio_free == NULL)
-		return 0;
+		return UADK_PRO_FAIL;
 
 	return c_bio_free(bio);
 }
@@ -203,7 +206,7 @@ static int bio_core_new(BIO *bio)
 {
 	BIO_set_init(bio, 1);
 
-	return 1;
+	return UADK_PRO_SUCCESS;
 }
 
 BIO_METHOD *ossl_prov_ctx_get0_core_bio_method(UADK_PROV_CTX *ctx)
@@ -219,7 +222,7 @@ static int bio_core_free(BIO *bio)
 	BIO_set_init(bio, 0);
 	ossl_prov_bio_free(BIO_get_data(bio));
 
-	return 1;
+	return UADK_PRO_SUCCESS;
 }
 
 BIO_METHOD *ossl_bio_prov_init_bio_method(void)
