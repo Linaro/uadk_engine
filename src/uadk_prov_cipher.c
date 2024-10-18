@@ -329,9 +329,9 @@ static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned cha
 }
 
 static int uadk_prov_cipher_soft_final(struct cipher_priv_ctx *priv, unsigned char *out,
-					size_t *outl)
+					int *outl)
 {
-	size_t sw_final_len = 0;
+	int sw_final_len = 0;
 
 	if (priv->sw_cipher == NULL)
 		return UADK_E_FAIL;
@@ -681,7 +681,7 @@ static int ossl_cipher_unpadblock(unsigned char *buf, size_t *buflen, size_t blo
 }
 
 static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
-			       size_t *outl, size_t outsize,
+			       int *outl, size_t outsize,
 			       const unsigned char *in, size_t inlen)
 {
 	size_t blksz = priv->blksize;
@@ -729,7 +729,7 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 }
 
 static int uadk_prov_do_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
-			       size_t *outl, size_t outsize,
+			       int *outl, size_t outsize,
 			       const unsigned char *in, size_t inlen)
 {
 	size_t blksz = priv->blksize;
@@ -831,7 +831,7 @@ static OSSL_FUNC_cipher_gettable_ctx_params_fn uadk_prov_cipher_gettable_ctx_par
 static OSSL_FUNC_cipher_set_ctx_params_fn uadk_prov_cipher_set_ctx_params;
 static OSSL_FUNC_cipher_settable_ctx_params_fn uadk_prov_cipher_settable_ctx_params;
 
-static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
+static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, int *outl,
 				   size_t outsize, const unsigned char *in,
 				   size_t inl)
 {
@@ -861,9 +861,9 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
 }
 
 static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv,
-		unsigned char *out, size_t *outl, size_t outsize)
+		unsigned char *out, int *outl, size_t outsize)
 {
-	size_t blksz = priv->blksize;
+	int blksz = priv->blksize;
 	int ret;
 
 	if (priv->pad) {
@@ -893,7 +893,7 @@ static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv,
 }
 
 static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv,
-		unsigned char *out, size_t *outl, size_t outsize)
+		unsigned char *out, int *outl, size_t outsize)
 {
 	size_t blksz = priv->blksize;
 	int ret;
@@ -932,7 +932,7 @@ static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv,
 }
 
 static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
-					size_t *outl, size_t outsize)
+					int *outl, size_t outsize)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
@@ -952,7 +952,7 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 }
 
 static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
-					 size_t *outl, size_t outsize,
+					 int *outl, size_t outsize,
 					 const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
@@ -974,7 +974,7 @@ static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
 }
 
 static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
-					  size_t *outl, size_t outsize,
+					  int *outl, size_t outsize,
 					  const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
@@ -1024,7 +1024,7 @@ do_soft:
 }
 
 static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
-					 size_t *outl, size_t outsize)
+					 int *outl, size_t outsize)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 
