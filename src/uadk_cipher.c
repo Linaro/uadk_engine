@@ -33,9 +33,6 @@
 #define CTX_ASYNC_ENC		2
 #define CTX_ASYNC_DEC		3
 #define CTX_NUM			4
-#define CTR_128BIT_COUNTER	16
-#define CTR_MODE_LEN_SHIFT	4
-#define BYTE_BITS		8
 #define IV_LEN			16
 #define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
@@ -74,7 +71,6 @@ struct cipher_info {
 	int nid;
 	enum wd_cipher_alg alg;
 	enum wd_cipher_mode mode;
-	__u32 out_bytes;
 };
 
 static EVP_CIPHER *uadk_aes_128_cbc;
@@ -130,30 +126,30 @@ static struct sw_cipher_t sec_ciphers_sw_table[] = {
 };
 
 static struct cipher_info cipher_info_table[] = {
-	{ NID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 16},
-	{ NID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ NID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ NID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 32},
-	{ NID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 512},
-	{ NID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC, 16},
-	{ NID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC, 16},
-	{ NID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB, 16},
-	{ NID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB, 16},
-	{ NID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB, 16},
-	{ NID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB, 16},
-	{ NID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR, 16},
+	{ NID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ NID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ NID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ NID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ NID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ NID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ NID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS},
+	{ NID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS},
+	{ NID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC},
+	{ NID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC},
+	{ NID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB},
+	{ NID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ NID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ NID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ NID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ NID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ NID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ NID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ NID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ NID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ NID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB},
+	{ NID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB},
+	{ NID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB},
+	{ NID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR},
 };
 
 static const EVP_CIPHER *sec_ciphers_get_cipher_sw_impl(int n_id)
@@ -484,11 +480,10 @@ err_unlock:
 }
 
 static void cipher_priv_ctx_setup(struct cipher_priv_ctx *priv,
-	enum wd_cipher_alg alg, enum wd_cipher_mode mode, __u32 out_bytes)
+				  enum wd_cipher_alg alg, enum wd_cipher_mode mode)
 {
 	priv->setup.alg = alg;
 	priv->setup.mode = mode;
-	priv->req.out_bytes = out_bytes;
 }
 
 static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
@@ -519,7 +514,7 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	for (i = 0; i < cipher_counts; i++) {
 		if (nid == cipher_info_table[i].nid) {
 			cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
-					cipher_info_table[i].mode, cipher_info_table[i].out_bytes);
+						cipher_info_table[i].mode);
 			break;
 		}
 	}
@@ -574,57 +569,6 @@ static void *uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
 	}
 
 	return NULL;
-}
-
-/* Increment counter (128-bit int) by c */
-static void ctr_iv_inc(uint8_t *counter, __u32 c)
-{
-	uint32_t n = CTR_128BIT_COUNTER;
-	uint8_t *counter1 = counter;
-	__u32 c_value = c;
-
-	/*
-	 * Since the counter has been increased 1 by the hardware,
-	 * so the c need to  decrease 1.
-	 */
-	c_value -= 1;
-	do {
-		--n;
-		c_value += counter1[n];
-		counter1[n] = (uint8_t)c_value;
-		c_value >>= BYTE_BITS;
-	} while (n);
-}
-
-static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
-{
-	__u16 iv_bytes = priv->req.iv_bytes;
-	int offset = priv->req.in_bytes - iv_bytes;
-	unsigned char K[IV_LEN] = {0};
-	__u32 i;
-
-	switch (priv->setup.mode) {
-	case WD_CIPHER_CFB:
-	case WD_CIPHER_CBC:
-		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
-			memcpy(priv->iv, priv->req.dst + offset, iv_bytes);
-		else
-			memcpy(priv->iv, priv->req.src + offset, iv_bytes);
-
-		break;
-	case WD_CIPHER_OFB:
-		for (i = 0; i < IV_LEN; i++) {
-			K[i] = *((unsigned char *)priv->req.src + offset + i) ^
-			       *((unsigned char *)priv->req.dst + offset + i);
-		}
-		memcpy(priv->iv, K, iv_bytes);
-		break;
-	case WD_CIPHER_CTR:
-		ctr_iv_inc(priv->iv, priv->req.in_bytes >> CTR_MODE_LEN_SHIFT);
-		break;
-	default:
-		break;
-	}
 }
 
 static int do_cipher_sync(struct cipher_priv_ctx *priv)
@@ -742,7 +686,7 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 		for (i = 0; i < cipher_counts; i++) {
 			if (nid == cipher_info_table[i].nid) {
 				cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
-					cipher_info_table[i].mode, cipher_info_table[i].out_bytes);
+							cipher_info_table[i].mode);
 				break;
 			}
 		}
@@ -782,6 +726,7 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 
 	priv->req.src = (unsigned char *)in;
 	priv->req.in_bytes = inlen;
+	priv->req.out_bytes = inlen;
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
@@ -813,7 +758,6 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		if (!ret)
 			goto out_notify;
 	}
-	uadk_cipher_update_priv_ctx(priv);
 
 	return 1;
 

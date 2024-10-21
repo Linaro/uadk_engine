@@ -37,9 +37,6 @@
 #define CTX_ASYNC_ENC		2
 #define CTX_ASYNC_DEC		3
 #define CTX_NUM			4
-#define CTR_128BIT_COUNTER	16
-#define CTR_MODE_LEN_SHIFT	4
-#define BYTE_BITS		8
 #define IV_LEN			16
 #define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
@@ -140,37 +137,36 @@ struct cipher_info {
 	int nid;
 	enum wd_cipher_alg alg;
 	enum wd_cipher_mode mode;
-	__u32 out_bytes;
 };
 
 static struct cipher_info cipher_info_table[] = {
-	{ ID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ ID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ ID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ ID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 16},
-	{ ID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ ID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ ID_aes_128_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 16},
-	{ ID_aes_192_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 16},
-	{ ID_aes_256_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 64},
-	{ ID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 32},
-	{ ID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 512},
-	{ ID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ ID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ ID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ ID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ ID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ ID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ ID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ ID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ ID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ ID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC, 16},
-	{ ID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB, 16},
-	{ ID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB, 16},
-	{ ID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB, 16},
-	{ ID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR, 16},
-	{ ID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC, 16},
-	{ ID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB, 16},
+	{ ID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ ID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ ID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB},
+	{ ID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ ID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ ID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC},
+	{ ID_aes_128_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1},
+	{ ID_aes_192_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1},
+	{ ID_aes_256_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1},
+	{ ID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS},
+	{ ID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS},
+	{ ID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ ID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ ID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR},
+	{ ID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ ID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ ID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB},
+	{ ID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ ID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ ID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB},
+	{ ID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC},
+	{ ID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB},
+	{ ID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB},
+	{ ID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB},
+	{ ID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR},
+	{ ID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC},
+	{ ID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB},
 };
 
 struct cts_mode_name2id_st {
@@ -379,7 +375,6 @@ static int uadk_get_cipher_info(struct cipher_priv_ctx *priv)
 		if (priv->nid == cipher_info_table[i].nid) {
 			priv->setup.alg = cipher_info_table[i].alg;
 			priv->setup.mode = cipher_info_table[i].mode;
-			priv->req.out_bytes = cipher_info_table[i].out_bytes;
 			break;
 		}
 	}
@@ -442,60 +437,6 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
 		async_wake_job(op->job);
-	}
-}
-
-/* Increment counter (128-bit int) by c */
-static void ctr_iv_inc(uint8_t *counter, __u32 c)
-{
-	uint32_t n = CTR_128BIT_COUNTER;
-	uint8_t *counter1 = counter;
-	__u32 c_value = c;
-
-	/*
-	 * Since the counter has been increased 1 by the hardware,
-	 * so the c need to decrease 1.
-	 */
-	c_value -= 1;
-	do {
-		--n;
-		c_value += counter1[n];
-		counter1[n] = (uint8_t)c_value;
-		c_value >>= BYTE_BITS;
-	} while (n);
-}
-
-static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
-{
-	__u16 iv_bytes = priv->req.iv_bytes;
-	int offset = priv->req.in_bytes - iv_bytes;
-	unsigned char K[IV_LEN] = {0};
-	int i;
-
-	switch (priv->setup.mode) {
-	case WD_CIPHER_CFB:
-	case WD_CIPHER_CBC:
-	case WD_CIPHER_CBC_CS1:
-	case WD_CIPHER_CBC_CS2:
-	case WD_CIPHER_CBC_CS3:
-		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
-			memcpy(priv->iv, priv->req.dst + offset, iv_bytes);
-		else
-			memcpy(priv->iv, priv->req.src + offset, iv_bytes);
-
-		break;
-	case WD_CIPHER_OFB:
-		for (i = 0; i < IV_LEN; i++) {
-			K[i] = *((unsigned char *)priv->req.src + offset + i) ^
-			       *((unsigned char *)priv->req.dst + offset + i);
-		}
-		memcpy(priv->iv, K, iv_bytes);
-		break;
-	case WD_CIPHER_CTR:
-		ctr_iv_inc(priv->iv, priv->req.in_bytes >> CTR_MODE_LEN_SHIFT);
-		break;
-	default:
-		break;
 	}
 }
 
@@ -755,6 +696,7 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 	priv->switch_flag = UADK_DO_HW;
 	priv->req.src = (unsigned char *)in;
 	priv->req.in_bytes = inlen;
+	priv->req.out_bytes = inlen;
 	priv->req.dst = out;
 	priv->req.out_buf_bytes = inlen;
 
@@ -782,8 +724,6 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 			return UADK_E_FAIL;
 		}
 	}
-
-	uadk_cipher_update_priv_ctx(priv);
 
 	return UADK_E_SUCCESS;
 }
