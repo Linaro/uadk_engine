@@ -113,12 +113,13 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
-	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation."},
+	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
 	{ NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
-	{ "RSA", UADK_DEFAULT_PROPERTIES, uadk_rsa_asym_cipher_functions },
+	{ "RSA", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsa_asym_cipher_functions, "uadk RSA asym cipher implementation." },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_asym_cipher_functions, "uadk SM2 asym cipher implementation." },
 	{ NULL, NULL, NULL }

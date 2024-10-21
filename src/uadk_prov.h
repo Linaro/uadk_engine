@@ -142,9 +142,9 @@ extern const OSSL_DISPATCH uadk_sm4_ecb_functions[];
 extern const OSSL_DISPATCH uadk_des_ede3_cbc_functions[];
 extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[];
 
-extern const OSSL_DISPATCH uadk_rsa_signature_functions[];
-extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[];
-extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[];
+extern const OSSL_DISPATCH uadk_rsa_signature_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[];
 extern const OSSL_DISPATCH uadk_dh_keyexch_functions[];
