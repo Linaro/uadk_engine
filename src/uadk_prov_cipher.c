@@ -31,6 +31,7 @@
 
 #define UADK_DO_SOFT		(-0xE0)
 #define UADK_DO_HW		(-0xF0)
+#define OSSL_NELEM(x)		(sizeof(x)/sizeof((x)[0]))
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
 #define CTX_ASYNC_ENC		2
@@ -57,6 +58,45 @@
 
 #define UADK_CIPHER_DEF_CTXS	2
 #define UADK_CIPHER_OP_NUM	1
+
+/* OSSL_CIPHER_PARAM_CTS_MODE Values */
+# define OSSL_CIPHER_CTS_MODE_CS1 "CS1"
+# define OSSL_CIPHER_CTS_MODE_CS2 "CS2"
+# define OSSL_CIPHER_CTS_MODE_CS3 "CS3"
+
+# define UADK_CIPHER_CTS_CS1_NAME "cbc-cs1(aes)"
+# define UADK_CIPHER_CTS_CS2_NAME "cbc-cs2(aes)"
+# define UADK_CIPHER_CTS_CS3_NAME "cbc-cs3(aes)"
+
+enum uadk_cipher_alg_id {
+	ID_aes_128_ecb,
+	ID_aes_192_ecb,
+	ID_aes_256_ecb,
+	ID_aes_128_cbc,
+	ID_aes_192_cbc,
+	ID_aes_256_cbc,
+	ID_aes_128_cts,
+	ID_aes_192_cts,
+	ID_aes_256_cts,
+	ID_aes_128_xts,
+	ID_aes_256_xts,
+	ID_aes_128_ctr,
+	ID_aes_192_ctr,
+	ID_aes_256_ctr,
+	ID_aes_128_ofb128,
+	ID_aes_192_ofb128,
+	ID_aes_256_ofb128,
+	ID_aes_128_cfb128,
+	ID_aes_192_cfb128,
+	ID_aes_256_cfb128,
+	ID_sm4_cbc,
+	ID_sm4_ofb128,
+	ID_sm4_cfb128,
+	ID_sm4_ecb,
+	ID_sm4_ctr,
+	ID_des_ede3_cbc,
+	ID_des_ede3_ecb,
+};
 
 /* Internal flags that are only used within the provider */
 #define PROV_CIPHER_FLAG_VARIABLE_LENGTH  0x0100
@@ -86,6 +126,7 @@ struct cipher_priv_ctx {
 	size_t switch_threshold;
 	unsigned int enc : 1;
 	unsigned int pad : 1;    /* Whether padding should be used or not */
+	unsigned int cts_mode;   /* Use to set the type for CTS modes */
 	unsigned int key_set : 1;    /* Whether key is copied to priv key buffers */
 	unsigned int iv_set : 1;    /* Whether key is copied to priv iv buffers */
 	size_t blksize;
@@ -103,31 +144,68 @@ struct cipher_info {
 };
 
 static struct cipher_info cipher_info_table[] = {
-	{ NID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
-	{ NID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 16},
-	{ NID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ NID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
-	{ NID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 32},
-	{ NID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 512},
-	{ NID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC, 16},
-	{ NID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC, 16},
-	{ NID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB, 16},
-	{ NID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
-	{ NID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
-	{ NID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
-	{ NID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB, 16},
-	{ NID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB, 16},
-	{ NID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB, 16},
-	{ NID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR, 16},
+	{ ID_aes_128_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ ID_aes_192_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ ID_aes_256_ecb, WD_CIPHER_AES, WD_CIPHER_ECB, 16},
+	{ ID_aes_128_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 16},
+	{ ID_aes_192_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
+	{ ID_aes_256_cbc, WD_CIPHER_AES, WD_CIPHER_CBC, 64},
+	{ ID_aes_128_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 16},
+	{ ID_aes_192_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 16},
+	{ ID_aes_256_cts, WD_CIPHER_AES, WD_CIPHER_CBC_CS1, 64},
+	{ ID_aes_128_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 32},
+	{ ID_aes_256_xts, WD_CIPHER_AES, WD_CIPHER_XTS, 512},
+	{ ID_aes_128_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ ID_aes_192_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ ID_aes_256_ctr, WD_CIPHER_AES, WD_CIPHER_CTR, 64},
+	{ ID_aes_128_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ ID_aes_192_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ ID_aes_256_ofb128, WD_CIPHER_AES, WD_CIPHER_OFB, 16},
+	{ ID_aes_128_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ ID_aes_192_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ ID_aes_256_cfb128, WD_CIPHER_AES, WD_CIPHER_CFB, 16},
+	{ ID_sm4_cbc, WD_CIPHER_SM4, WD_CIPHER_CBC, 16},
+	{ ID_sm4_ofb128, WD_CIPHER_SM4, WD_CIPHER_OFB, 16},
+	{ ID_sm4_cfb128, WD_CIPHER_SM4, WD_CIPHER_CFB, 16},
+	{ ID_sm4_ecb, WD_CIPHER_SM4, WD_CIPHER_ECB, 16},
+	{ ID_sm4_ctr, WD_CIPHER_SM4, WD_CIPHER_CTR, 16},
+	{ ID_des_ede3_cbc, WD_CIPHER_3DES, WD_CIPHER_CBC, 16},
+	{ ID_des_ede3_ecb, WD_CIPHER_3DES, WD_CIPHER_ECB, 16},
 };
+
+struct cts_mode_name2id_st {
+	unsigned int id;
+	const char *ossl_mode_name;
+	const char *uadk_alg_name;
+};
+
+static struct cts_mode_name2id_st cts_modes[] = {
+	{ WD_CIPHER_CBC_CS1, OSSL_CIPHER_CTS_MODE_CS1, UADK_CIPHER_CTS_CS1_NAME },
+	{ WD_CIPHER_CBC_CS2, OSSL_CIPHER_CTS_MODE_CS2, UADK_CIPHER_CTS_CS2_NAME },
+	{ WD_CIPHER_CBC_CS3, OSSL_CIPHER_CTS_MODE_CS3, UADK_CIPHER_CTS_CS3_NAME },
+};
+
+const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
+{
+	size_t i;
+
+	for (i = 0; i < OSSL_NELEM(cts_modes); ++i) {
+		if (cts_modes[i].id == id)
+			return cts_modes[i].ossl_mode_name;
+	}
+	return NULL;
+}
+
+int ossl_cipher_cbc_cts_mode_name2id(const char *name)
+{
+	size_t i;
+
+	for (i = 0; i < OSSL_NELEM(cts_modes); ++i) {
+		if (OPENSSL_strcasecmp(name, cts_modes[i].ossl_mode_name) == 0)
+			return (int)cts_modes[i].id;
+	}
+	return -1;
+}
 
 static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 {
@@ -135,70 +213,79 @@ static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 		return UADK_E_SUCCESS;
 
 	switch (priv->nid) {
-	case NID_aes_128_cbc:
+	case ID_aes_128_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-CBC", "provider=default");
 		break;
-	case NID_aes_192_cbc:
+	case ID_aes_192_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-CBC", "provider=default");
 		break;
-	case NID_aes_256_cbc:
+	case ID_aes_256_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-CBC", "provider=default");
 		break;
-	case NID_aes_128_ecb:
+	case ID_aes_128_cts:
+		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-CBC-CTS", "provider=default");
+		break;
+	case ID_aes_192_cts:
+		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-CBC-CTS", "provider=default");
+		break;
+	case ID_aes_256_cts:
+		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-CBC-CTS", "provider=default");
+		break;
+	case ID_aes_128_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-ECB", "provider=default");
 		break;
-	case NID_aes_192_ecb:
+	case ID_aes_192_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-ECB", "provider=default");
 		break;
-	case NID_aes_256_ecb:
+	case ID_aes_256_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-ECB", "provider=default");
 		break;
-	case NID_sm4_cbc:
+	case ID_sm4_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-CBC", "provider=default");
 		break;
-	case NID_sm4_ecb:
+	case ID_sm4_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-ECB", "provider=default");
 		break;
-	case NID_des_ede3_cbc:
+	case ID_des_ede3_cbc:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "DES-EDE3-CBC", "provider=default");
 		break;
-	case NID_des_ede3_ecb:
+	case ID_des_ede3_ecb:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "DES-EDE3-ECB", "provider=default");
 		break;
-	case NID_aes_128_ctr:
+	case ID_aes_128_ctr:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-CTR", "provider=default");
 		break;
-	case NID_aes_192_ctr:
+	case ID_aes_192_ctr:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-CTR", "provider=default");
 		break;
-	case NID_aes_256_ctr:
+	case ID_aes_256_ctr:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-CTR", "provider=default");
 		break;
-	case NID_aes_128_ofb128:
+	case ID_aes_128_ofb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-OFB", "provider=default");
 		break;
-	case NID_aes_192_ofb128:
+	case ID_aes_192_ofb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-OFB", "provider=default");
 		break;
-	case NID_aes_256_ofb128:
+	case ID_aes_256_ofb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-OFB", "provider=default");
 		break;
-	case NID_aes_128_cfb128:
+	case ID_aes_128_cfb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-CFB", "provider=default");
 		break;
-	case NID_aes_192_cfb128:
+	case ID_aes_192_cfb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-192-CFB", "provider=default");
 		break;
-	case NID_aes_256_cfb128:
+	case ID_aes_256_cfb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-CFB", "provider=default");
 		break;
-	case NID_sm4_ofb128:
+	case ID_sm4_ofb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-OFB", "provider=default");
 		break;
-	case NID_sm4_cfb128:
+	case ID_sm4_cfb128:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-CFB", "provider=default");
 		break;
-	case NID_sm4_ctr:
+	case ID_sm4_ctr:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-CTR", "provider=default");
 		break;
 	default:
@@ -267,12 +354,33 @@ static int uadk_cipher_poll(void *ctx)
 	return -ETIMEDOUT;
 }
 
+static int uadk_get_cipher_info(struct cipher_priv_ctx *priv)
+{
+	int cipher_counts = ARRAY_SIZE(cipher_info_table);
+	int i;
+
+	for (i = 0; i < cipher_counts; i++) {
+		if (priv->nid == cipher_info_table[i].nid) {
+			priv->setup.alg = cipher_info_table[i].alg;
+			priv->setup.mode = cipher_info_table[i].mode;
+			priv->req.out_bytes = cipher_info_table[i].out_bytes;
+			break;
+		}
+	}
+
+	if (unlikely(i == cipher_counts)) {
+		fprintf(stderr, "failed to setup the private ctx.\n");
+		return UADK_E_FAIL;
+	}
+
+	return UADK_E_SUCCESS;
+}
+
 static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 				 const unsigned char *key, size_t keylen,
 				 const unsigned char *iv, size_t ivlen)
 {
-	int cipher_counts = ARRAY_SIZE(cipher_info_table);
-	int i;
+	int ret;
 
 	if (ivlen > IV_LEN || keylen > MAX_KEY_LEN) {
 		fprintf(stderr, "invalid keylen or ivlen.\n");
@@ -284,19 +392,9 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 		priv->iv_set = 1;
 	}
 
-	for (i = 0; i < cipher_counts; i++) {
-		if (priv->nid == cipher_info_table[i].nid) {
-			priv->setup.alg = cipher_info_table[i].alg;
-			priv->setup.mode = cipher_info_table[i].mode;
-			priv->req.out_bytes = cipher_info_table[i].out_bytes;
-			break;
-		}
-	}
-
-	if (i == cipher_counts) {
-		fprintf(stderr, "failed to setup the private ctx.\n");
+	ret = uadk_get_cipher_info(priv);
+	if (unlikely(!ret))
 		return UADK_E_FAIL;
-	}
 
 	if (key) {
 		memcpy(priv->key, key, keylen);
@@ -361,6 +459,9 @@ static void uadk_cipher_update_priv_ctx(struct cipher_priv_ctx *priv)
 	switch (priv->setup.mode) {
 	case WD_CIPHER_CFB:
 	case WD_CIPHER_CBC:
+	case WD_CIPHER_CBC_CS1:
+	case WD_CIPHER_CBC_CS2:
+	case WD_CIPHER_CBC_CS3:
 		if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
 			memcpy(priv->iv, priv->req.dst + offset, iv_bytes);
 		else
@@ -1018,6 +1119,7 @@ static const OSSL_PARAM uadk_prov_settable_ctx_params[] = {
 	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_KEYLEN, NULL),
 	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_IVLEN, NULL),
 	OSSL_PARAM_uint(OSSL_CIPHER_PARAM_PADDING, NULL),
+	OSSL_PARAM_utf8_string(OSSL_CIPHER_PARAM_CTS_MODE, NULL, 0),
 	OSSL_PARAM_END
 };
 
@@ -1075,6 +1177,27 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 		}
 	}
 
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_CTS_MODE);
+	if (p != NULL) {
+		int id;
+
+		if (p->data_type != OSSL_PARAM_UTF8_STRING) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			return UADK_E_FAIL;
+		}
+
+		id = ossl_cipher_cbc_cts_mode_name2id(p->data);
+		if (id < 0) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			return UADK_E_FAIL;
+		}
+
+		priv->cts_mode = (unsigned int)id;
+		priv->setup.mode = priv->cts_mode;
+		strncpy(priv->alg_name, cts_modes[id - WD_CIPHER_CBC_CS1].uadk_alg_name,
+			ALG_NAME_SIZE - 1);
+	}
+
 	return UADK_E_SUCCESS;
 }
 
@@ -1113,6 +1236,15 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return UADK_E_FAIL;
 	}
+	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_CTS_MODE);
+	if (p != NULL) {
+		const char *name = ossl_cipher_cbc_cts_mode_id2name(priv->cts_mode);
+
+		if (name == NULL || !OSSL_PARAM_set_utf8_string(p, name)) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+			return UADK_E_FAIL;
+		}
+	}
 	return UADK_E_SUCCESS;
 }
 
@@ -1122,6 +1254,7 @@ static const OSSL_PARAM uadk_prov_default_ctx_params[] = {
 	OSSL_PARAM_uint(OSSL_CIPHER_PARAM_PADDING, NULL),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_IV, NULL, 0),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_UPDATED_IV, NULL, 0),
+	OSSL_PARAM_utf8_string(OSSL_CIPHER_PARAM_CTS_MODE, NULL, 0),
 	OSSL_PARAM_END
 };
 
@@ -1212,6 +1345,7 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	ctx->keylen = key_len;							\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
+	ctx->cts_mode = WD_CIPHER_CBC_CS1;					\
 	ctx->sw_ctx = EVP_CIPHER_CTX_new();					\
 	if (ctx->sw_ctx == NULL)						\
 		fprintf(stderr, "EVP_CIPHER_CTX_new failed.\n");		\
@@ -1253,29 +1387,32 @@ const OSSL_DISPATCH uadk_##nm##_functions[] = {					\
 	{ 0, NULL }								\
 }
 
-UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, 0, NID_aes_128_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
-UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, 0, NID_aes_192_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
-UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, 0, NID_aes_256_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
-UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, 0, NID_aes_128_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
-UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, 0, NID_aes_192_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
-UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, 0, NID_aes_256_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
-UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, PROV_CIPHER_FLAG_CUSTOM_IV, NID_aes_128_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
-UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, PROV_CIPHER_FLAG_CUSTOM_IV, NID_aes_256_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
-UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, 0, NID_sm4_cbc, cbc(sm4), EVP_CIPH_CBC_MODE, block);
-UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, 0, NID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE, block);
-UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, 0, NID_des_ede3_cbc, cbc(des), EVP_CIPH_CBC_MODE, block);
-UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, 0, NID_des_ede3_ecb, ecb(des), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_128_cbc, 16, 16, 16, 0, ID_aes_128_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_192_cbc, 16, 24, 16, 0, ID_aes_192_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_256_cbc, 16, 32, 16, 0, ID_aes_256_cbc, cbc(aes), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(aes_128_cts, 1, 16, 16, 0, ID_aes_128_cts, cbc-cs1(aes), EVP_CIPH_CBC_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_cts, 1, 24, 16, 0, ID_aes_192_cts, cbc-cs1(aes), EVP_CIPH_CBC_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_cts, 1, 32, 16, 0, ID_aes_256_cts, cbc-cs1(aes), EVP_CIPH_CBC_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_ecb, 16, 16, 0, 0, ID_aes_128_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_192_ecb, 16, 24, 0, 0, ID_aes_192_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_256_ecb, 16, 32, 0, 0, ID_aes_256_ecb, ecb(aes), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(aes_128_xts, 1, 32, 16, PROV_CIPHER_FLAG_CUSTOM_IV, ID_aes_128_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_xts, 1, 64, 16, PROV_CIPHER_FLAG_CUSTOM_IV, ID_aes_256_xts, xts(aes), EVP_CIPH_XTS_MODE, stream);
+UADK_CIPHER_DESCR(sm4_cbc, 16, 16, 16, 0, ID_sm4_cbc, cbc(sm4), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(sm4_ecb, 16, 16, 0, 0, ID_sm4_ecb, ecb(sm4), EVP_CIPH_ECB_MODE, block);
+UADK_CIPHER_DESCR(des_ede3_cbc, 8, 24, 8, 0, ID_des_ede3_cbc, cbc(des), EVP_CIPH_CBC_MODE, block);
+UADK_CIPHER_DESCR(des_ede3_ecb, 8, 24, 0, 0, ID_des_ede3_ecb, ecb(des), EVP_CIPH_ECB_MODE, block);
 
 /* v3 */
-UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, 0, NID_aes_128_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
-UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, 0, NID_aes_192_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
-UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, 0, NID_aes_256_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
-UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, 0, NID_aes_128_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
-UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, 0, NID_aes_192_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
-UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, 0, NID_aes_256_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
-UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, 0, NID_aes_128_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
-UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, 0, NID_aes_192_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
-UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, 0, NID_aes_256_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
-UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, 0, NID_sm4_ofb128, ofb(sm4), EVP_CIPH_OFB_MODE, stream);
-UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, 0, NID_sm4_cfb128, cfb(sm4), EVP_CIPH_CFB_MODE, stream);
-UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, 0, NID_sm4_ctr, ctr(sm4), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_ctr, 1, 16, 16, 0, ID_aes_128_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_ctr, 1, 24, 16, 0, ID_aes_192_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_ctr, 1, 32, 16, 0, ID_aes_256_ctr, ctr(aes), EVP_CIPH_CTR_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_ofb128, 1, 16, 16, 0, ID_aes_128_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_ofb128, 1, 24, 16, 0, ID_aes_192_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_ofb128, 1, 32, 16, 0, ID_aes_256_ofb128, ofb(aes), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_128_cfb128, 1, 16, 16, 0, ID_aes_128_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_192_cfb128, 1, 24, 16, 0, ID_aes_192_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(aes_256_cfb128, 1, 32, 16, 0, ID_aes_256_cfb128, cfb(aes), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_ofb128, 1, 16, 16, 0, ID_sm4_ofb128, ofb(sm4), EVP_CIPH_OFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_cfb128, 1, 16, 16, 0, ID_sm4_cfb128, cfb(sm4), EVP_CIPH_CFB_MODE, stream);
+UADK_CIPHER_DESCR(sm4_ctr, 1, 16, 16, 0, ID_sm4_ctr, ctr(sm4), EVP_CIPH_CTR_MODE, stream);
