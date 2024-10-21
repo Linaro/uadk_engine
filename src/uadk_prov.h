@@ -146,8 +146,8 @@ extern const OSSL_DISPATCH uadk_rsa_signature_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[FUNC_MAX_NUM];
 
-extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[];
-extern const OSSL_DISPATCH uadk_dh_keyexch_functions[];
+extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_dh_keyexch_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_sm2_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm2_signature_functions[FUNC_MAX_NUM];
@@ -158,6 +158,7 @@ void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_rsa(void);
 void uadk_prov_destroy_dh(void);
 void uadk_prov_sm2_uninit(void);
+void uadk_prov_dh_uninit(void);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;
