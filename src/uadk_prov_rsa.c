@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Copyright 2023-2024 Huawei Technologies Co.,Ltd. All rights reserved.
  * Copyright 2023-2024 Linaro ltd.
@@ -48,7 +49,6 @@
 #define BN_ERR				(-1)
 #define BN_REDO				(-2)
 #define GET_ERR_FINISH			0
-#define SOFT				2
 #define UNUSED(x)			((void)(x))
 #define UADK_E_SUCCESS			1
 #define UADK_E_FAIL			0
@@ -62,6 +62,7 @@
 #define GENCB_NEXT			2
 #define GENCB_RETRY			3
 #define PRIME_CHECK_BIT_NUM		4
+#define SOFT_SWITCH			0
 
 struct bignum_st {
 	BN_ULONG *d;
@@ -235,6 +236,7 @@ struct rsa_st {
 
 typedef struct rsa_st RSA;
 
+/* EVP_SIGNATURE */
 struct evp_signature_st {
 	int name_id;
 	char *type_name;
@@ -269,8 +271,9 @@ struct evp_signature_st {
 	OSSL_FUNC_signature_gettable_ctx_md_params_fn *gettable_ctx_md_params;
 	OSSL_FUNC_signature_set_ctx_md_params_fn *set_ctx_md_params;
 	OSSL_FUNC_signature_settable_ctx_md_params_fn *settable_ctx_md_params;
-} /* EVP_SIGNATURE */;
+};
 
+/* EVP_ASYM_CIPHER */
 struct evp_asym_cipher_st {
 	int name_id;
 	char *type_name;
@@ -291,7 +294,7 @@ struct evp_asym_cipher_st {
 	OSSL_FUNC_asym_cipher_gettable_ctx_params_fn *gettable_ctx_params;
 	OSSL_FUNC_asym_cipher_set_ctx_params_fn *set_ctx_params;
 	OSSL_FUNC_asym_cipher_settable_ctx_params_fn *settable_ctx_params;
-} /* EVP_ASYM_CIPHER */;
+};
 
 typedef struct{
 	int id; /* libcrypto internal */
@@ -306,7 +309,7 @@ typedef struct{
 # endif
 
 	/* Constructor(s), destructor, information */
-	OSSL_FUNC_keymgmt_new_fn *new;
+	OSSL_FUNC_keymgmt_new_fn *new_fun;
 	OSSL_FUNC_keymgmt_free_fn *free;
 	OSSL_FUNC_keymgmt_get_params_fn *get_params;
 	OSSL_FUNC_keymgmt_gettable_params_fn *gettable_params;
@@ -334,7 +337,7 @@ typedef struct{
 # if OPENSSL_VERSION_NUMBER >= 0x30200000
 	OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
 # endif
-	OSSL_FUNC_keymgmt_export_fn *export;
+	OSSL_FUNC_keymgmt_export_fn *export_fun;
 	OSSL_FUNC_keymgmt_export_types_fn *export_types;
 # if OPENSSL_VERSION_NUMBER >= 0x30200000
 	OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
@@ -432,13 +435,14 @@ static void uadk_rsa_get0_key(const RSA *r, const BIGNUM **n,
 
 static int uadk_rsa_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
 {
-	/* If the fields n and e in r are NULL, the corresponding input
+	/*
+	 * If the fields n and e in r are NULL, the corresponding input
 	 * parameters MUST be non-NULL for n and e.  d may be
 	 * left NULL (in case only the public key is used).
 	 */
 	if ((r->n == NULL && n == NULL)
 			|| (r->e == NULL && e == NULL))
-		return 0;
+		return UADK_E_FAIL;
 
 	if (n != NULL) {
 		BN_free(r->n);
@@ -455,7 +459,7 @@ static int uadk_rsa_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
 	}
 	r->dirty_cnt++;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static void uadk_rsa_get0_crt_params(const RSA *r, const BIGNUM **dmp1,
@@ -471,11 +475,12 @@ static void uadk_rsa_get0_crt_params(const RSA *r, const BIGNUM **dmp1,
 
 static int uadk_rsa_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q)
 {
-	/* If the fields p and q in r are NULL, the corresponding input
+	/*
+	 * If the fields p and q in r are NULL, the corresponding input
 	 * parameters MUST be non-NULL.
 	 */
 	if ((r->p == NULL && p == NULL) || (r->q == NULL && q == NULL))
-		return 0;
+		return UADK_E_FAIL;
 
 	if (p != NULL) {
 		BN_clear_free(r->p);
@@ -491,18 +496,19 @@ static int uadk_rsa_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q)
 
 	r->dirty_cnt++;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *iqmp)
 {
-	/* If the fields dmp1, dmq1 and iqmp in r are NULL, the corresponding input
+	/*
+	 * If the fields dmp1, dmq1 and iqmp in r are NULL, the corresponding input
 	 * parameters MUST be non-NULL.
 	 */
 	if ((r->dmp1 == NULL && dmp1 == NULL)
 	    || (r->dmq1 == NULL && dmq1 == NULL)
 	    || (r->iqmp == NULL && iqmp == NULL))
-		return 0;
+		return UADK_E_FAIL;
 
 	if (dmp1 != NULL) {
 		BN_clear_free(r->dmp1);
@@ -524,7 +530,7 @@ static int uadk_rsa_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *
 
 	r->dirty_cnt++;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_bits(const RSA *r)
@@ -540,15 +546,15 @@ static int uadk_rsa_size(const RSA *r)
 static int setup_tbuf(PROV_RSA_SIG_CTX *ctx)
 {
 	if (ctx->tbuf != NULL)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	ctx->tbuf = OPENSSL_malloc(uadk_rsa_size(ctx->rsa));
 	if (ctx->tbuf == NULL) {
 		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static void clean_tbuf(PROV_RSA_SIG_CTX *ctx)
@@ -566,8 +572,8 @@ static void free_tbuf(PROV_RSA_SIG_CTX *ctx)
 
 static int rsa_check_bit_useful(const int bits, int flen)
 {
-	if (flen > bits)
-		return SOFT;
+	if (flen > (bits >> BIT_BYTES_SHIFT))
+		return UADK_DO_SOFT;
 
 	if (bits < RSA_MIN_MODULUS_BITS)
 		return UADK_E_FAIL;
@@ -581,9 +587,9 @@ static int rsa_check_bit_useful(const int bits, int flen)
 	case OPENSSLRSA7680BITS:
 	case OPENSSLRSA15360BITS:
 	case RSA_MIN_MODULUS_BITS:
-		return SOFT;
+		return UADK_DO_SOFT;
 	default:
-		return SOFT;
+		return UADK_DO_SOFT;
 	}
 }
 
@@ -644,12 +650,12 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		if (*num < RSA_MAX_PRIME_NUM)
 			*bitse -= bitsr[*num];
 		else
-			return -1;
+			return BN_ERR;
 
 		ret = BN_GENCB_call(cb, GENCB_NEXT, *n);
 		(*n)++;
 		if (!ret)
-			return -1;
+			return BN_ERR;
 
 		if (retries == PRIME_RETRY_COUNT) {
 			*num = -1;
@@ -717,7 +723,7 @@ static int check_rsa_prime_useful(int * const n, struct rsa_prime_param *param,
 	 * r2 = prime - 1.
 	 */
 	if (!BN_sub(param->r2, param->prime, BN_value_one()))
-		return -1;
+		return BN_ERR;
 	ERR_set_mark();
 	BN_set_flags(param->r2, BN_FLG_CONSTTIME);
 	/*
@@ -930,21 +936,21 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 }
 
 static int check_rsa_pridec_padding(unsigned char *to, int num,
-				    const unsigned char *buf, int len,
+				    const unsigned char *buf, int flen,
 				    int padding)
 {
 	int ret;
 
 	switch (padding) {
 	case RSA_PKCS1_PADDING:
-		ret = RSA_padding_check_PKCS1_type_2(to, num, buf, len, num);
-		if (!ret)
+		ret = RSA_padding_check_PKCS1_type_2(to, num, buf, flen, num);
+		if (ret == CHECK_PADDING_FAIL)
 			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
-		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, len, num,
+		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, flen, num,
 						   NULL, 0);
-		if (!ret)
+		if (ret == CHECK_PADDING_FAIL)
 			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
 		break;
 	default:
@@ -971,7 +977,7 @@ static int add_rsa_prienc_padding(int flen, const unsigned char *from,
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_add_X931(to_buf, tlen, from, flen);
-		if (!ret)
+		if (ret == -1)
 			fprintf(stderr, "RSA_X931_PADDING err\n");
 		break;
 	default:
@@ -992,12 +998,12 @@ static int check_rsa_pubdec_padding(unsigned char *to, int num,
 	switch (padding) {
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_check_PKCS1_type_1(to, num, buf, len, num);
-		if (!ret)
+		if (ret == CHECK_PADDING_FAIL)
 			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_check_X931(to, num, buf, len, num);
-		if (!ret)
+		if (ret == CHECK_PADDING_FAIL)
 			fprintf(stderr, "RSA_X931_PADDING err\n");
 		break;
 	default:
@@ -1076,15 +1082,24 @@ static int uadk_rsa_env_poll(void *ctx)
 	return -ETIMEDOUT;
 }
 
+static void uadk_rsa_mutex_infork(void)
+{
+	/* Release the replication lock of the child process */
+	pthread_mutex_unlock(&rsa_mutex);
+}
+
 static int uadk_prov_rsa_init(void)
 {
 	int ret;
 
+	pthread_atfork(NULL, NULL, uadk_rsa_mutex_infork);
 	pthread_mutex_lock(&rsa_mutex);
 	if (g_rsa_prov.pid != getpid()) {
-		ret = wd_rsa_init2("rsa", 0, 0);
-		if (unlikely(ret))
+		ret = wd_rsa_init2("rsa", SCHED_POLICY_RR, TASK_MIX);
+		if (unlikely(ret)) {
+			pthread_mutex_unlock(&rsa_mutex);
 			return ret;
+		}
 		g_rsa_prov.pid = getpid();
 		async_register_poll_fn(ASYNC_TASK_RSA, uadk_rsa_env_poll);
 	}
@@ -1601,12 +1616,12 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int ret;
 
 	ret = rsa_check_bit_useful(bits, 0);
-	if (!ret || ret == SOFT)
-		return UADK_DO_SOFT;
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
 	ret = rsa_keygen_param_alloc(&keygen_param, &bn_param, &key_pair, &bn_ctx);
 	if (ret == -ENOMEM)
-		return UADK_DO_SOFT;
+		return UADK_E_FAIL;
 
 	rsa_sess = rsa_get_eng_session(rsa, bits, is_crt);
 	if (!rsa_sess) {
@@ -1616,18 +1631,18 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_primes_gen(bits, e, bn_param->p, bn_param->q, cb);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	if (!BN_copy(bn_param->e, e)) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	ret = rsa_fill_keygen_data(rsa_sess, key_pair, keygen_param, bn_param);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
@@ -1639,7 +1654,7 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa, bn_param, &bn_ctx);
 	if (!ret)
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 
 free_kg_in_out:
 	rsa_free_keygen_data(rsa_sess);
@@ -1650,6 +1665,25 @@ free_keygen:
 	return ret;
 }
 
+static int crypt_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *buf, int num_bytes)
+{
+	BIGNUM *bn = NULL;
+	int ret;
+
+	bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
+			   rsa_sess->req.dst_bytes, NULL);
+	if (!bn)
+		return UADK_E_FAIL;
+
+	ret = BN_bn2binpad(bn, buf, num_bytes);
+	if (ret == BN_ERR)
+		ret = UADK_E_FAIL;
+
+	BN_free(bn);
+
+	return ret;
+}
+
 static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 				     unsigned char *to, RSA *rsa, int padding)
 {
@@ -1657,15 +1691,14 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 	struct uadk_rsa_sess *rsa_sess = NULL;
 	unsigned char *from_buf = NULL;
 	int num_bytes, is_crt, ret;
-	BIGNUM *enc_bn = NULL;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		return UADK_DO_SOFT;
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
 	ret = rsa_pkey_param_alloc(&pub_enc, NULL);
 	if (ret == -ENOMEM)
-		return UADK_DO_SOFT;
+		return UADK_E_FAIL;
 
 	is_crt = check_rsa_is_crt(rsa);
 
@@ -1676,20 +1709,20 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 	}
 
 	ret = rsa_create_pub_bn_ctx(rsa, pub_enc, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
-		ret = UADK_DO_SOFT;
+	if (ret <= 0) {
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	ret = add_rsa_pubenc_padding(flen, from, from_buf, num_bytes, padding);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
 	ret = rsa_fill_pubkey(pub_enc, rsa_sess, from_buf, to);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
@@ -1699,18 +1732,7 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	enc_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			   rsa_sess->req.dst_bytes, NULL);
-	if (!enc_bn) {
-		ret = UADK_DO_SOFT;
-		goto free_buf;
-	}
-
-	ret = BN_bn2binpad(enc_bn, to, num_bytes);
-	if (ret == -1)
-		ret = UADK_DO_SOFT;
-
-	BN_free(enc_bn);
+	ret = crypt_trans_bn(rsa_sess, to, num_bytes);
 
 free_buf:
 	rsa_free_pub_bn_ctx(&from_buf);
@@ -1727,16 +1749,15 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 	struct rsa_prikey_param *pri = NULL;
 	unsigned char *from_buf = NULL;
 	struct uadk_rsa_sess *rsa_sess;
-	int num_bytes, len, ret;
-	BIGNUM *dec_bn = NULL;
+	int num_bytes, ret;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		return UADK_DO_SOFT;
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		return UADK_DO_SOFT;
+		return UADK_E_FAIL;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1747,14 +1768,19 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 	}
 
 	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
-		ret = UADK_DO_SOFT;
+	if (ret <= 0) {
+		ret = UADK_E_FAIL;
 		goto free_sess;
+	}
+
+	if (flen != num_bytes) {
+		ret = UADK_E_FAIL;
+		goto free_buf;
 	}
 
 	ret = rsa_fill_prikey(rsa, rsa_sess, pri, from_buf, to);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
@@ -1766,25 +1792,14 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	dec_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			   rsa_sess->req.dst_bytes, NULL);
-	if (!dec_bn) {
-		ret = UADK_DO_SOFT;
-		goto free_buf;
-	}
-
-	len = BN_bn2binpad(dec_bn, from_buf, num_bytes);
-	if (!len) {
-		ret = UADK_DO_SOFT;
-		goto free_dec_bn;
-	}
-
-	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, len, padding);
+	ret = crypt_trans_bn(rsa_sess, from_buf, num_bytes);
 	if (!ret)
-		ret = UADK_DO_SOFT;
+		goto free_buf;
 
-free_dec_bn:
-	BN_free(dec_bn);
+	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, flen, padding);
+	if (!ret)
+		ret = UADK_E_FAIL;
+
 free_buf:
 	rsa_free_pri_bn_ctx(&from_buf);
 free_sess:
@@ -1794,24 +1809,55 @@ free_pkey:
 	return ret;
 }
 
+static int sign_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_buf,
+			 struct rsa_prikey_param *pri, int padding,
+			 unsigned char *to, int num_bytes)
+{
+	BIGNUM *sign_bn = NULL;
+	BIGNUM *to_bn = NULL;
+	BIGNUM *res = NULL;
+	int ret;
+
+	sign_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
+			   rsa_sess->req.dst_bytes, NULL);
+	if (!sign_bn)
+		return UADK_E_FAIL;
+
+	to_bn = BN_bin2bn(from_buf, num_bytes, NULL);
+	if (!to_bn) {
+		BN_free(sign_bn);
+
+		return UADK_E_FAIL;
+	}
+
+	ret = rsa_get_sign_res(padding, to_bn, pri->n, sign_bn, &res);
+	if (!ret) {
+		BN_free(to_bn);
+		BN_free(sign_bn);
+
+		return UADK_E_FAIL;
+	}
+
+	ret = BN_bn2binpad(res, to, num_bytes);
+
+	return ret;
+}
+
 static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 				   unsigned char *to, RSA *rsa, int padding)
 {
 	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_prikey_param *pri = NULL;
 	unsigned char *from_buf = NULL;
-	BIGNUM *sign_bn = NULL;
-	BIGNUM *to_bn = NULL;
-	BIGNUM *res = NULL;
 	int num_bytes, ret;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret || ret == SOFT)
-		return UADK_DO_SOFT;
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		return UADK_DO_SOFT;
+		return UADK_E_FAIL;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1823,19 +1869,19 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 
 	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes);
 	if (ret <= 0 || flen > num_bytes) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	ret = add_rsa_prienc_padding(flen, from, from_buf, num_bytes, padding);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
 	ret = rsa_fill_prikey(rsa, rsa_sess, pri, from_buf, to);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
@@ -1845,37 +1891,41 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	sign_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			   rsa_sess->req.dst_bytes, NULL);
-	if (!sign_bn) {
-		ret = UADK_DO_SOFT;
-		goto free_buf;
-	}
+	ret = sign_trans_bn(rsa_sess, from_buf, pri, padding, to, num_bytes);
 
-	to_bn = BN_bin2bn(from_buf, num_bytes, NULL);
-	if (!to_bn) {
-		ret = UADK_DO_SOFT;
-		goto free_sign_bn;
-	}
-
-	ret = rsa_get_sign_res(padding, to_bn, pri->n, sign_bn, &res);
-	if (!ret) {
-		ret = UADK_DO_SOFT;
-		goto free_to_bn;
-	}
-
-	ret = BN_bn2binpad(res, to, num_bytes);
-
-free_to_bn:
-	BN_free(to_bn);
-free_sign_bn:
-	BN_free(sign_bn);
 free_buf:
 	rsa_free_pri_bn_ctx(&from_buf);
 free_sess:
 	rsa_free_eng_session(rsa_sess);
 free_pkey:
 	rsa_pkey_param_free(NULL, &pri);
+	return ret;
+}
+
+static int verify_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_buf,
+			   int num_bytes, struct rsa_pubkey_param *pub,
+			   int padding, int *len)
+{
+	BIGNUM *verify_bn = NULL;
+	int ret;
+
+	verify_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
+			    rsa_sess->req.dst_bytes, NULL);
+	if (!verify_bn)
+		return UADK_E_FAIL;
+
+	ret = rsa_get_verify_res(padding, pub->n, verify_bn);
+	if (!ret) {
+		BN_free(verify_bn);
+		return UADK_E_FAIL;
+	}
+
+	*len = BN_bn2binpad(verify_bn, from_buf, num_bytes);
+	if (*len == 0) {
+		BN_free(verify_bn);
+		return UADK_E_FAIL;
+	}
+
 	return ret;
 }
 
@@ -1886,17 +1936,14 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 	struct rsa_pubkey_param *pub = NULL;
 	int num_bytes, is_crt, len, ret;
 	unsigned char *from_buf = NULL;
-	BIGNUM *verify_bn = NULL;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
-	if (!ret)
-		return UADK_E_FAIL;
-	else if (ret == SOFT)
-		return UADK_DO_SOFT;
+	if (ret != UADK_E_SUCCESS)
+		return ret;
 
 	ret = rsa_pkey_param_alloc(&pub, NULL);
 	if (ret == -ENOMEM)
-		return UADK_DO_SOFT;
+		return UADK_E_FAIL;
 
 	is_crt = check_rsa_is_crt(rsa);
 
@@ -1908,13 +1955,13 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 
 	ret = rsa_create_pub_bn_ctx(rsa, pub, &from_buf, &num_bytes);
 	if (ret <= 0 || flen > num_bytes) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	ret = rsa_fill_pubkey(pub, rsa_sess, from_buf, to);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_buf;
 	}
 
@@ -1925,31 +1972,12 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	verify_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			    rsa_sess->req.dst_bytes, NULL);
-	if (!verify_bn) {
-		ret = UADK_DO_SOFT;
+	ret = verify_trans_bn(rsa_sess, from_buf, num_bytes, pub, padding, &len);
+	if (!ret)
 		goto free_buf;
-	}
-
-	ret = rsa_get_verify_res(padding, pub->n, verify_bn);
-	if (!ret) {
-		ret = UADK_DO_SOFT;
-		goto free_verify_bn;
-	}
-
-	len = BN_bn2binpad(verify_bn, from_buf, num_bytes);
-	if (!len) {
-		ret = UADK_DO_SOFT;
-		goto free_verify_bn;
-	}
 
 	ret = check_rsa_pubdec_padding(to, num_bytes, from_buf, len, padding);
-	if (!ret)
-		ret = UADK_DO_SOFT;
 
-free_verify_bn:
-	BN_free(verify_bn);
 free_buf:
 	rsa_free_pub_bn_ctx(&from_buf);
 free_sess:
@@ -2014,13 +2042,13 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 		break;
 	default:
 		ERR_raise(ERR_LIB_RSA, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (uadk_prov_rsa_init())
 		priv->soft = 1;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_init(void *vprsactx, void *vrsa,
@@ -2029,7 +2057,7 @@ static int uadk_rsa_init(void *vprsactx, void *vrsa,
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
 	if (priv == NULL || vrsa == NULL)
-		return 0;
+		return UADK_E_FAIL;
 
 	priv->rsa = vrsa;
 	priv->operation = operation;
@@ -2047,26 +2075,26 @@ static int uadk_rsa_init(void *vprsactx, void *vrsa,
 		break;
 	default:
 		ERR_raise(ERR_LIB_RSA, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	if (uadk_prov_rsa_init())
 		priv->soft = 1;
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_verify_recover_init(void *vprsactx, void *vrsa,
 					const OSSL_PARAM params[])
 {
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_verify_recover(void *vprsactx, unsigned char *rout,
 				   size_t *routlen, size_t routsize,
 				   const unsigned char *sig, size_t siglen)
 {
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static int uadk_rsa_verify_init(void *vprsactx, void *vrsa,
@@ -2079,84 +2107,87 @@ static int uadk_rsa_verify(void *vprsactx, const unsigned char *sig,
 			   size_t siglen, const unsigned char *tbs,
 			   size_t tbslen)
 {
-	typedef int (*fun_ptr)(void *vprsactx, const unsigned char *sig,
-			       size_t siglen, const unsigned char *tbs,
-			       size_t tbslen);
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	size_t rslen = 0;
 
-	if (priv->soft)
+	if (priv->soft && SOFT_SWITCH)
 		goto soft;
+	else if (priv->soft && !SOFT_SWITCH)
+		return UADK_E_FAIL;
 
 	/* todo call public_verify */
 	if (priv->md != NULL) {
 		/* todo */
 	} else {
 		if (!setup_tbuf(priv))
-			return 0;
+			return UADK_E_FAIL;
 		rslen = uadk_prov_rsa_public_verify(siglen, sig, priv->tbuf,
 						 priv->rsa, priv->pad_mode);
-		if (rslen == UADK_DO_SOFT)
-			goto soft;
+		if (rslen == UADK_DO_SOFT || rslen == UADK_E_FAIL) {
+			if (rslen == UADK_DO_SOFT && SOFT_SWITCH)
+				goto soft;
+			else
+				return UADK_E_FAIL;
+		}
 	}
 
 	if ((rslen != tbslen) || memcmp(tbs, priv->tbuf, rslen))
-		return 0;
+		return UADK_E_FAIL;
 
-	return 1;
+	return UADK_E_SUCCESS;
 
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	fun_ptr fun = get_default_rsa_signature().verify;
+	if (!get_default_rsa_signature().verify)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, sig, siglen, tbs, tbslen);
+	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
 }
 
 static int uadk_rsa_sign(void *vprsactx, unsigned char *sig,
 			 size_t *siglen, size_t sigsize,
 			 const unsigned char *tbs, size_t tbslen)
 {
-	typedef int (*fun_ptr)(void *vprsactx, unsigned char *sig,
-			       size_t *siglen, size_t sigsize,
-			       const unsigned char *tbs, size_t tbslen);
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	size_t rsasize = uadk_rsa_size(priv->rsa);
 	int ret;
 
-	if (priv->soft)
+	if (priv->soft && SOFT_SWITCH)
 		goto soft;
+	else if (priv->soft && !SOFT_SWITCH)
+		return UADK_E_FAIL;
 
 	if (sig == NULL) {
 		*siglen = rsasize;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	if (sigsize < rsasize) {
 		ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_SIGNATURE_SIZE,
 			       "is %zu, should be at least %zu", sigsize, rsasize);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_prov_rsa_private_sign(tbslen, tbs, sig, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT)
-		goto soft;
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
+		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
+			goto soft;
+		else
+			return UADK_E_FAIL;
+	}
 
 	if (ret < 0)
 		return ret;
 
 	*siglen = ret;
 
-	return 1;
+	return UADK_E_SUCCESS;
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	fun_ptr fun = get_default_rsa_signature().sign;
+	if (!get_default_rsa_signature().sign)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, sig, siglen, sigsize, tbs, tbslen);
+	return get_default_rsa_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
 }
 
 static int uadk_rsa_sign_init(void *vprsactx, void *vrsa, const OSSL_PARAM params[])
@@ -2227,13 +2258,13 @@ static int uadk_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
 	if (priv == NULL)
-		return 0;
+		return UADK_E_FAIL;
 	if (params == NULL)
-		return 1;
+		return UADK_E_SUCCESS;
 
 	/* todo */
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
 static const OSSL_PARAM settable_ctx_params[] = {
@@ -2265,19 +2296,13 @@ static const OSSL_PARAM *uadk_rsa_settable_ctx_params(void *vprsactx,
 	return settable_ctx_params;
 }
 
-static int
-uadk_rsa_digest_sign_init(void *vprsactx, const char *mdname,
+static int uadk_rsa_digest_sign_init(void *vprsactx, const char *mdname,
 			  void *vrsa, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *vprsactx, const char *mdname,
-			       void *vrsa, const OSSL_PARAM params[]);
+	if (!get_default_rsa_signature().digest_sign_init)
+		return UADK_E_FAIL;
 
-	fun_ptr fun = get_default_rsa_signature().digest_sign_init;
-
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, mdname, vrsa, params);
+	return get_default_rsa_signature().digest_sign_init(vprsactx, mdname, vrsa, params);
 }
 
 static int uadk_rsa_digest_signverify_update(void *vprsactx,
@@ -2287,7 +2312,7 @@ static int uadk_rsa_digest_signverify_update(void *vprsactx,
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
 	if (priv == NULL || priv->mdctx == NULL)
-		return 0;
+		return UADK_E_FAIL;
 
 	return EVP_DigestUpdate(priv->mdctx, data, datalen);
 }
@@ -2300,11 +2325,11 @@ static int uadk_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
 	unsigned int dlen = 0;
 
 	if (priv == NULL)
-		return 0;
+		return UADK_E_FAIL;
 	priv->flag_allow_md = 1;
 
 	if (priv->mdctx == NULL)
-		return 0;
+		return UADK_E_FAIL;
 	/*
 	 * If sig is NULL then we're just finding out the sig size. Other fields
 	 * are ignored. Defer to rsa_sign.
@@ -2315,7 +2340,7 @@ static int uadk_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
 		 * should not exceed the internal buffer size of EVP_MAX_MD_SIZE.
 		 */
 		if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
-			return 0;
+			return UADK_E_FAIL;
 	}
 
 	return uadk_rsa_sign(vprsactx, sig, siglen, sigsize,
@@ -2325,16 +2350,11 @@ static int uadk_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
 static int uadk_rsa_digest_verify_init(void *vprsactx, const char *mdname,
 				       void *vrsa, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *vprsactx, const char *mdname,
-			       void *vrsa, const OSSL_PARAM params[]);
-	fun_ptr fun = get_default_rsa_signature().digest_verify_init;
+	if (!get_default_rsa_signature().digest_verify_init)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, mdname, vrsa, params);
+	return get_default_rsa_signature().digest_verify_init(vprsactx, mdname, vrsa, params);
 }
-
 
 static int uadk_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
 					size_t siglen)
@@ -2344,97 +2364,77 @@ static int uadk_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig
 	unsigned int dlen = 0;
 
 	if (priv == NULL)
-		return 0;
+		return UADK_E_FAIL;
 	priv->flag_allow_md = 1;
 	if (priv->mdctx == NULL)
-		return 0;
+		return UADK_E_FAIL;
 
 	/*
 	 * The digests used here are all known (see rsa_get_md_nid()), so they
 	 * should not exceed the internal buffer size of EVP_MAX_MD_SIZE.
 	 */
 	if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
-		return 0;
+		return UADK_E_FAIL;
 
 	return uadk_rsa_verify(vprsactx, sig, siglen,
 			digest, (size_t)dlen);
 }
 
-
 static void *uadk_rsa_dupctx(void *vprsactx)
 {
-	typedef void* (*fun_ptr)(void *vprsactx);
-	fun_ptr fun = get_default_rsa_signature().dupctx;
-
-	if (!fun)
+	if (!get_default_rsa_signature().dupctx)
 		return NULL;
 
-	return fun(vprsactx);
+	return get_default_rsa_signature().dupctx(vprsactx);
 }
 
 static int uadk_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
 {
-	typedef int (*fun_ptr)(void *vprsactx, OSSL_PARAM *params);
-	fun_ptr fun = get_default_rsa_signature().get_ctx_params;
+	if (!get_default_rsa_signature().get_ctx_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, params);
+	return get_default_rsa_signature().get_ctx_params(vprsactx, params);
 }
 
 static const OSSL_PARAM *uadk_rsa_gettable_ctx_md_params(void *vprsactx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *vprsactx);
-	fun_ptr fun = get_default_rsa_signature().gettable_ctx_md_params;
-
-	if (!fun)
+	if (!get_default_rsa_signature().gettable_ctx_md_params)
 		return NULL;
-	return fun(vprsactx);
-}
 
+	return get_default_rsa_signature().gettable_ctx_md_params(vprsactx);
+}
 
 static int uadk_rsa_set_ctx_md_params(void *vprsactx, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *vprsactx, const OSSL_PARAM params[]);
-	fun_ptr fun = get_default_rsa_signature().set_ctx_md_params;
+	if (!get_default_rsa_signature().set_ctx_md_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, params);
+	return get_default_rsa_signature().set_ctx_md_params(vprsactx, params);
 }
 
 static const OSSL_PARAM *uadk_rsa_settable_ctx_md_params(void *vprsactx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *vprsactx);
-	fun_ptr fun = get_default_rsa_signature().settable_ctx_md_params;
-
-	if (!fun)
+	if (!get_default_rsa_signature().settable_ctx_md_params)
 		return NULL;
-	return fun(vprsactx);
+
+	return get_default_rsa_signature().settable_ctx_md_params(vprsactx);
 }
 
 static const OSSL_PARAM *uadk_rsa_gettable_ctx_params(ossl_unused void *vprsactx,
 						      ossl_unused void *provctx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(ossl_unused void *vprsactx,
-					      ossl_unused void *provctx);
-	fun_ptr fun = get_default_rsa_signature().gettable_ctx_params;
-
-	if (!fun)
+	if (!get_default_rsa_signature().gettable_ctx_params)
 		return NULL;
 
-	return fun(vprsactx, provctx);
+	return get_default_rsa_signature().gettable_ctx_params(vprsactx, provctx);
 }
 
 static int uadk_rsa_get_ctx_md_params(void *vprsactx, OSSL_PARAM *params)
 {
-	typedef int (*fun_ptr)(void *vprsactx, OSSL_PARAM *params);
-	fun_ptr fun = get_default_rsa_signature().get_ctx_md_params;
+	if (!get_default_rsa_signature().get_ctx_md_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, params);
+	return get_default_rsa_signature().get_ctx_md_params(vprsactx, params);
 }
 
 static int uadk_rsa_asym_encrypt_init(void *vprsactx, void *vrsa,
@@ -2453,130 +2453,122 @@ static int uadk_rsa_asym_encrypt(void *vprsactx, unsigned char *out,
 				 size_t *outlen, size_t outsize,
 				 const unsigned char *in, size_t inlen)
 {
-	typedef int (*fun_ptr)(void *vprsactx, unsigned char *out, size_t *outlen,
-			    size_t outsize, const unsigned char *in, size_t inlen);
 	PROV_RSA_ASYM_CTX *priv = (PROV_RSA_ASYM_CTX *)vprsactx;
+	size_t len;
 	int ret;
 
-	if (priv->soft)
+	if (priv->soft && SOFT_SWITCH)
 		goto soft;
+	else if (priv->soft && !SOFT_SWITCH)
+		return UADK_E_FAIL;
 
 	if (out == NULL) {
-		size_t len = uadk_rsa_size(priv->rsa);
-
+		len = uadk_rsa_size(priv->rsa);
 		if (len == 0) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY);
-			return 0;
+			return UADK_E_FAIL;
 		}
 		*outlen = len;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	ret = uadk_prov_rsa_public_encrypt(inlen, in, out, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT)
-		goto soft;
-	if (ret < 0)
-		return ret;
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
+		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
+			goto soft;
+		else
+			return UADK_E_FAIL;
+	}
 
 	*outlen = ret;
 
-	return 1;
+	return UADK_E_SUCCESS;
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	fun_ptr fun = get_default_asym_cipher().encrypt;
+	if (!get_default_asym_cipher().encrypt)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, out, outlen, outsize, in, inlen);
+	return get_default_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
 static int uadk_rsa_asym_decrypt(void *vprsactx, unsigned char *out,
 				 size_t *outlen, size_t outsize,
 				 const unsigned char *in, size_t inlen)
 {
-	typedef int (*fun_ptr)(void *vprsactx, unsigned char *out, size_t *outlen,
-			       size_t outsize, const unsigned char *in, size_t inlen);
 	PROV_RSA_ASYM_CTX *priv = (PROV_RSA_ASYM_CTX *)vprsactx;
 	size_t len = uadk_rsa_size(priv->rsa);
 	int ret;
 
-	if (priv->soft)
+	if (priv->soft && SOFT_SWITCH)
 		goto soft;
+	else if (priv->soft && !SOFT_SWITCH)
+		return UADK_E_FAIL;
 
 	if (out == NULL) {
 		if (len == 0) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY);
-			return 0;
+			return UADK_E_FAIL;
 		}
 		*outlen = len;
-		return 1;
+		return UADK_E_SUCCESS;
 	}
 
 	if (outsize < len) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_BAD_LENGTH);
-		return 0;
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_prov_rsa_private_decrypt(inlen, in, out, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT)
-		goto soft;
-	if (ret < 0)
-		return ret;
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
+		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
+			goto soft;
+		else
+			return UADK_E_FAIL;
+	}
 
 	*outlen = ret;
 
-	return 1;
+	return UADK_E_SUCCESS;
 soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	fun_ptr fun = get_default_asym_cipher().decrypt;
+	if (!get_default_asym_cipher().decrypt)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(vprsactx, out, outlen, outsize, in, inlen);
+	return get_default_asym_cipher().decrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
 static int uadk_rsa_asym_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
 {
-	typedef int (*fun_ptr)(void *vprsactx, OSSL_PARAM *params);
-	fun_ptr fun = get_default_asym_cipher().get_ctx_params;
+	if (!get_default_asym_cipher().get_ctx_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, params);
+	return get_default_asym_cipher().get_ctx_params(vprsactx, params);
 }
 
 static const OSSL_PARAM *uadk_rsa_asym_gettable_ctx_params(void *vprsactx,
 							   void *provctx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *vprsactx, void *provctx);
-	fun_ptr fun = get_default_asym_cipher().gettable_ctx_params;
+	if (!get_default_asym_cipher().gettable_ctx_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, provctx);
+	return get_default_asym_cipher().gettable_ctx_params(vprsactx, provctx);
 }
 
 static int uadk_rsa_asym_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *vprsactx, const OSSL_PARAM *params);
-	fun_ptr fun = get_default_asym_cipher().set_ctx_params;
+	if (!get_default_asym_cipher().set_ctx_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, params);
+	return get_default_asym_cipher().set_ctx_params(vprsactx, params);
 }
 
 static const OSSL_PARAM *uadk_rsa_asym_settable_ctx_params(void *vprsactx,
 							   void *provctx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *vprsactx, void *provctx);
-	fun_ptr fun = get_default_asym_cipher().settable_ctx_params;
+	if (!get_default_asym_cipher().settable_ctx_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(vprsactx, provctx);
+	return get_default_asym_cipher().settable_ctx_params(vprsactx, provctx);
 }
 
 static UADK_RSA_KEYMGMT get_default_keymgmt(void)
@@ -2586,13 +2578,14 @@ static UADK_RSA_KEYMGMT get_default_keymgmt(void)
 
 	if (!initialized) {
 		UADK_RSA_KEYMGMT *keymgmt =
-			(UADK_RSA_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "RSA", "provider=default");
+			(UADK_RSA_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "RSA",
+			 "provider=default");
 		if (keymgmt) {
 			s_keymgmt = *keymgmt;
 			EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
 			initialized = 1;
 		} else {
-			fprintf(stderr, "EVP_KEYMGMT_fetch from default provider failed");
+			fprintf(stderr, "EVP_KEYMGMT_fetch from default provider failed\n");
 		}
 	}
 	return s_keymgmt;
@@ -2600,85 +2593,68 @@ static UADK_RSA_KEYMGMT get_default_keymgmt(void)
 
 static void *uadk_keymgmt_rsa_newdata(void *provctx)
 {
-	typedef void* (*fun_ptr)(void *);
-	fun_ptr fun = get_default_keymgmt().new;
-
-	if (!fun)
+	if (!get_default_keymgmt().new_fun)
 		return NULL;
-	return fun(provctx);
+
+	return get_default_keymgmt().new_fun(provctx);
 }
 
 static void uadk_keymgmt_rsa_freedata(void *keydata)
 {
-	typedef void (*fun_ptr)(void *);
-	fun_ptr fun = get_default_keymgmt().free;
-
-	if (!fun)
+	if (!get_default_keymgmt().free)
 		return;
-	fun(keydata);
+
+	get_default_keymgmt().free(keydata);
 }
 
 static int uadk_keymgmt_rsa_has(const void *keydata, int selection)
 {
-	typedef int (*fun_ptr)(const void *, int);
-	fun_ptr fun = get_default_keymgmt().has;
+	if (!get_default_keymgmt().has)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-
-	return fun(keydata, selection);
+	return get_default_keymgmt().has(keydata, selection);
 }
 
 static int uadk_keymgmt_rsa_import(void *keydata, int selection, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *, int, const OSSL_PARAM*);
-	fun_ptr fun = get_default_keymgmt().import;
+	if (!get_default_keymgmt().import)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(keydata, selection, params);
+	return get_default_keymgmt().import(keydata, selection, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_rsa_import_types(int selection)
 {
-	typedef const OSSL_PARAM* (*fun_ptr)(int);
-	fun_ptr fun = get_default_keymgmt().import_types;
-
-	if (!fun)
+	if (!get_default_keymgmt().import_types)
 		return NULL;
-	return fun(selection);
+
+	return get_default_keymgmt().import_types(selection);
 }
 
 static void *uadk_keymgmt_rsa_gen_init(void *provctx, int selection,
 				       const OSSL_PARAM params[])
 {
-	typedef void * (*fun_ptr)(void *, int, const OSSL_PARAM *);
-	fun_ptr fun = get_default_keymgmt().gen_init;
-
-	if (!fun)
+	if (!get_default_keymgmt().gen_init)
 		return NULL;
-	return fun(provctx, selection, params);
+
+	return get_default_keymgmt().gen_init(provctx, selection, params);
 }
 
 static int uadk_keymgmt_rsa_gen_set_params(void *genctx, const OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *, const OSSL_PARAM *);
-	fun_ptr fun = get_default_keymgmt().gen_set_params;
+	if (!get_default_keymgmt().gen_set_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(genctx, params);
+	return get_default_keymgmt().gen_set_params(genctx, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_rsa_gen_settable_params(ossl_unused void *genctx,
 							      ossl_unused void *provctx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *, void *);
-	fun_ptr fun = get_default_keymgmt().gen_settable_params;
-
-	if (!fun)
+	if (!get_default_keymgmt().gen_settable_params)
 		return NULL;
-	return fun(genctx, provctx);
+
+	return get_default_keymgmt().gen_settable_params(genctx, provctx);
 }
 
 static int rsa_gencb(int p, int n, BN_GENCB *cb)
@@ -2715,7 +2691,6 @@ static RSA *ossl_rsa_new_with_ctx(OSSL_LIB_CTX *libctx)
 
 static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
-	typedef void * (*fun_ptr)(void *, OSSL_CALLBACK *, void *);
 	struct rsa_gen_ctx *gctx = genctx;
 	RSA *rsa = NULL;
 	BN_GENCB *gencb = NULL;
@@ -2725,8 +2700,10 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 		return NULL;
 
 	ret = uadk_prov_rsa_init();
-	if (ret)
+	if (ret && SOFT_SWITCH)
 		goto exe_soft;
+	else if (ret && !SOFT_SWITCH)
+		return NULL;
 
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
 	if (rsa == NULL)
@@ -2739,11 +2716,16 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 		BN_GENCB_set(gencb, rsa_gencb, genctx);
 
 	ret = uadk_prov_rsa_keygen(rsa, (int)gctx->nbits, gctx->pub_exp, gencb);
-	if (ret == UADK_DO_SOFT) {
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
 		BN_GENCB_free(gencb);
 		uadk_keymgmt_rsa_freedata(rsa);
-		goto exe_soft;
+
+		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
+			goto exe_soft;
+		else
+			return NULL;
 	}
+
 	uadk_rsa_clear_flags(rsa, RSA_FLAG_TYPE_MASK);
 	uadk_rsa_set_flags(rsa, gctx->rsa_type);
 	BN_GENCB_free(gencb);
@@ -2752,102 +2734,82 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 
 exe_soft:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	fun_ptr fun = get_default_keymgmt().gen;
-
-	if (!fun)
+	if (!get_default_keymgmt().gen)
 		return NULL;
-	return fun(genctx, osslcb, cbarg);
+	return get_default_keymgmt().gen(genctx, osslcb, cbarg);
 }
 
 static void uadk_keymgmt_rsa_gen_cleanup(void *genctx)
 {
-	typedef void (*fun_ptr)(void *);
-	fun_ptr fun = get_default_keymgmt().gen_cleanup;
-
-	if (!fun)
+	if (!get_default_keymgmt().gen_cleanup)
 		return;
-	fun(genctx);
+
+	get_default_keymgmt().gen_cleanup(genctx);
 }
 
 static void *uadk_keymgmt_rsa_load(const void *reference, size_t reference_sz)
 {
-	typedef void * (*fun_ptr)(const void *, size_t);
-	fun_ptr fun = get_default_keymgmt().load;
-
-	if (!fun)
+	if (!get_default_keymgmt().load)
 		return NULL;
-	return fun(reference, reference_sz);
+
+	return get_default_keymgmt().load(reference, reference_sz);
 }
 
 static int uadk_keymgmt_rsa_get_params(void *key, OSSL_PARAM params[])
 {
-	typedef int (*fun_ptr)(void *, OSSL_PARAM *);
-	fun_ptr fun = get_default_keymgmt().get_params;
+	if (!get_default_keymgmt().get_params)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(key, params);
+	return get_default_keymgmt().get_params(key, params);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_rsa_gettable_params(void *provctx)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(void *);
-	fun_ptr fun = get_default_keymgmt().gettable_params;
-
-	if (!fun)
+	if (!get_default_keymgmt().gettable_params)
 		return NULL;
-	return fun(provctx);
+
+	return get_default_keymgmt().gettable_params(provctx);
 }
 
 static int uadk_keymgmt_rsa_match(const void *keydata1, const void *keydata2, int selection)
 {
-	typedef int (*fun_ptr)(const void *, const void *, int);
-	fun_ptr fun = get_default_keymgmt().match;
+	if (!get_default_keymgmt().match)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(keydata1, keydata2, selection);
+	return get_default_keymgmt().match(keydata1, keydata2, selection);
 }
 
 static int uadk_keymgmt_rsa_validate(const void *keydata, int selection, int checktype)
 {
-	typedef int (*fun_ptr)(const void *, int, int);
-	fun_ptr fun = get_default_keymgmt().validate;
+	if (!get_default_keymgmt().validate)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(keydata, selection, checktype);
+	return get_default_keymgmt().validate(keydata, selection, checktype);
 }
 
 static int uadk_keymgmt_rsa_export(void *keydata, int selection,
 				   OSSL_CALLBACK *param_callback, void *cbarg)
 {
-	typedef int (*fun_ptr)(void *, int, OSSL_CALLBACK *, void *);
-	fun_ptr fun = get_default_keymgmt().export;
+	if (!get_default_keymgmt().export_fun)
+		return UADK_E_FAIL;
 
-	if (!fun)
-		return 0;
-	return fun(keydata, selection, param_callback, cbarg);
+	return get_default_keymgmt().export_fun(keydata, selection, param_callback, cbarg);
 }
 
 static const OSSL_PARAM *uadk_keymgmt_rsa_export_types(int selection)
 {
-	typedef const OSSL_PARAM * (*fun_ptr)(int);
-	fun_ptr fun = get_default_keymgmt().export_types;
-
-	if (!fun)
+	if (!get_default_keymgmt().export_types)
 		return NULL;
-	return fun(selection);
+
+	return get_default_keymgmt().export_types(selection);
 }
 
 static void *uadk_keymgmt_rsa_dup(const void *keydata_from, int selection)
 {
-	typedef void * (*fun_ptr)(const void *, int);
-	fun_ptr fun = get_default_keymgmt().dup;
-
-	if (!fun)
+	if (!get_default_keymgmt().dup)
 		return NULL;
-	return fun(keydata_from, selection);
+
+	return get_default_keymgmt().dup(keydata_from, selection);
 }
 
 const OSSL_DISPATCH uadk_rsa_keymgmt_functions[] = {
