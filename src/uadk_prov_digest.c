@@ -413,6 +413,11 @@ do_soft_digest:
 
 static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
+	if (!priv->data) {
+		fprintf(stderr, "failed to do digest update, data in CTX is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
 
@@ -505,6 +510,11 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	struct async_op op;
 	int ret;
 
+	if (!priv->data) {
+		fprintf(stderr, "failed to do digest final, data in CTX is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
 	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -555,6 +565,11 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 {
 	struct async_op op;
 	int ret;
+
+	if (!priv->data) {
+		fprintf(stderr, "failed to do single digest, data in CTX is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
 
 	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
@@ -731,6 +746,12 @@ static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 
 	if (!dctx || !in || !out) {
 		fprintf(stderr, "CTX or input or output data is NULL.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	if (inl > BUF_LEN) {
+		fprintf(stderr, "data len(%zu) can not be processed in single digest.\n",
+			inl);
 		return UADK_DIGEST_FAIL;
 	}
 
