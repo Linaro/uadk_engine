@@ -737,6 +737,9 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *out, size_t *outl,
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
 
+	if (!vctx || !in || !out || !outl)
+		return UADK_E_FAIL;
+
 	if (inl == 0) {
 		*outl = 0;
 		return 1;
@@ -762,6 +765,9 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 	size_t blksz = priv->blksize;
 	int sw_final_len = 0;
 	int ret;
+
+	if (!vctx || !out || !outl)
+		return UADK_E_FAIL;
 
 	if (priv->sw_cipher &&
 	    priv->switch_flag == UADK_DO_SOFT) {
@@ -845,6 +851,9 @@ static int uadk_prov_cipher_block_update(void *vctx, unsigned char *out,
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
 
+	if (!vctx || !in || !out || !outl)
+		return UADK_E_FAIL;
+
 	if (inl == 0) {
 		*outl = 0;
 		return 1;
@@ -868,6 +877,9 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *out,
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
+
+	if (!vctx || !in || !out || !outl)
+		return UADK_E_FAIL;
 
 	if (inl == 0) {
 		*outl = 0;
@@ -916,6 +928,9 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int sw_final_len = 0;
 
+	if (!vctx || !out || !outl)
+		return UADK_E_FAIL;
+
 	if (priv->sw_cipher &&
 	    priv->switch_flag == UADK_DO_SOFT) {
 		if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
@@ -937,6 +952,9 @@ static int uadk_prov_cipher_einit(void *vctx, const unsigned char *key, size_t k
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
 
+	if (!vctx)
+		return UADK_E_FAIL;
+
 	priv->req.op_type = WD_CIPHER_ENCRYPTION;
 	priv->enc = 1;
 
@@ -953,6 +971,9 @@ static int uadk_prov_cipher_dinit(void *vctx, const unsigned char *key, size_t k
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	int ret;
+
+	if (!vctx)
+		return UADK_E_FAIL;
 
 	priv->req.op_type = WD_CIPHER_DECRYPTION;
 	priv->enc = 0;
@@ -981,8 +1002,8 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 	const OSSL_PARAM *p;
 	int ret = 1;
 
-	if (params == NULL)
-		return 1;
+	if (!vctx)
+		return UADK_E_FAIL;
 
 	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_PADDING);
 	if (p != NULL) {
@@ -1017,6 +1038,9 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
 	OSSL_PARAM *p;
+
+	if (!vctx || !params)
+		return UADK_E_FAIL;
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, priv->keylen)) {
