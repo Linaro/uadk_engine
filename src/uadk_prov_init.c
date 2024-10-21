@@ -176,6 +176,7 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_destroy_cipher();
 	uadk_prov_destroy_rsa();
 	uadk_prov_sm2_uninit();
+	uadk_prov_dh_uninit();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
 	async_poll_task_free();
