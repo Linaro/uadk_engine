@@ -508,5 +508,10 @@ void uadk_prov_signature_alg(void);
 void uadk_prov_asym_cipher_alg(void);
 int uadk_prov_asym_cipher_get_support_state(int alg_tag);
 int uadk_prov_ecc_init(const char *alg_name);
+bool uadk_prov_support_algorithm(const char *alg);
+int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
+				     BIGNUM *x, BIGNUM *y, BN_CTX *ctx);
+void uadk_prov_keyexch_alg(void);
+int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx);
 
 #endif
