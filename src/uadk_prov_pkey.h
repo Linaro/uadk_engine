@@ -439,7 +439,7 @@ const OSSL_DISPATCH uadk_##nm##_keyexch_functions[] = {	\
 	{ 0, NULL }	\
 }	\
 
-handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg);
+handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg);
 int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr);
 int uadk_prov_keymgmt_get_support_state(int alg_tag);
 int uadk_prov_ecc_get_numa_id(void);
