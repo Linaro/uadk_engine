@@ -67,7 +67,8 @@
 
 enum {
 	KEYMGMT_SM2 = 0x0,
-	KEYMGMT_EC = 0x1,
+	KEYMGMT_X448 = 0x1,
+	KEYMGMT_ECDH = 0x2,
 	KEYMGMT_MAX = 0x6
 };
 
@@ -80,6 +81,11 @@ enum {
 	COFACTOR_MODE_USE_KEY = -1,
 	COFACTOR_MODE_DISABLED = 0,
 	COFACTOR_MODE_ENABLED = 1,
+};
+
+enum {
+	KEYEXCH_X448 = 0x0,
+	KEYEXCH_ECDH = 0x1,
 };
 
 struct curve_param {
@@ -456,7 +462,7 @@ typedef struct {
 	static OSSL_FUNC_keyexch_gettable_ctx_params_fn uadk_keyexch_##nm##_gettable_ctx_params; \
 static UADK_PKEY_KEYEXCH get_default_##nm##_keyexch(void)		\
 {		\
-	UADK_PKEY_KEYEXCH s_keyexch;			\
+	static UADK_PKEY_KEYEXCH s_keyexch;			\
 	static int initilazed;				\
 							\
 	if (!initilazed) {				\
@@ -508,10 +514,10 @@ void uadk_prov_signature_alg(void);
 void uadk_prov_asym_cipher_alg(void);
 int uadk_prov_asym_cipher_get_support_state(int alg_tag);
 int uadk_prov_ecc_init(const char *alg_name);
-bool uadk_prov_support_algorithm(const char *alg);
 int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 				     BIGNUM *x, BIGNUM *y, BN_CTX *ctx);
 void uadk_prov_keyexch_alg(void);
 int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx);
+int uadk_prov_keyexch_get_support_state(int alg_tag);
 
 #endif

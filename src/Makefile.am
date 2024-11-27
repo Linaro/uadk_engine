@@ -66,7 +66,8 @@ uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
 			 uadk_prov_bio.c uadk_prov_der_writer.c uadk_prov_packet.c \
 			 uadk_prov_pkey.c uadk_prov_sm2.c \
 			 uadk_prov_ffc.c uadk_prov_aead.c \
-			 uadk_prov_ec_kmgmt.c uadk_prov_ecdh_exch.c
+			 uadk_prov_ec_kmgmt.c uadk_prov_ecdh_exch.c \
+			 uadk_prov_ecx.c
 
 uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread
