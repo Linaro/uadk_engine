@@ -628,7 +628,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	return UADK_P_SUCCESS;
 }
 
-static bool uadk_prov_support_algorithm(const char *alg)
+bool uadk_prov_support_algorithm(const char *alg)
 {
 	struct uacce_dev_list *list = wd_get_accel_list(alg);
 
@@ -642,7 +642,7 @@ static bool uadk_prov_support_algorithm(const char *alg)
 
 void uadk_prov_keymgmt_alg(void)
 {
-	static const char * const keymgmt_alg[] = {"sm2"};
+	static const char * const keymgmt_alg[] = {"sm2", "ecdh"};
 	__u32 i, size;
 	bool sp;
 
