@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([uadk_engine], [1.4])
+AC_INIT([uadk_engine], [1.5])
 AM_INIT_AUTOMAKE([1.10 no-define])
 
 AC_CONFIG_MACRO_DIR([m4])
