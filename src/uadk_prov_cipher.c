@@ -124,7 +124,7 @@ struct cipher_priv_ctx {
 	unsigned int pad : 1;    /* Whether padding should be used or not */
 	unsigned int cts_mode;   /* Use to set the type for CTS modes */
 	unsigned int key_set : 1;    /* Whether key is copied to priv key buffers */
-	unsigned int iv_set : 1;    /* Whether key is copied to priv iv buffers */
+	unsigned int iv_set : 1;    /* Whether iv is copied to priv iv buffers */
 	size_t blksize;
 	size_t keylen;
 	size_t ivlen;
