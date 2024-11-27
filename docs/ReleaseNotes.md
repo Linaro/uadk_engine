@@ -1,4 +1,29 @@
 
+# UADK engine Release v1.5 Dec 2024
+
+## New Features
+- Support SM2 asymmetric algorithm with openssl 3.0 provider mechanism.
+- Support processing single diesgt block function with openssl 3.0 provider mechanism.
+- Support AES CTS alg with openssl 3.0 provider mechanism.
+
+## Fixes
+- Refactor uadk_provider DH implementation with unified data structure and FFC \
+  extended functions.
+- Add different AES algorithm key bit width specifications in the uadk_provider.
+- For digest algorithms, for both uadk_engine and uadk_provider, increasing the \
+  amount of data delivered to the hardware at a time to reduce the number of interactions.
+- Fix bio fseek() suspending problem in uadk_provider.
+- Fix an async problem: wake up async_poll_process_func before free async_poll_task_free.
+- Fix cipher issue when input len is 0 in decrypto update.
+- Fix the key and IV verification methods for cipher init.
+- Remove update iv for cipher, as the iv has been updated by the UADK.
+
+## Working combination
+
+- UADK v2.8
+- OpenSSL 1.1.1f & OpenSSL 3.0+
+
+
 # UADK engine Release v1.4 June 2024
 
 ## New Features
