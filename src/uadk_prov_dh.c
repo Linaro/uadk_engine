@@ -1629,7 +1629,7 @@ static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char 
 	else
 		ret = uadk_dh_compute_key(secret, pubkey, pdhctx->dh);
 	if (ret <= 0) {
-		fprintf(stderr, "failed to do dh compute, pad(%d)\n", pad);
+		fprintf(stderr, "failed to do dh compute, pad(%u)\n", pad);
 		return ret;
 	}
 
@@ -1639,9 +1639,9 @@ static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char 
 }
 
 /* Key derivation function from X9.63/SECG */
-int ossl_dh_kdf_X9_42_asn1(unsigned char *out, PROV_DH_KEYEXCH_CTX *pdhctx,
-			   const unsigned char *z, size_t z_len,
-			   const char *propq)
+static int ossl_dh_kdf_X9_42_asn1(unsigned char *out, PROV_DH_KEYEXCH_CTX *pdhctx,
+				  const unsigned char *z, size_t z_len,
+				  const char *propq)
 {
 	OSSL_LIB_CTX *libctx = pdhctx->libctx;
 	const char *cek_alg = pdhctx->kdf_cekalg;
@@ -1749,6 +1749,7 @@ static int uadk_keyexch_dh_derive(void *dhctx, unsigned char *secret,
 		break;
 	case PROV_DH_KDF_X9_42_ASN1:
 		ret = uadk_prov_dh_X9_42_kdf_derive(pdhctx, secret, psecretlen, outlen);
+		break;
 	default:
 		fprintf(stderr, "invalid: unsupport kdf type\n");
 		break;

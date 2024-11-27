@@ -139,7 +139,7 @@ int ossl_DER_w_uint32(WPACKET *pkt, int tag, uint32_t v)
 	return int_der_w_integer(pkt, tag, int_put_bytes_uint32, &v);
 }
 
-BN_ULONG *bn_get_words(const BIGNUM *a)
+static BN_ULONG *bn_get_words(const BIGNUM *a)
 {
 	return a->d;
 }

@@ -88,12 +88,6 @@ typedef struct {
 	handle_t sess;
 } PROV_ECX_KEYEXCH_CTX;
 
-static const OSSL_PARAM ecx_key_types[] = {
-	OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_PUB_KEY, NULL, 0),
-	OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0),
-	OSSL_PARAM_END
-};
-
 struct x448_res {
 	int pid;
 } g_x448_prov;
@@ -258,23 +252,6 @@ static int ossl_param_build_set_octet_string(OSSL_PARAM_BLD *bld, OSSL_PARAM *p,
 	return UADK_P_SUCCESS;
 }
 
-static int ossl_param_build_set_bn_pad(OSSL_PARAM_BLD *bld, OSSL_PARAM *p,
-				       const char *key, const BIGNUM *bn, size_t sz)
-{
-	if (bld != NULL)
-		return OSSL_PARAM_BLD_push_BN_pad(bld, key, bn, sz);
-
-	p = OSSL_PARAM_locate(p, key);
-	if (p != NULL) {
-		if (sz > p->data_size)
-			return UADK_P_FAIL;
-		p->data_size = sz;
-		return OSSL_PARAM_set_BN(p, bn);
-	}
-
-	return UADK_P_SUCCESS;
-}
-
 static int uadk_prov_key_to_params(ECX_KEY *key, OSSL_PARAM_BLD *tmpl,
 				   OSSL_PARAM params[], int include_private)
 {
@@ -430,9 +407,6 @@ static void uadk_keymgmt_x448_gen_cleanup(void *genctx)
 static void *uadk_keymgmt_x448_gen_init(void *provctx, int selection,
 					const OSSL_PARAM params[])
 {
-	PROV_ECX_KEYMGMT_CTX *gctx = NULL;
-	int ret;
-
 	if (provctx == NULL) {
 		fprintf(stderr, "invalid: provctx is NULL\n");
 		return NULL;
@@ -441,8 +415,8 @@ static void *uadk_keymgmt_x448_gen_init(void *provctx, int selection,
 	return ossl_ecx_gen_init(provctx, selection, params, ECX_KEY_TYPE_X448);
 }
 
-ECX_KEY *uadk_prov_ecx_key_new(OSSL_LIB_CTX *libctx, ECX_KEY_TYPE type, int haspubkey,
-			       const char *propq)
+static ECX_KEY *uadk_prov_ecx_key_new(OSSL_LIB_CTX *libctx, ECX_KEY_TYPE type, int haspubkey,
+				      const char *propq)
 {
 	ECX_KEY *ecx_key = OPENSSL_zalloc(sizeof(ECX_KEY));
 
@@ -807,7 +781,6 @@ static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
 static void *uadk_keyexch_x448_newctx(void *provctx)
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = NULL;
-	int ret;
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
@@ -870,7 +843,6 @@ static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
 	ECX_KEY *key = vkey;
-	int ret;
 
 	if (ecxctx == NULL) {
 		fprintf(stderr, "invalid: ecxctx is NULL\n");
@@ -894,7 +866,7 @@ static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
 	return UADK_P_SUCCESS;
 }
 
-int ossl_ecx_key_up_ref(ECX_KEY *key)
+static int ossl_ecx_key_up_ref(ECX_KEY *key)
 {
 	int i = 0;
 
