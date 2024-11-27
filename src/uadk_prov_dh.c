@@ -190,6 +190,14 @@ typedef struct {
 	char *kdf_cekalg;
 } PROV_DH_KEYEXCH_CTX;
 
+static const char *uadk_keymgmt_dh_query_operation_name(int operation_id)
+{
+	if (get_default_dh_keymgmt().query_operation_name == NULL)
+		return NULL;
+
+	return get_default_dh_keymgmt().query_operation_name(operation_id);
+}
+
 static void *uadk_keymgmt_dh_new(void *provctx)
 {
 	if (get_default_dh_keymgmt().new_fun == NULL)
