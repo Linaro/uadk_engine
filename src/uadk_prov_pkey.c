@@ -176,7 +176,7 @@ static void uadk_prov_init_dtb_param(void *dtb, char *start,
 }
 
 int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
-				BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
+					    BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_POINT_get_affine_coordinates(group, p, x, y, ctx))
@@ -188,8 +188,8 @@ int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 	return 0;
 }
 
-int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
-		     BIGNUM *b, BN_CTX *ctx)
+static int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
+			       BIGNUM *b, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_GROUP_get_curve(group, p, a, b, ctx))
@@ -291,7 +291,7 @@ free_ctx:
 	return ret;
 }
 
-handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg)
+handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES * UADK_ECC_CV_PARAM_NUM];
 	struct sched_params sch_p = {0};
