@@ -99,7 +99,6 @@
 #define OSSL_NELEM(x)    (sizeof(x)/sizeof((x)[0]))
 /* Macro to make a BIGNUM from static data */
 #define make_dh_bn(x)				\
-	extern const BIGNUM ossl_bignum_##x;	\
 	const BIGNUM ossl_bignum_##x = {	\
 			(BN_ULONG *) x,			\
 			OSSL_NELEM(x),			\

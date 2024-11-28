@@ -29,10 +29,20 @@
 #define PROV_SUPPORT		1
 #define SIGNATURE_TYPE		3
 #define ASYM_CIPHER_TYPE	3
+#define SECURITY_CHECK_DISABLE	0
+#define KEYEXCH_TYPE		4
 
 static int p_keymgmt_support_state[KEYMGMT_TYPE];
 static int p_signature_support_state[SIGNATURE_TYPE];
 static int p_asym_cipher_support_state[ASYM_CIPHER_TYPE];
+static int p_keyexch_support_state[KEYEXCH_TYPE];
+
+struct ecc_prov {
+	int pid;
+};
+
+static struct ecc_prov g_ecc_prov;
+static pthread_mutex_t ecc_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Mapping between a flag and a name */
 static const OSSL_ITEM encoding_nameid_map[] = {
@@ -73,6 +83,16 @@ int uadk_prov_asym_cipher_get_support_state(int alg_tag)
 static void uadk_prov_asym_cipher_set_support_state(int alg_tag, int value)
 {
 	p_asym_cipher_support_state[alg_tag] = value;
+}
+
+int uadk_prov_keyexch_get_support_state(int alg_tag)
+{
+	return p_keyexch_support_state[alg_tag];
+}
+
+static void uadk_prov_keyexch_set_support_state(int alg_tag, int value)
+{
+	p_keyexch_support_state[alg_tag] = value;
 }
 
 static int uadk_prov_ecc_get_hw_keybits(int bits)
@@ -156,7 +176,7 @@ static void uadk_prov_init_dtb_param(void *dtb, char *start,
 }
 
 int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
-				BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
+					    BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_POINT_get_affine_coordinates(group, p, x, y, ctx))
@@ -168,8 +188,8 @@ int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 	return 0;
 }
 
-int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
-		     BIGNUM *b, BN_CTX *ctx)
+static int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
+			       BIGNUM *b, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_GROUP_get_curve(group, p, a, b, ctx))
@@ -271,7 +291,7 @@ free_ctx:
 	return ret;
 }
 
-handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg)
+handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES * UADK_ECC_CV_PARAM_NUM];
 	struct sched_params sch_p = {0};
@@ -348,7 +368,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 {
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
-	int idx, ret;
+	int idx, ret, cnt;
 
 	ret = async_setup_async_event_notification(&op);
 	if (ret == 0) {
@@ -375,11 +395,17 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 		goto err;
 
 	op.idx = idx;
+	cnt = 0;
 	do {
 		ret = wd_do_ecc_async(sess, req);
 		if (ret < 0 && ret != -EBUSY) {
-			async_free_poll_task(op.idx, 0);
-			goto err;
+			fprintf(stderr, "failed to do ecc async\n");
+			goto free_poll_task;
+		}
+
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
+			fprintf(stderr, "do ecc async operation timeout\n");
+			goto free_poll_task;
 		}
 	} while (ret == -EBUSY);
 
@@ -388,10 +414,12 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 		goto err;
 
 	if (req->status)
-		return UADK_P_FAIL;
+		goto err;
 
 	return UADK_P_SUCCESS;
 
+free_poll_task:
+	async_free_poll_task(op.idx, 0);
 err:
 	(void)async_clear_async_event_notification();
 	return UADK_P_FAIL;
@@ -635,7 +663,7 @@ static bool uadk_prov_support_algorithm(const char *alg)
 
 void uadk_prov_keymgmt_alg(void)
 {
-	static const char * const keymgmt_alg[] = {"sm2"};
+	static const char * const keymgmt_alg[] = {"sm2", "x448", "ecdh"};
 	__u32 i, size;
 	bool sp;
 
@@ -654,7 +682,7 @@ void uadk_prov_signature_alg(void)
 	__u32 i, size;
 	bool sp;
 
-	/* Enumerate keymgmt algs to check whether it is supported and set tags */
+	/* Enumerate signature algs to check whether it is supported and set tags */
 	size = ARRAY_SIZE(signature_alg);
 	for (i = 0; i < size; i++) {
 		sp = uadk_prov_support_algorithm(*(signature_alg + i));
@@ -760,11 +788,69 @@ void uadk_prov_asym_cipher_alg(void)
 	__u32 i, size;
 	bool sp;
 
-	/* Enumerate keymgmt algs to check whether it is supported and set tags */
+	/* Enumerate asym_cipher algs to check whether it is supported and set tags */
 	size = ARRAY_SIZE(asym_cipher_alg);
 	for (i = 0; i < size; i++) {
 		sp = uadk_prov_support_algorithm(*(asym_cipher_alg + i));
 		if (sp)
 			uadk_prov_asym_cipher_set_support_state(i, PROV_SUPPORT);
+	}
+}
+
+static void uadk_prov_ecc_mutex_infork(void)
+{
+	/* Release the replication lock of the child process */
+	pthread_mutex_unlock(&ecc_mutex);
+}
+
+int uadk_prov_ecc_init(const char *alg_name)
+{
+	int ret;
+
+	pthread_atfork(NULL, NULL, uadk_prov_ecc_mutex_infork);
+	pthread_mutex_lock(&ecc_mutex);
+	if (g_ecc_prov.pid != getpid()) {
+		ret = wd_ecc_init2(alg_name, SCHED_POLICY_RR, TASK_HW);
+		if (unlikely(ret)) {
+			pthread_mutex_unlock(&ecc_mutex);
+			return UADK_P_FAIL;
+		}
+		g_ecc_prov.pid = getpid();
+		async_register_poll_fn(ASYNC_TASK_ECC, uadk_prov_ecc_poll);
+	}
+	pthread_mutex_unlock(&ecc_mutex);
+
+	return UADK_P_SUCCESS;
+}
+
+/* Uninit only when the process exits, will not uninit when thread exits. */
+void uadk_prov_ecc_uninit(void)
+{
+	pthread_mutex_lock(&ecc_mutex);
+	if (g_ecc_prov.pid == getpid()) {
+		wd_ecc_uninit2();
+		g_ecc_prov.pid = 0;
+	}
+	pthread_mutex_unlock(&ecc_mutex);
+}
+
+/* Currently, disable the security checks in the default provider and uadk provider */
+int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx)
+{
+	return SECURITY_CHECK_DISABLE;
+}
+
+void uadk_prov_keyexch_alg(void)
+{
+	static const char * const keyexch_alg[] = {"x448", "ecdh"};
+	__u32 i, size;
+	bool sp;
+
+	/* Enumerate keyexch algs to check whether it is supported and set tags */
+	size = ARRAY_SIZE(keyexch_alg);
+	for (i = 0; i < size; i++) {
+		sp = uadk_prov_support_algorithm(*(keyexch_alg + i));
+		if (sp)
+			uadk_prov_keyexch_set_support_state(i, PROV_SUPPORT);
 	}
 }

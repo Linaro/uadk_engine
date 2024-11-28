@@ -41,7 +41,6 @@
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
-#define UADK_P_INTI_SUCCESS		0
 #define UADK_P_SUCCESS			1
 #define UADK_P_FAIL			0
 #define PROV_SEND_MAX_CNT		90000000
@@ -68,12 +67,25 @@
 
 enum {
 	KEYMGMT_SM2 = 0x0,
+	KEYMGMT_X448 = 0x1,
+	KEYMGMT_ECDH = 0x2,
 	KEYMGMT_MAX = 0x6
 };
 
 enum {
 	SIGNATURE_SM2 = 0x0,
 	SIGNATURE_MAX = 0x3
+};
+
+enum {
+	COFACTOR_MODE_USE_KEY = -1,
+	COFACTOR_MODE_DISABLED = 0,
+	COFACTOR_MODE_ENABLED = 1,
+};
+
+enum {
+	KEYEXCH_X448 = 0x0,
+	KEYEXCH_ECDH = 0x1,
 };
 
 struct curve_param {
@@ -102,6 +114,7 @@ struct ec_gen_ctx {
 	int selection;
 	int ecdh_mode;
 	EC_GROUP *gen_group;
+	BIGNUM *priv_key;
 };
 
 typedef struct {
@@ -168,6 +181,7 @@ static OSSL_FUNC_keymgmt_import_types_fn uadk_keymgmt_##nm##_import_types;	\
 static OSSL_FUNC_keymgmt_export_fn uadk_keymgmt_##nm##_export;	\
 static OSSL_FUNC_keymgmt_export_types_fn uadk_keymgmt_##nm##_export_types;	\
 static OSSL_FUNC_keymgmt_dup_fn uadk_keymgmt_##nm##_dup;	\
+static OSSL_FUNC_keymgmt_query_operation_name_fn uadk_keymgmt_##nm##_query_operation_name;	\
 static UADK_PKEY_KEYMGMT get_default_##nm##_keymgmt(void)	\
 {				\
 	static UADK_PKEY_KEYMGMT s_keymgmt;	\
@@ -215,6 +229,8 @@ const OSSL_DISPATCH uadk_##nm##_keymgmt_functions[] = {	\
 	{ OSSL_FUNC_KEYMGMT_EXPORT, (void (*)(void))uadk_keymgmt_##nm##_export },	\
 	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_##nm##_export_types },	\
 	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_##nm##_dup },	\
+	{ OSSL_FUNC_KEYMGMT_QUERY_OPERATION_NAME,	\
+		(void (*)(void))uadk_keymgmt_##nm##_query_operation_name },	\
 	{ 0, NULL }	\
 }	\
 
@@ -446,7 +462,7 @@ typedef struct {
 	static OSSL_FUNC_keyexch_gettable_ctx_params_fn uadk_keyexch_##nm##_gettable_ctx_params; \
 static UADK_PKEY_KEYEXCH get_default_##nm##_keyexch(void)		\
 {		\
-	UADK_PKEY_KEYEXCH s_keyexch;			\
+	static UADK_PKEY_KEYEXCH s_keyexch;			\
 	static int initilazed;				\
 							\
 	if (!initilazed) {				\
@@ -480,7 +496,7 @@ const OSSL_DISPATCH uadk_##nm##_keyexch_functions[] = {	\
 	{ 0, NULL }	\
 }	\
 
-handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg);
+handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg);
 int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr);
 int uadk_prov_keymgmt_get_support_state(int alg_tag);
 int uadk_prov_ecc_get_numa_id(void);
@@ -497,5 +513,11 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *eckey);
 void uadk_prov_signature_alg(void);
 void uadk_prov_asym_cipher_alg(void);
 int uadk_prov_asym_cipher_get_support_state(int alg_tag);
+int uadk_prov_ecc_init(const char *alg_name);
+int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
+				     BIGNUM *x, BIGNUM *y, BN_CTX *ctx);
+void uadk_prov_keyexch_alg(void);
+int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx);
+int uadk_prov_keyexch_get_support_state(int alg_tag);
 
 #endif

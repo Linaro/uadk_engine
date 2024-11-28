@@ -160,6 +160,9 @@ extern const OSSL_DISPATCH uadk_sm4_ecb_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm4_ofb128_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm4_cfb128_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm4_ctr_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_aes_128_gcm_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_aes_192_gcm_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_aes_256_gcm_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_des_ede3_cbc_functions[];
 extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[];
 
@@ -174,11 +177,18 @@ extern const OSSL_DISPATCH uadk_sm2_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm2_signature_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm2_asym_cipher_functions[FUNC_MAX_NUM];
 
+extern const OSSL_DISPATCH uadk_ec_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_ecdh_keyexch_functions[FUNC_MAX_NUM];
+
+extern const OSSL_DISPATCH uadk_x448_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_x448_keyexch_functions[FUNC_MAX_NUM];
+
 void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
+void uadk_prov_destroy_aead(void);
 void uadk_prov_destroy_rsa(void);
 void uadk_prov_destroy_dh(void);
-void uadk_prov_sm2_uninit(void);
+void uadk_prov_ecc_uninit(void);
 void uadk_prov_dh_uninit(void);
 
 /* offload small packets to sw */
