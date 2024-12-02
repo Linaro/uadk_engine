@@ -347,8 +347,8 @@ static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv)
 
 static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
-	unsigned char *tmpdata = (unsigned char *)data;
-	size_t left_len = data_len;
+	unsigned char *input_data = (unsigned char *)data;
+	size_t remain_len = data_len;
 	size_t processing_len;
 	int ret;
 
@@ -363,20 +363,20 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 		 */
 		if (priv->last_update_bufflen != 0) {
 			processing_len = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
-			uadk_memcpy(priv->data + priv->last_update_bufflen, tmpdata,
+			uadk_memcpy(priv->data + priv->last_update_bufflen, input_data,
 				processing_len);
 
 			priv->req.in_bytes = DIGEST_BLOCK_SIZE;
 			priv->req.in = priv->data;
 			priv->last_update_bufflen = 0;
 		} else {
-			if (left_len > BUF_LEN)
+			if (remain_len > BUF_LEN)
 				processing_len = BUF_LEN;
 			else
-				processing_len = left_len - (left_len % DIGEST_BLOCK_SIZE);
+				processing_len = remain_len - (remain_len % DIGEST_BLOCK_SIZE);
 
 			priv->req.in_bytes = processing_len;
-			priv->req.in = tmpdata;
+			priv->req.in = input_data;
 		}
 
 		if (priv->state == SEC_DIGEST_INIT)
@@ -385,18 +385,18 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 			priv->state = SEC_DIGEST_DOING;
 
 		priv->req.out = priv->out;
-		left_len -= processing_len;
-		tmpdata += processing_len;
+		remain_len -= processing_len;
+		input_data += processing_len;
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest update failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
-	} while (left_len > DIGEST_BLOCK_SIZE);
+	} while (remain_len > DIGEST_BLOCK_SIZE);
 
-	priv->last_update_bufflen = left_len;
-	uadk_memcpy(priv->data, tmpdata, priv->last_update_bufflen);
+	priv->last_update_bufflen = remain_len;
+	uadk_memcpy(priv->data, input_data, priv->last_update_bufflen);
 
 	return UADK_DIGEST_SUCCESS;
 
@@ -411,7 +411,7 @@ do_soft_digest:
 				return ret;
 		}
 
-		return uadk_digest_soft_update(priv, tmpdata, left_len);
+		return uadk_digest_soft_update(priv, input_data, remain_len);
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
@@ -442,16 +442,14 @@ soft_update:
 
 static void uadk_async_cb(struct wd_digest_req *req, void *data)
 {
-	struct uadk_e_cb_info *cb_param;
+	struct uadk_e_cb_info *digest_cb_param;
 	struct async_op *op;
 
-	if (!req)
+	if (!req || !req->cb_param)
 		return;
 
-	cb_param = req->cb_param;
-	if (!cb_param)
-		return;
-	op = cb_param->op;
+	digest_cb_param = req->cb_param;
+	op = digest_cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
@@ -588,6 +586,12 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 		return UADK_DIGEST_FAIL;
 	}
 
+	ret = async_setup_async_event_notification(&op);
+	if (unlikely(!ret)) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
 	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -596,29 +600,19 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 
 	uadk_fill_mac_buffer_len(priv);
 
-	ret = async_setup_async_event_notification(&op);
-	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to setup async event notification.\n");
-		return UADK_DIGEST_FAIL;
-	}
-
-	if (op.job == NULL) {
+	if (op.job == NULL)
 		ret = uadk_do_digest_sync(priv);
-		if (!ret)
-			goto uadk_do_digest_err;
-	} else {
+	else
 		ret = uadk_do_digest_async(priv, &op);
-		if (!ret)
-			goto uadk_do_digest_err;
+
+	if (!ret) {
+		fprintf(stderr, "do sec single block digest failed.\n");
+		async_clear_async_event_notification();
+		return ret;
 	}
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
 	return UADK_DIGEST_SUCCESS;
-
-uadk_do_digest_err:
-	fprintf(stderr, "do sec single block digest failed.\n");
-	async_clear_async_event_notification();
-	return ret;
 }
 
 static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
@@ -701,7 +695,7 @@ static void *uadk_prov_dupctx(void *dctx)
 		return NULL;
 
 	in = (struct digest_priv_ctx *)dctx;
-	ret = OPENSSL_zalloc(sizeof(struct digest_priv_ctx));
+	ret = OPENSSL_malloc(sizeof(struct digest_priv_ctx));
 	if (ret)
 		memcpy(ret, in, sizeof(struct digest_priv_ctx));
 	return ret;
