@@ -109,34 +109,6 @@ int async_clear_async_event_notification(void)
 	return UADK_E_SUCCESS;
 }
 
-void async_poll_task_free(void)
-{
-	struct async_poll_task *task;
-	int error;
-
-	/* Disable async poll state first */
-	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
-
-	error = pthread_mutex_lock(&poll_queue.async_task_mutex);
-	if (error)
-		return;
-
-	task = poll_queue.head;
-	if (task)
-		OPENSSL_free(task);
-
-	poll_queue.head = NULL;
-
-	sem_post(&poll_queue.full_sem);
-	pthread_join(poll_queue.thread_id, NULL);
-
-	pthread_mutex_unlock(&poll_queue.async_task_mutex);
-	pthread_attr_destroy(&poll_queue.thread_attr);
-	sem_destroy(&poll_queue.empty_sem);
-	sem_destroy(&poll_queue.full_sem);
-	pthread_mutex_destroy(&poll_queue.async_task_mutex);
-}
-
 static int async_get_poll_task(int *id)
 {
 	int idx = poll_queue.rid;
@@ -335,10 +307,9 @@ static void *async_poll_process_func(void *args)
 			}
 		}
 
-		if (!uadk_e_get_async_poll_state()) {
-			/* exit by main thread */
+		/* exit by main thread */
+		if (!uadk_e_get_async_poll_state())
 			break;
-		}
 
 		task = async_get_queue_task();
 		if (!task) {
@@ -372,26 +343,64 @@ int async_module_init(void)
 	if (pthread_mutex_init(&(poll_queue.async_task_mutex), NULL) < 0)
 		return UADK_E_FAIL;
 
-	poll_queue.head = OPENSSL_malloc(ASYNC_QUEUE_TASK_NUM * sizeof(struct async_poll_task));
+	poll_queue.head = OPENSSL_zalloc(ASYNC_QUEUE_TASK_NUM * sizeof(struct async_poll_task));
 	if (!poll_queue.head)
-		return UADK_E_FAIL;
+		goto destroy_mutex;
 
 	if (sem_init(&poll_queue.empty_sem, 0, ASYNC_QUEUE_TASK_NUM) != 0)
-		goto err;
+		goto free_head;
 
 	if (sem_init(&poll_queue.full_sem, 0, 0) != 0)
-		goto err;
+		goto destroy_empty_sem;
 
 	uadk_e_set_async_poll_state(ENABLE_ASYNC_POLLING);
 
 	pthread_attr_init(&poll_queue.thread_attr);
 	if (pthread_create(&thread_id, &poll_queue.thread_attr, async_poll_process_func, NULL))
-		goto err;
+		goto destroy_full_sem;
 
 	poll_queue.thread_id = thread_id;
+
 	return UADK_E_SUCCESS;
 
-err:
-	async_poll_task_free();
+destroy_full_sem:
+	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
+	sem_destroy(&poll_queue.full_sem);
+	pthread_attr_destroy(&poll_queue.thread_attr);
+destroy_empty_sem:
+	sem_destroy(&poll_queue.empty_sem);
+free_head:
+	OPENSSL_free(poll_queue.head);
+destroy_mutex:
+	pthread_mutex_destroy(&poll_queue.async_task_mutex);
+
 	return UADK_E_FAIL;
+}
+
+void async_module_uninit(void)
+{
+	int error;
+	struct async_poll_task *task;
+
+	/* Disable async poll state first */
+	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
+
+	error = pthread_mutex_lock(&poll_queue.async_task_mutex);
+	if (error)
+		return;
+
+	sem_post(&poll_queue.full_sem);
+	pthread_join(poll_queue.thread_id, NULL);
+
+	task = poll_queue.head;
+	if (task)
+		OPENSSL_free(task);
+
+	poll_queue.head = NULL;
+
+	pthread_mutex_unlock(&poll_queue.async_task_mutex);
+	pthread_attr_destroy(&poll_queue.thread_attr);
+	sem_destroy(&poll_queue.empty_sem);
+	sem_destroy(&poll_queue.full_sem);
+	pthread_mutex_destroy(&poll_queue.async_task_mutex);
 }
