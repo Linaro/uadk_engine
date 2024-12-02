@@ -30,6 +30,28 @@ PKG_CHECK_MODULES(libcrypto, libcrypto >= 3.0,
 		  [with_crypto3=yes], [with_crypto3=no])
 AM_CONDITIONAL(HAVE_CRYPTO3, test "$with_crypto3" != "no")
 
+AC_DEFUN([AC_CHECK_BOARD_VERSION], [
+  AC_MSG_CHECKING([for board version])
+  board_version=""
+
+  for dir in /sys/class/uacce/*; do
+    if test -d "$dir" && test -f "$dir/api"; then
+      if grep -q 'hisi_qm_v2' "$dir/api"; then
+        board_version="hisi_qm_v2"
+        AC_DEFINE(BOARD_VERSION_QM2, 1, [Board version is QM2])
+        break
+      elif grep -q 'hisi_qm_v3' "$dir/api"; then
+        board_version="hisi_qm_v3"
+        AC_DEFINE(BOARD_VERSION_QM3, 1, [Board version is QM3])
+        break
+      fi
+    fi
+  done
+  AC_MSG_RESULT([$board_version])
+])
+
+AC_CHECK_BOARD_VERSION
+
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile])

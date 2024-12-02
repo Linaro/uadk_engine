@@ -30,6 +30,7 @@
 #include "uadk_prov.h"
 #include "uadk_prov_bio.h"
 #include "uadk_prov_pkey.h"
+#include "config.h"
 
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *prov;
@@ -91,12 +92,14 @@ const OSSL_ALGORITHM uadk_prov_ciphers[] = {
 	  uadk_aes_128_xts_functions, "uadk_provider aes-128-xts" },
 	{ "AES-256-XTS", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_256_xts_functions, "uadk_provider aes-256-xts" },
+#ifdef BOARD_VERSION_QM3
 	{ "AES-128-CTR", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_128_ctr_functions, "uadk_provider aes-128-ctr" },
 	{ "AES-192-CTR", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_192_ctr_functions, "uadk_provider aes-192-ctr" },
 	{ "AES-256-CTR", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_256_ctr_functions, "uadk_provider aes-256-ctr" },
+#endif
 	{ "AES-128-OFB", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_128_ofb128_functions, "uadk_provider aes-128-ofb" },
 	{ "AES-192-OFB", UADK_DEFAULT_PROPERTIES,
@@ -117,8 +120,10 @@ const OSSL_ALGORITHM uadk_prov_ciphers[] = {
 	  uadk_sm4_ofb128_functions, "uadk_provider sm4-ofb" },
 	{ "SM4-CFB", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm4_cfb128_functions, "uadk_provider sm4-cfb" },
+#ifdef BOARD_VERSION_QM3
 	{ "SM4-CTR", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm4_ctr_functions, "uadk_provider sm4-ctr" },
+#endif
 	{ "DES-EDE3-CBC", UADK_DEFAULT_PROPERTIES,
 	  uadk_des_ede3_cbc_functions, "uadk_provider des-ede3-cbc" },
 	{ "DES-EDE3-ECB", UADK_DEFAULT_PROPERTIES,
