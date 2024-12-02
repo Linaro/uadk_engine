@@ -232,7 +232,8 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_dh)
 		uadk_e_destroy_dh();
 
-	async_poll_task_free();
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
+		async_module_uninit();
 
 	pthread_mutex_lock(&uadk_engine_mutex);
 	uadk_inited = 0;

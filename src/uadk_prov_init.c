@@ -205,7 +205,7 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_dh_uninit();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
-	async_poll_task_free();
+	async_module_uninit();
 }
 
 static const OSSL_DISPATCH uadk_dispatch_table[] = {
