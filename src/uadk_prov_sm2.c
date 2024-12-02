@@ -498,7 +498,7 @@ static int uadk_prov_sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 {
 	struct wd_ecc_out *ecc_out = wd_sm2_new_kg_out(sess);
 
-	if (!ecc_out) {
+	if (ecc_out == NULL) {
 		fprintf(stderr, "failed to new sign out\n");
 		return UADK_P_FAIL;
 	}
@@ -510,16 +510,16 @@ static int uadk_prov_sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 
 static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 {
-	unsigned char buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {0};
+	unsigned char key_buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {0};
 	struct wd_ecc_point *pubkey = NULL;
 	struct wd_dtb *privkey = NULL;
 	int x_offset, y_offset, ret;
 	const EC_GROUP *group;
 	EC_POINT *point, *ptr;
-	BIGNUM *tmp;
+	BIGNUM *bn_key;
 
 	wd_sm2_get_kg_out_params(req->dst, &privkey, &pubkey);
-	if (!privkey || !pubkey) {
+	if (privkey == NULL || pubkey == NULL) {
 		fprintf(stderr, "failed to get privkey or pubkey\n");
 		return UADK_P_FAIL;
 	}
@@ -529,31 +529,31 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 		return UADK_P_FAIL;
 	}
 
-	tmp = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
-	ret = EC_KEY_set_private_key(ec, tmp);
-	BN_free(tmp);
-	if (!ret) {
+	bn_key = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
+	ret = EC_KEY_set_private_key(ec, bn_key);
+	BN_free(bn_key);
+	if (ret == 0) {
 		fprintf(stderr, "failed to EC KEY set private key\n");
 		return UADK_P_FAIL;
 	}
 
 	group = EC_KEY_get0_group(ec);
 	point = EC_POINT_new(group);
-	if (!point) {
+	if (point == NULL) {
 		fprintf(stderr, "failed to EC POINT new\n");
 		return UADK_P_FAIL;
 	}
 
-	buff[0] = UADK_OCTET_STRING;
+	key_buff[0] = UADK_OCTET_STRING;
 	/* The component of sm2 pubkey need a SM2_KEY_BYTES align */
 	x_offset = 1 + SM2_KEY_BYTES - pubkey->x.dsize;
 	y_offset = 1 + ECC_POINT_SIZE(SM2_KEY_BYTES) - pubkey->y.dsize;
-	memcpy(buff + x_offset, pubkey->x.data, pubkey->x.dsize);
-	memcpy(buff + y_offset, pubkey->y.data, pubkey->y.dsize);
-	tmp = BN_bin2bn(buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
-	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
-	BN_free(tmp);
-	if (!ptr) {
+	memcpy(key_buff + x_offset, pubkey->x.data, pubkey->x.dsize);
+	memcpy(key_buff + y_offset, pubkey->y.data, pubkey->y.dsize);
+	bn_key = BN_bin2bn(key_buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
+	ptr = EC_POINT_bn2point(group, bn_key, point, NULL);
+	BN_free(bn_key);
+	if (ptr == NULL) {
 		fprintf(stderr, "failed to EC_POINT_bn2point\n");
 		EC_POINT_free(point);
 		return UADK_P_FAIL;
@@ -561,7 +561,7 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 
 	ret = EC_KEY_set_public_key(ec, point);
 	EC_POINT_free(point);
-	if (!ret) {
+	if (ret == 0) {
 		fprintf(stderr, "failed to EC_KEY_set_public_key\n");
 		return UADK_P_FAIL;
 	}
@@ -579,13 +579,13 @@ static int uadk_prov_sm2_check_priv_key(EC_KEY *eckey)
 		return UADK_P_SUCCESS;
 
 	priv_key = BN_new();
-	if (!priv_key) {
+	if (priv_key == NULL) {
 		fprintf(stderr, "failed to BN_new priv_key\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = EC_KEY_set_private_key(eckey, priv_key);
-	if (!ret)
+	if (ret == 0)
 		fprintf(stderr, "failed to set private key\n");
 
 	BN_free(priv_key);
@@ -865,7 +865,7 @@ static int uadk_prov_compute_hash(const char *in, size_t in_len,
 	EVP_MD_CTX *hash;
 
 	hash = EVP_MD_CTX_new();
-	if (!hash)
+	if (hash == NULL)
 		return -WD_EINVAL;
 
 	if (EVP_DigestInit(hash, digest) == 0 ||
@@ -935,7 +935,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 	setup.rand.cb = uadk_prov_ecc_get_rand;
 	setup.rand.usr = (void *)order;
 	sess = wd_ecc_alloc_sess(&setup);
-	if (!sess) {
+	if (sess == (handle_t)0) {
 		fprintf(stderr, "failed to alloc sess\n");
 		BN_free(order);
 		smctx->init_status = CTX_INIT_FAIL;
@@ -1128,30 +1128,30 @@ static int uadk_prov_sm2_update_private_key(SM2_PROV_CTX *smctx, EC_KEY *eckey)
 static int uadk_prov_sm2_sign_bin_to_ber(struct wd_dtb *r, struct wd_dtb *s,
 					 unsigned char *sig, size_t *siglen)
 {
+	BIGNUM *bn_r, *bn_s;
 	ECDSA_SIG *e_sig;
-	BIGNUM *br, *bs;
 	int sltmp, ret;
 
 	e_sig = ECDSA_SIG_new();
-	if (!e_sig) {
+	if (e_sig == NULL) {
 		fprintf(stderr, "failed to ECDSA_SIG_new\n");
 		return UADK_P_FAIL;
 	}
 
-	br = BN_bin2bn((void *)r->data, r->dsize, NULL);
-	if (!br) {
+	bn_r = BN_bin2bn((void *)r->data, r->dsize, NULL);
+	if (bn_r == NULL) {
 		fprintf(stderr, "failed to BN_bin2bn r\n");
 		goto free_sig;
 	}
 
-	bs = BN_bin2bn((void *)s->data, s->dsize, NULL);
-	if (!bs) {
+	bn_s = BN_bin2bn((void *)s->data, s->dsize, NULL);
+	if (bn_s == NULL) {
 		fprintf(stderr, "failed to BN_bin2bn s\n");
 		goto free_r;
 	}
 
-	ret = ECDSA_SIG_set0(e_sig, br, bs);
-	if (!ret) {
+	ret = ECDSA_SIG_set0(e_sig, bn_r, bn_s);
+	if (ret == 0) {
 		fprintf(stderr, "failed to ECDSA_SIG_set0\n");
 		goto free_s;
 	}
@@ -1166,9 +1166,9 @@ static int uadk_prov_sm2_sign_bin_to_ber(struct wd_dtb *r, struct wd_dtb *s,
 	return UADK_P_SUCCESS;
 
 free_s:
-	BN_free(bs);
+	BN_free(bn_s);
 free_r:
-	BN_free(br);
+	BN_free(bn_r);
 free_sig:
 	ECDSA_SIG_free(e_sig);
 
@@ -1182,10 +1182,10 @@ static int uadk_prov_sm2_sign_ber_to_bin(unsigned char *sig, size_t sig_len,
 	unsigned char *der = NULL;
 	ECDSA_SIG *e_sig = NULL;
 	int len1, len2;
-	BIGNUM *b_r, *b_s;
+	BIGNUM *bn_r, *bn_s;
 
 	e_sig = ECDSA_SIG_new();
-	if (!e_sig) {
+	if (e_sig == NULL) {
 		fprintf(stderr, "failed to ECDSA_SIG_new\n");
 		return UADK_P_FAIL;
 	}
@@ -1203,26 +1203,26 @@ static int uadk_prov_sm2_sign_ber_to_bin(unsigned char *sig, size_t sig_len,
 		goto free_der;
 	}
 
-	b_r = (void *)ECDSA_SIG_get0_r((const ECDSA_SIG *)e_sig);
-	if (!b_r) {
+	bn_r = (void *)ECDSA_SIG_get0_r((const ECDSA_SIG *)e_sig);
+	if (bn_r == NULL) {
 		fprintf(stderr, "failed to get r\n");
 		goto free_der;
 	}
 
-	b_s = (void *)ECDSA_SIG_get0_s((const ECDSA_SIG *)e_sig);
-	if (!b_s) {
+	bn_s = (void *)ECDSA_SIG_get0_s((const ECDSA_SIG *)e_sig);
+	if (bn_s == NULL) {
 		fprintf(stderr, "failed to get s\n");
 		goto free_der;
 	}
 
-	len1 = BN_num_bytes(b_r);
-	len2 = BN_num_bytes(b_s);
+	len1 = BN_num_bytes(bn_r);
+	len2 = BN_num_bytes(bn_s);
 	if (len1 > UADK_ECC_MAX_KEY_BYTES || len2 > UADK_ECC_MAX_KEY_BYTES) {
 		fprintf(stderr, "r or s bytes = (%d, %d) error\n", len1, len2);
 		goto free_der;
 	}
-	r->dsize = BN_bn2bin(b_r, (void *)r->data);
-	s->dsize = BN_bn2bin(b_s, (void *)s->data);
+	r->dsize = BN_bn2bin(bn_r, (void *)r->data);
+	s->dsize = BN_bn2bin(bn_s, (void *)s->data);
 
 	OPENSSL_free(der);
 	ECDSA_SIG_free(e_sig);
@@ -1262,7 +1262,7 @@ static int uadk_prov_sm2_sign(PROV_SM2_SIGN_CTX *psm2ctx,
 	}
 
 	wd_sm2_get_sign_out_params(req.dst, &r, &s);
-	if (!r || !s) {
+	if (r == NULL || s == NULL) {
 		fprintf(stderr, "failed to get sign result\n");
 		return UADK_P_FAIL;
 	}
@@ -1345,7 +1345,7 @@ static int uadk_prov_sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_ecc_in *ecc_in;
 
 	ecc_in = wd_sm2_new_verf_in(sess, e, r, s, NULL, 1);
-	if (!ecc_in) {
+	if (ecc_in == NULL) {
 		fprintf(stderr, "failed to new verf in\n");
 		return UADK_E_FAIL;
 	}
@@ -1599,34 +1599,34 @@ static int uadk_prov_check_pkey_point_param(struct sm2_param *param, EVP_MD_CTX 
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_get_sm2_param(struct sm2_param *sm2_param, BN_CTX *ctx)
+static int uadk_prov_get_sm2_param(struct sm2_param *params, BN_CTX *ctx)
 {
-	sm2_param->p = BN_CTX_get(ctx);
-	if (!sm2_param->p)
+	params->p = BN_CTX_get(ctx);
+	if (params->p == NULL)
 		goto end;
 
-	sm2_param->a = BN_CTX_get(ctx);
-	if (!sm2_param->a)
+	params->a = BN_CTX_get(ctx);
+	if (params->a == NULL)
 		goto end;
 
-	sm2_param->b = BN_CTX_get(ctx);
-	if (!sm2_param->b)
+	params->b = BN_CTX_get(ctx);
+	if (params->b == NULL)
 		goto end;
 
-	sm2_param->xG = BN_CTX_get(ctx);
-	if (!sm2_param->xG)
+	params->xG = BN_CTX_get(ctx);
+	if (params->xG == NULL)
 		goto end;
 
-	sm2_param->yG = BN_CTX_get(ctx);
-	if (!sm2_param->yG)
+	params->yG = BN_CTX_get(ctx);
+	if (params->yG == NULL)
 		goto end;
 
-	sm2_param->xA = BN_CTX_get(ctx);
-	if (!sm2_param->xA)
+	params->xA = BN_CTX_get(ctx);
+	if (params->xA == NULL)
 		goto end;
 
-	sm2_param->yA = BN_CTX_get(ctx);
-	if (!sm2_param->yA)
+	params->yA = BN_CTX_get(ctx);
+	if (params->yA == NULL)
 		goto end;
 
 	return UADK_P_SUCCESS;
@@ -1682,7 +1682,7 @@ static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
 				const EC_KEY *key)
 {
 	const EC_GROUP *group = EC_KEY_get0_group(key);
-	struct sm2_param *param = NULL;
+	struct sm2_param *params = NULL;
 	int ret = UADK_P_FAIL;
 	uint8_t *buf = NULL;
 	BN_CTX *ctx = NULL;
@@ -1697,43 +1697,43 @@ static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
 	if (ctx == NULL)
 		goto free_hash;
 
-	param = OPENSSL_zalloc(sizeof(struct sm2_param));
-	if (param == NULL) {
+	params = OPENSSL_zalloc(sizeof(struct sm2_param));
+	if (params == NULL) {
 		fprintf(stderr, "failed to malloc sm2 param\n");
 		goto free_ctx;
 	}
 
-	if (uadk_prov_get_sm2_param(param, ctx) == UADK_P_FAIL)
-		goto free_param;
+	if (uadk_prov_get_sm2_param(params, ctx) == UADK_P_FAIL)
+		goto free_params;
 
 	if (uadk_prov_check_digest_evp_lib(digest, hash, id_len, id) == UADK_P_FAIL)
-		goto free_param;
+		goto free_params;
 
-	if (EC_GROUP_get_curve(group, param->p, param->a, param->b, ctx) == 0) {
+	if (EC_GROUP_get_curve(group, params->p, params->a, params->b, ctx) == 0) {
 		fprintf(stderr, "failed to EC_GROUP_get_curve\n");
-		goto free_param;
+		goto free_params;
 	}
 
-	p_bytes = BN_num_bytes(param->p);
+	p_bytes = BN_num_bytes(params->p);
 	buf = OPENSSL_zalloc(p_bytes);
 	if (buf == NULL) {
 		fprintf(stderr, "failed to alloc buffer\n");
-		goto free_param;
+		goto free_params;
 	}
 
-	if (!uadk_prov_check_equation_param(param, hash, buf, p_bytes) ||
-	    !uadk_prov_check_base_point_group_param(param, ctx, key) ||
-	    !uadk_prov_check_base_point_param(param, hash, buf, p_bytes) ||
-	    !uadk_prov_check_pkey_point_group_param(param, ctx, key) ||
-	    !uadk_prov_check_pkey_point_param(param, hash, buf, p_bytes, out))
+	if (!uadk_prov_check_equation_param(params, hash, buf, p_bytes) ||
+	    !uadk_prov_check_base_point_group_param(params, ctx, key) ||
+	    !uadk_prov_check_base_point_param(params, hash, buf, p_bytes) ||
+	    !uadk_prov_check_pkey_point_group_param(params, ctx, key) ||
+	    !uadk_prov_check_pkey_point_param(params, hash, buf, p_bytes, out))
 		goto free_buf;
 
 	ret = UADK_P_SUCCESS;
 
 free_buf:
 	OPENSSL_free(buf);
-free_param:
-	OPENSSL_free(param);
+free_params:
+	OPENSSL_free(params);
 free_ctx:
 	BN_CTX_free(ctx);
 free_hash:
@@ -1788,13 +1788,13 @@ static int uadk_signature_sm2_digest_sign_update(void *vpsm2ctx, const unsigned 
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: sign update psm2ctx is NULL\n");
+		fprintf(stderr, "invalid: psm2ctx is NULL in digest sign update\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid smctx is NULL in compute z digest\n");
+		fprintf(stderr, "invalid: smctx is NULL in compute z digest\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2433,7 +2433,7 @@ static int uadk_prov_sm2_encrypt_check(PROV_SM2_ASYM_CTX *psm2ctx,
 	const EVP_MD *md;
 	int c3_size;
 
-	if (!smctx || !smctx->sess) {
+	if (smctx == NULL || smctx->sess == (handle_t)0) {
 		fprintf(stderr, "smctx or sess NULL\n");
 		return UADK_P_FAIL;
 	}
@@ -2476,7 +2476,7 @@ static int uadk_prov_sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_dtb e = {0};
 
 	ecc_out = wd_sm2_new_enc_out(sess, inlen);
-	if (!ecc_out) {
+	if (ecc_out == NULL) {
 		fprintf(stderr, "failed to new enc out\n");
 		return UADK_P_FAIL;
 	}
@@ -2484,7 +2484,7 @@ static int uadk_prov_sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	e.data = (void *)in;
 	e.dsize = inlen;
 	ecc_in = wd_sm2_new_enc_in(sess, NULL, &e);
-	if (!ecc_in) {
+	if (ecc_in == NULL) {
 		fprintf(stderr, "failed to new enc in\n");
 		wd_ecc_del_out(sess, ecc_out);
 		return UADK_P_FAIL;
@@ -2499,58 +2499,58 @@ static int uadk_prov_sm2_asym_bin_to_ber(struct wd_ecc_point *c1,
 				       struct wd_dtb *c2, struct wd_dtb *c3,
 				       unsigned char *ber, size_t *ber_len)
 {
-	struct sm2_ciphertext ctext_struct;
-	int ciphertext_leni, ret;
+	struct sm2_ciphertext ctext;
+	int ctext_leni, ret;
 	BIGNUM *x1, *y1;
 
 	x1 = BN_bin2bn((void *)c1->x.data, c1->x.dsize, NULL);
-	if (!x1) {
+	if (x1 == NULL) {
 		fprintf(stderr, "failed to BN_bin2bn x1\n");
 		return UADK_P_FAIL;
 	}
 
 	y1 = BN_bin2bn((void *)c1->y.data, c1->y.dsize, NULL);
-	if (!y1) {
+	if (y1 == NULL) {
 		fprintf(stderr, "failed to BN_bin2bn y1\n");
 		ret = UADK_P_FAIL;
 		goto free_x1;
 	}
 
-	ctext_struct.C1x = x1;
-	ctext_struct.C1y = y1;
-	ctext_struct.C3 = ASN1_OCTET_STRING_new();
-	if (!ctext_struct.C3) {
+	ctext.C1x = x1;
+	ctext.C1y = y1;
+	ctext.C3 = ASN1_OCTET_STRING_new();
+	if (ctext.C3 == NULL) {
 		ret = UADK_P_FAIL;
 		goto free_y1;
 	}
 
-	ret = ASN1_OCTET_STRING_set(ctext_struct.C3, (void *)c3->data, c3->dsize);
-	if (!ret)
+	ret = ASN1_OCTET_STRING_set(ctext.C3, (void *)c3->data, c3->dsize);
+	if (ret == 0)
 		goto free_c3;
 
-	ctext_struct.C2 = ASN1_OCTET_STRING_new();
-	if (!ctext_struct.C2) {
+	ctext.C2 = ASN1_OCTET_STRING_new();
+	if (ctext.C2 == NULL) {
 		ret = UADK_P_FAIL;
 		goto free_c3;
 	}
 
-	ret = ASN1_OCTET_STRING_set(ctext_struct.C2, (void *)c2->data, c2->dsize);
-	if (!ret)
+	ret = ASN1_OCTET_STRING_set(ctext.C2, (void *)c2->data, c2->dsize);
+	if (ret == 0)
 		goto free_c2;
 
-	ciphertext_leni = i2d_SM2_Ciphertext(&ctext_struct, &ber);
+	ctext_leni = i2d_SM2_Ciphertext(&ctext, &ber);
 	/* Ensure cast to size_t is safe */
-	if (ciphertext_leni < 0) {
+	if (ctext_leni < 0) {
 		ret = UADK_P_FAIL;
 		goto free_c2;
 	}
-	*ber_len = (size_t)ciphertext_leni;
+	*ber_len = (size_t)ctext_leni;
 	ret = UADK_P_SUCCESS;
 
 free_c2:
-	ASN1_OCTET_STRING_free(ctext_struct.C2);
+	ASN1_OCTET_STRING_free(ctext.C2);
 free_c3:
-	ASN1_OCTET_STRING_free(ctext_struct.C3);
+	ASN1_OCTET_STRING_free(ctext.C3);
 free_y1:
 	BN_free(y1);
 free_x1:
@@ -2586,7 +2586,7 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 	}
 
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
-	if (!c1 || !c2 || !c3)
+	if (c1 == NULL || c2 == NULL || c3 == NULL)
 		goto uninit_iot;
 
 	ret = uadk_prov_sm2_asym_bin_to_ber(c1, c2, c3, out, outlen);
@@ -2715,7 +2715,7 @@ static int uadk_prov_sm2_decrypt_check(SM2_PROV_CTX *smctx,
 	const EVP_MD *md;
 	int hash_size;
 
-	if (!smctx || !smctx->sess) {
+	if (smctx == NULL || smctx->sess == (handle_t)0) {
 		fprintf(stderr, "smctx or sess NULL\n");
 		return UADK_P_FAIL;
 	}
@@ -2745,29 +2745,29 @@ static int uadk_prov_sm2_decrypt_check(SM2_PROV_CTX *smctx,
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext *ctext_struct,
+static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext *ctext,
 				struct wd_ecc_point *c1, struct wd_dtb *c2, struct wd_dtb *c3)
 {
-	int len, len1, md_size;
+	int c1x_len, c1y_len, md_size;
 
 	if (md == NULL) {
 		fprintf(stderr, "invalid: md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
-	len = BN_num_bytes(ctext_struct->C1x);
-	len1 = BN_num_bytes(ctext_struct->C1y);
-	c1->x.data = malloc(len + len1 + ctext_struct->C2->length + ctext_struct->C3->length);
-	if (!c1->x.data)
+	c1x_len = BN_num_bytes(ctext->C1x);
+	c1y_len = BN_num_bytes(ctext->C1y);
+	c1->x.data = malloc(c1x_len + c1y_len + ctext->C2->length + ctext->C3->length);
+	if (c1->x.data == NULL)
 		return UADK_P_FAIL;
 
-	c1->y.data = c1->x.data + len;
-	c3->data = c1->y.data + len1;
-	c2->data = c3->data + ctext_struct->C3->length;
-	memcpy(c2->data, ctext_struct->C2->data, ctext_struct->C2->length);
-	memcpy(c3->data, ctext_struct->C3->data, ctext_struct->C3->length);
-	c2->dsize = ctext_struct->C2->length;
-	c3->dsize = ctext_struct->C3->length;
+	c1->y.data = c1->x.data + c1x_len;
+	c3->data = c1->y.data + c1y_len;
+	c2->data = c3->data + ctext->C3->length;
+	memcpy(c2->data, ctext->C2->data, ctext->C2->length);
+	memcpy(c3->data, ctext->C3->data, ctext->C3->length);
+	c2->dsize = ctext->C2->length;
+	c3->dsize = ctext->C3->length;
 	md_size = EVP_MD_size(md);
 	if (c3->dsize != md_size) {
 		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
@@ -2775,8 +2775,8 @@ static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext
 		return UADK_P_FAIL;
 	}
 
-	c1->x.dsize = BN_bn2bin(ctext_struct->C1x, (void *)c1->x.data);
-	c1->y.dsize = BN_bn2bin(ctext_struct->C1y, (void *)c1->y.data);
+	c1->x.dsize = BN_bn2bin(ctext->C1x, (void *)c1->x.data);
+	c1->y.dsize = BN_bn2bin(ctext->C1y, (void *)c1->y.data);
 
 	return UADK_P_SUCCESS;
 }
@@ -2788,13 +2788,13 @@ static int uadk_prov_sm2_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_ecc_in *ecc_in;
 
 	ecc_out = wd_sm2_new_dec_out(sess, c2->dsize);
-	if (!ecc_out) {
+	if (ecc_out == NULL) {
 		fprintf(stderr, "failed to new dec out\n");
 		return UADK_P_FAIL;
 	}
 
 	ecc_in = wd_sm2_new_dec_in(sess, c1, c2, c3);
-	if (!ecc_in) {
+	if (ecc_in == NULL) {
 		fprintf(stderr, "failed to new dec in\n");
 		wd_ecc_del_out(sess, ecc_out);
 		return UADK_P_FAIL;
@@ -2811,7 +2811,7 @@ static int uadk_prov_sm2_get_plaintext(struct wd_ecc_req *req,
 	struct wd_dtb *ptext = NULL;
 
 	wd_sm2_get_dec_out_params(req->dst, &ptext);
-	if (!ptext) {
+	if (ptext == NULL) {
 		fprintf(stderr, "failed to get ptext\n");
 		return UADK_P_FAIL;
 	}
@@ -2832,7 +2832,7 @@ static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 				const unsigned char *in, size_t inlen)
 {
 	SM2_PROV_CTX *smctx = ctx->sm2_pctx;
-	struct sm2_ciphertext *ctext_struct;
+	struct sm2_ciphertext *ctext;
 	struct wd_ecc_req req = {0};
 	struct wd_ecc_point c1;
 	struct wd_dtb c2, c3;
@@ -2843,12 +2843,12 @@ static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 	if (ret == UADK_P_FAIL)
 		return ret;
 
-	ctext_struct = d2i_SM2_Ciphertext(NULL, &in, inlen);
-	if (ctext_struct == NULL)
+	ctext = d2i_SM2_Ciphertext(NULL, &in, inlen);
+	if (ctext == NULL)
 		return UADK_P_FAIL;
 
 	md = (smctx->sm2_md->md == NULL) ? EVP_sm3() : smctx->sm2_md->md;
-	ret = uadk_prov_sm2_asym_ber_to_bin(md, ctext_struct, &c1, &c2, &c3);
+	ret = uadk_prov_sm2_asym_ber_to_bin(md, ctext, &c1, &c2, &c3);
 	if (ret == UADK_P_FAIL)
 		goto free_ctext;
 
@@ -2873,7 +2873,7 @@ static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
 	free(c1.x.data);
-	SM2_Ciphertext_free(ctext_struct);
+	SM2_Ciphertext_free(ctext);
 
 	return UADK_P_SUCCESS;
 
@@ -2883,7 +2883,7 @@ uninit_iot:
 free_c1:
 	free(c1.x.data);
 free_ctext:
-	SM2_Ciphertext_free(ctext_struct);
+	SM2_Ciphertext_free(ctext);
 	return UADK_P_FAIL;
 }
 
@@ -2892,7 +2892,7 @@ static int uadk_prov_sm2_plaintext_size(const unsigned char *ct, size_t ct_size,
 	struct sm2_ciphertext *sm2_ctext;
 
 	sm2_ctext = d2i_SM2_Ciphertext(NULL, &ct, ct_size);
-	if (!sm2_ctext) {
+	if (sm2_ctext == NULL) {
 		fprintf(stderr, "invalid sm2 encoding\n");
 		return UADK_P_FAIL;
 	}
