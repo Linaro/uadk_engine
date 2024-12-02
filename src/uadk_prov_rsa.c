@@ -285,6 +285,47 @@ enum {
 	MAX_CODE,
 };
 
+static UADK_PKEY_SIGNATURE get_default_rsa_signature(void)
+{
+	static UADK_PKEY_SIGNATURE s_signature;
+	static int initilazed;
+
+	if (!initilazed) {
+		UADK_PKEY_SIGNATURE *signature =
+			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "RSA", "provider=default");
+
+		if (signature) {
+			s_signature = *signature;
+			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
+			initilazed = 1;
+		} else {
+			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default RSA provider\n");
+		}
+	}
+	return s_signature;
+}
+
+static UADK_PKEY_ASYM_CIPHER get_default_rsa_asym_cipher(void)
+{
+	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
+	static int initilazed;
+
+	if (!initilazed) {
+		UADK_PKEY_ASYM_CIPHER *asym_cipher =
+			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "RSA",
+								       "provider=default");
+
+		if (asym_cipher) {
+			s_asym_cipher = *asym_cipher;
+			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
+			initilazed = 1;
+		} else {
+			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default RSA provider\n");
+		}
+	}
+	return s_asym_cipher;
+}
+
 static void uadk_rsa_clear_flags(RSA *r, int flags)
 {
 	r->flags &= ~flags;
