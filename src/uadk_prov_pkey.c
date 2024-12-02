@@ -75,17 +75,17 @@ static void uadk_prov_asym_cipher_set_support_state(int alg_tag, int value)
 	p_asym_cipher_support_state[alg_tag] = value;
 }
 
-static int uadk_prov_ecc_get_hw_keybits(int bits)
+static int uadk_prov_ecc_get_hw_keybits(int key_bits)
 {
-	if (bits > ECC384BITS)
+	if (key_bits > ECC384BITS)
 		return ECC521BITS;
-	else if (bits > ECC320BITS)
+	else if (key_bits > ECC320BITS)
 		return ECC384BITS;
-	else if (bits > ECC256BITS)
+	else if (key_bits > ECC256BITS)
 		return ECC320BITS;
-	else if (bits > ECC192BITS)
+	else if (key_bits > ECC192BITS)
 		return ECC256BITS;
-	else if (bits > ECC128BITS)
+	else if (key_bits > ECC128BITS)
 		return ECC192BITS;
 	else
 		return ECC128BITS;
@@ -105,18 +105,18 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 	BIGNUM *k;
 	int ret;
 
-	if (!out) {
+	if (out == NULL) {
 		fprintf(stderr, "out is NULL\n");
-		return -1;
+		return UADK_P_INVALID;
 	}
 
 	k = BN_new();
-	if (!k)
+	if (k == NULL)
 		return -ENOMEM;
 
 	do {
 		ret = BN_priv_rand_range(k, usr);
-		if (!ret) {
+		if (ret == 0) {
 			fprintf(stderr, "failed to BN_priv_rand_range\n");
 			ret = -EINVAL;
 			goto err;
@@ -132,7 +132,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 
 	ret = 0;
 	if (count < 0)
-		ret = -1;
+		ret = UADK_P_INVALID;
 err:
 	BN_free(k);
 
@@ -160,12 +160,12 @@ int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_POINT_get_affine_coordinates(group, p, x, y, ctx))
-		return -1;
+		return UADK_P_FAIL;
 # else
 	if (!EC_POINT_get_affine_coordinates_GFp(group, p, x, y, ctx))
-		return -1;
+		return UADK_P_FAIL;
 # endif
-	return 0;
+	return UADK_P_SUCCESS;
 }
 
 int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
@@ -173,100 +173,100 @@ int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_GROUP_get_curve(group, p, a, b, ctx))
-		return -1;
+		return UADK_P_FAIL;
 # else
 	if (!EC_GROUP_get_curve_GFp(group, p, a, b, ctx))
-		return -1;
+		return UADK_P_FAIL;
 # endif
-	return 0;
+	return UADK_P_SUCCESS;
 }
 
-static void uadk_prov_fill_ecc_cv_param(struct wd_ecc_curve *pparam,
+static void uadk_prov_fill_ecc_cv_param(struct wd_ecc_curve *ecc_param,
 			      struct curve_param *cv_param,
 			      BIGNUM *g_x, BIGNUM *g_y)
 {
-	pparam->p.dsize = BN_bn2bin(cv_param->p, (void *)pparam->p.data);
-	pparam->a.dsize = BN_bn2bin(cv_param->a, (void *)pparam->a.data);
-	if (!pparam->a.dsize) {
-		pparam->a.dsize = 1;
-		pparam->a.data[0] = 0;
+	ecc_param->p.dsize = BN_bn2bin(cv_param->p, (void *)ecc_param->p.data);
+	ecc_param->a.dsize = BN_bn2bin(cv_param->a, (void *)ecc_param->a.data);
+	if (!ecc_param->a.dsize) {
+		ecc_param->a.dsize = 1;
+		ecc_param->a.data[0] = 0;
 	}
 
-	pparam->b.dsize = BN_bn2bin(cv_param->b, (void *)pparam->b.data);
-	if (!pparam->b.dsize) {
-		pparam->b.dsize = 1;
-		pparam->b.data[0] = 0;
+	ecc_param->b.dsize = BN_bn2bin(cv_param->b, (void *)ecc_param->b.data);
+	if (!ecc_param->b.dsize) {
+		ecc_param->b.dsize = 1;
+		ecc_param->b.data[0] = 0;
 	}
 
-	pparam->g.x.dsize = BN_bn2bin(g_x, (void *)pparam->g.x.data);
-	pparam->g.y.dsize = BN_bn2bin(g_y, (void *)pparam->g.y.data);
-	pparam->n.dsize = BN_bn2bin(cv_param->order, (void *)pparam->n.data);
+	ecc_param->g.x.dsize = BN_bn2bin(g_x, (void *)ecc_param->g.x.data);
+	ecc_param->g.y.dsize = BN_bn2bin(g_y, (void *)ecc_param->g.y.data);
+	ecc_param->n.dsize = BN_bn2bin(cv_param->order, (void *)ecc_param->n.data);
 }
 
 static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
 			     struct wd_ecc_curve_cfg *cv)
 {
-	struct wd_ecc_curve *pparam = cv->cfg.pparam;
+	struct wd_ecc_curve *ecc_param = cv->cfg.pparam;
 	struct curve_param *cv_param;
+	int ret = UADK_P_FAIL;
 	BIGNUM *g_x, *g_y;
-	int ret = -1;
-	BN_CTX *ctx;
+	BN_CTX *bn_ctx;
 
-	ctx = BN_CTX_new();
-	if (!ctx)
+	bn_ctx = BN_CTX_new();
+	if (!bn_ctx)
 		return ret;
 
-	BN_CTX_start(ctx);
+	BN_CTX_start(bn_ctx);
 
 	cv_param = OPENSSL_malloc(sizeof(struct curve_param));
 	if (!cv_param)
 		goto free_ctx;
 
-	cv_param->p = BN_CTX_get(ctx);
+	cv_param->p = BN_CTX_get(bn_ctx);
 	if (!cv_param->p)
 		goto free_cv;
 
-	cv_param->a = BN_CTX_get(ctx);
+	cv_param->a = BN_CTX_get(bn_ctx);
 	if (!cv_param->a)
 		goto free_cv;
 
-	cv_param->b = BN_CTX_get(ctx);
+	cv_param->b = BN_CTX_get(bn_ctx);
 	if (!cv_param->b)
 		goto free_cv;
 
-	g_x = BN_CTX_get(ctx);
+	g_x = BN_CTX_get(bn_ctx);
 	if (!g_x)
 		goto free_cv;
 
-	g_y = BN_CTX_get(ctx);
+	g_y = BN_CTX_get(bn_ctx);
 	if (!g_y)
 		goto free_cv;
 
-	ret = uadk_prov_get_curve(group, cv_param->p, cv_param->a, cv_param->b, ctx);
-	if (ret)
+	ret = uadk_prov_get_curve(group, cv_param->p, cv_param->a, cv_param->b, bn_ctx);
+	if (ret == 0)
 		goto free_cv;
 
 	cv_param->g = EC_GROUP_get0_generator(group);
 	if (!cv_param->g)
 		goto free_cv;
 
-	ret = uadk_prov_get_affine_coordinates(group, cv_param->g, g_x, g_y, ctx);
-	if (ret)
+	ret = uadk_prov_get_affine_coordinates(group, cv_param->g, g_x, g_y, bn_ctx);
+	if (ret == 0)
 		goto free_cv;
 
 	cv_param->order = EC_GROUP_get0_order(group);
 	if (!cv_param->order)
 		goto free_cv;
 
-	uadk_prov_fill_ecc_cv_param(pparam, cv_param, g_x, g_y);
+	uadk_prov_fill_ecc_cv_param(ecc_param, cv_param, g_x, g_y);
 	cv->type = WD_CV_CFG_PARAM;
-	ret = 0;
+	ret = UADK_P_SUCCESS;
 
 free_cv:
 	OPENSSL_free(cv_param);
 free_ctx:
-	BN_CTX_end(ctx);
-	BN_CTX_free(ctx);
+	BN_CTX_end(bn_ctx);
+	BN_CTX_free(bn_ctx);
 
 	return ret;
 }
@@ -289,13 +289,13 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	sp.cv.cfg.pparam = &param;
 	group = EC_KEY_get0_group(eckey);
 	ret = uadk_prov_set_sess_setup_cv(group, &sp.cv);
-	if (ret) {
+	if (ret == 0) {
 		fprintf(stderr, "failed to set_sess_setup_cv\n");
 		return (handle_t)0;
 	}
 
 	order = EC_GROUP_get0_order(group);
-	if (!order) {
+	if (order == NULL) {
 		fprintf(stderr, "failed to get ecc order\n");
 		return (handle_t)0;
 	}
@@ -309,7 +309,7 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 	sch_p.numa_id = -1;
 	sp.sched_param = &sch_p;
 	sess = wd_ecc_alloc_sess(&sp);
-	if (!sess)
+	if (sess == (handle_t)0)
 		fprintf(stderr, "failed to alloc ecc sess\n");
 
 	return sess;
@@ -317,30 +317,30 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, char *alg)
 
 void uadk_prov_ecc_cb(void *req_t)
 {
-	struct wd_ecc_req *req_new = (struct wd_ecc_req *)req_t;
-	struct uadk_e_cb_info *cb_param;
-	struct wd_ecc_req *req_origin;
-	struct async_op *op;
+	struct wd_ecc_req *ecc_req_new = (struct wd_ecc_req *)req_t;
+	struct uadk_e_cb_info *ecc_cb_param;
+	struct wd_ecc_req *ecc_req_origin;
+	struct async_op *ecc_async_op;
 
-	if (!req_new)
+	if (ecc_req_new == NULL)
 		return;
 
-	cb_param = req_new->cb_param;
-	if (!cb_param)
+	ecc_cb_param = ecc_req_new->cb_param;
+	if (ecc_cb_param == NULL)
 		return;
 
-	req_origin = cb_param->priv;
-	if (!req_origin)
+	ecc_req_origin = ecc_cb_param->priv;
+	if (ecc_req_origin == NULL)
 		return;
 
-	req_origin->status = req_new->status;
+	ecc_req_origin->status = ecc_req_new->status;
 
-	op = cb_param->op;
-	if (op && op->job && !op->done) {
-		op->done = 1;
-		op->ret = 0;
-		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+	ecc_async_op = ecc_cb_param->op;
+	if (ecc_async_op && ecc_async_op->job && !ecc_async_op->done) {
+		ecc_async_op->done = 1;
+		ecc_async_op->ret = 0;
+		async_free_poll_task(ecc_async_op->idx, 1);
+		async_wake_job(ecc_async_op->job);
 	}
 }
 
@@ -384,7 +384,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(usr, &op, ASYNC_TASK_ECC);
-	if (!ret)
+	if (ret == 0)
 		goto err;
 
 	if (req->status)
@@ -555,7 +555,7 @@ static int ossl_ec_encoding_name2id(const char *name)
 			return encoding_nameid_map[i].id;
 	}
 
-	return -1;
+	return UADK_P_INVALID;
 }
 
 static int ossl_ec_pt_format_name2id(const char *name)
@@ -571,7 +571,7 @@ static int ossl_ec_pt_format_name2id(const char *name)
 			return format_nameid_map[i].id;
 	}
 
-	return -1;
+	return UADK_P_INVALID;
 }
 
 int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
@@ -663,25 +663,24 @@ void uadk_prov_signature_alg(void)
 	}
 }
 
-int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
+int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *ec)
 {
-	unsigned char bin[UADK_ECC_MAX_KEY_BYTES];
+	unsigned char prikey_bin[UADK_ECC_MAX_KEY_BYTES];
 	struct wd_ecc_key *ecc_key;
 	const EC_GROUP *group;
 	struct wd_dtb prikey;
 	const BIGNUM *d;
+	int buflen, ret;
 	size_t degree;
-	int buflen;
-	int ret;
 
-	d = EC_KEY_get0_private_key(eckey);
-	if (!d) {
+	d = EC_KEY_get0_private_key(ec);
+	if (d == NULL) {
 		fprintf(stderr, "private key not set\n");
 		return UADK_P_FAIL;
 	}
 
-	group = EC_KEY_get0_group(eckey);
-	if (!group) {
+	group = EC_KEY_get0_group(ec);
+	if (group == NULL) {
 		fprintf(stderr, "failed to get ecc group\n");
 		return UADK_P_FAIL;
 	}
@@ -689,8 +688,8 @@ int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *eckey)
 	degree = EC_GROUP_get_degree(group);
 	buflen = BITS_TO_BYTES(degree);
 	ecc_key = wd_ecc_get_key(sess);
-	prikey.data = (void *)bin;
-	prikey.dsize = BN_bn2binpad(d, bin, buflen);
+	prikey.data = (void *)prikey_bin;
+	prikey.dsize = BN_bn2binpad(d, prikey_bin, buflen);
 
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
@@ -713,7 +712,7 @@ bool uadk_prov_is_all_zero(const unsigned char *data, size_t dlen)
 	return true;
 }
 
-int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
+int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *ec)
 {
 	unsigned char *point_bin = NULL;
 	struct wd_ecc_point pubkey;
@@ -722,16 +721,16 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *eckey)
 	const EC_GROUP *group;
 	int ret, len;
 
-	point = EC_KEY_get0_public_key(eckey);
-	if (!point) {
+	point = EC_KEY_get0_public_key(ec);
+	if (point == NULL) {
 		fprintf(stderr, "pubkey not set!\n");
 		return UADK_P_FAIL;
 	}
 
-	group = EC_KEY_get0_group(eckey);
+	group = EC_KEY_get0_group(ec);
 	len = EC_POINT_point2buf(group, point, UADK_OCTET_STRING,
 				 &point_bin, NULL);
-	if (!len) {
+	if (len == 0) {
 		fprintf(stderr, "EC_POINT_point2buf error.\n");
 		return UADK_P_FAIL;
 	}
