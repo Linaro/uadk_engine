@@ -277,26 +277,6 @@ static OSSL_FUNC_signature_get_ctx_md_params_fn uadk_signature_##nm##_get_ctx_md
 static OSSL_FUNC_signature_gettable_ctx_md_params_fn uadk_signature_##nm##_gettable_ctx_md_params; \
 static OSSL_FUNC_signature_set_ctx_md_params_fn uadk_signature_##nm##_set_ctx_md_params; \
 static OSSL_FUNC_signature_settable_ctx_md_params_fn uadk_signature_##nm##_settable_ctx_md_params; \
-static UADK_PKEY_SIGNATURE get_default_##nm##_signature(void)	\
-{				\
-	static UADK_PKEY_SIGNATURE s_signature;	\
-	static int initilazed;	\
-				\
-	if (!initilazed) {	\
-		UADK_PKEY_SIGNATURE *signature =	\
-			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, #alg, \
-			"provider=default");	\
-				\
-		if (signature) {	\
-			s_signature = *signature;	\
-			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);	\
-			initilazed = 1;	\
-		} else {	\
-			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default provider\n");	\
-		}	\
-	}	\
-	return s_signature;	\
-}	\
 const OSSL_DISPATCH uadk_##nm##_signature_functions[] = {	\
 	{ OSSL_FUNC_SIGNATURE_NEWCTX, (void (*)(void))uadk_signature_##nm##_newctx },	\
 	{ OSSL_FUNC_SIGNATURE_SIGN_INIT, (void (*)(void))uadk_signature_##nm##_sign_init }, \
@@ -373,26 +353,6 @@ static OSSL_FUNC_asym_cipher_get_ctx_params_fn uadk_asym_cipher_##nm##_get_ctx_p
 static OSSL_FUNC_asym_cipher_gettable_ctx_params_fn uadk_asym_cipher_##nm##_gettable_ctx_params; \
 static OSSL_FUNC_asym_cipher_set_ctx_params_fn uadk_asym_cipher_##nm##_set_ctx_params; \
 static OSSL_FUNC_asym_cipher_settable_ctx_params_fn uadk_asym_cipher_##nm##_settable_ctx_params; \
-static UADK_PKEY_ASYM_CIPHER get_default_##nm##_asym_cipher(void)	\
-{				\
-	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;	\
-	static int initilazed;	\
-				\
-	if (!initilazed) {	\
-		UADK_PKEY_ASYM_CIPHER *asym_cipher =	\
-			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, #alg, \
-			"provider=default");	\
-				\
-		if (asym_cipher) {	\
-			s_asym_cipher = *asym_cipher;	\
-			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);	\
-			initilazed = 1;	\
-		} else {	\
-			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default provider\n");	\
-		}	\
-	}	\
-	return s_asym_cipher;	\
-}	\
 const OSSL_DISPATCH uadk_##nm##_asym_cipher_functions[] = {	\
 	{ OSSL_FUNC_ASYM_CIPHER_NEWCTX, (void (*)(void))uadk_asym_cipher_##nm##_newctx }, \
 	{ OSSL_FUNC_ASYM_CIPHER_ENCRYPT_INIT, \
@@ -444,24 +404,6 @@ typedef struct {
 	static OSSL_FUNC_keyexch_settable_ctx_params_fn uadk_keyexch_##nm##_settable_ctx_params; \
 	static OSSL_FUNC_keyexch_get_ctx_params_fn uadk_keyexch_##nm##_get_ctx_params;	\
 	static OSSL_FUNC_keyexch_gettable_ctx_params_fn uadk_keyexch_##nm##_gettable_ctx_params; \
-static UADK_PKEY_KEYEXCH get_default_##nm##_keyexch(void)		\
-{		\
-	UADK_PKEY_KEYEXCH s_keyexch;			\
-	static int initilazed;				\
-							\
-	if (!initilazed) {				\
-		UADK_PKEY_KEYEXCH *keyexch =			\
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, #alg, "provider=default"); \
-		if (keyexch) {	\
-			s_keyexch = *keyexch;	\
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);	\
-			initilazed = 1;	\
-		} else {	\
-			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default provider\n");	\
-		}	\
-	}	\
-	return s_keyexch;	\
-}	\
 const OSSL_DISPATCH uadk_##nm##_keyexch_functions[] = {	\
 	{ OSSL_FUNC_KEYEXCH_NEWCTX, (void (*)(void))uadk_keyexch_##nm##_newctx },	\
 	{ OSSL_FUNC_KEYEXCH_INIT, (void (*)(void))uadk_keyexch_##nm##_init },	\
