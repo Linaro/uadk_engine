@@ -1024,12 +1024,13 @@ static void uadk_rsa_mutex_infork(void)
 
 static int uadk_prov_rsa_init(void)
 {
+	char alg_name[] = "rsa";
 	int ret;
 
 	pthread_atfork(NULL, NULL, uadk_rsa_mutex_infork);
 	pthread_mutex_lock(&rsa_mutex);
 	if (g_rsa_prov.pid != getpid()) {
-		ret = wd_rsa_init2("rsa", SCHED_POLICY_RR, TASK_MIX);
+		ret = wd_rsa_init2(alg_name, SCHED_POLICY_RR, TASK_MIX);
 		if (unlikely(ret)) {
 			pthread_mutex_unlock(&rsa_mutex);
 			return ret;
