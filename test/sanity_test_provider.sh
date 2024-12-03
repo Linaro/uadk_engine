@@ -88,23 +88,25 @@ if [[ $signature_algs =~ "uadk_provider" ]]; then
 	openssl pkeyutl -decrypt -in enc.txt -inkey prikey.pem -out dec.txt \
         -pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id
 
-	echo "uadk_provider testing SM2"
-	openssl speed -provider $engine_id sm2
-	openssl speed -provider $engine_id -async_jobs 1 sm2
-	#generate keypair
-	openssl ecparam -name SM2 -genkey -out sm2.key -provider $engine_id
-	#get pubkey
-	openssl ec -in sm2.key -pubout -out sm2.pub
-	#sign
-	echo "Content to be signed" > sign.data
-	openssl dgst -provider $engine_id -SM3 -sign sm2.key -out sm2_ec.sig sign.data
-	#verify
-	openssl dgst -provider $engine_id -SM3 -verify sm2.pub -signature sm2_ec.sig sign.data
-	#encrypt
-	echo "Content to be encrypted" > plaintext.txt
-	openssl pkeyutl -encrypt -in plaintext.txt -out ciphertext.bin -inkey sm2.pub -pubin -provider $engine_id
-	#decrypt
-	openssl pkeyutl -decrypt -in ciphertext.bin -out plaintext.txt -inkey sm2.key -provider $engine_id
+	if echo "$signature_algs" | grep -qE '\{.*SM2.*\} @ .*/uadk_provider'; then
+		echo "uadk_provider testing SM2"
+		openssl speed -provider $engine_id sm2
+		openssl speed -provider $engine_id -async_jobs 1 sm2
+		#generate keypair
+		openssl ecparam -name SM2 -genkey -out sm2.key -provider $engine_id
+		#get pubkey
+		openssl ec -in sm2.key -pubout -out sm2.pub
+		#sign
+		echo "Content to be signed" > sign.data
+		openssl dgst -provider $engine_id -SM3 -sign sm2.key -out sm2_ec.sig sign.data
+		#verify
+		openssl dgst -provider $engine_id -SM3 -verify sm2.pub -signature sm2_ec.sig sign.data
+		#encrypt
+		echo "Content to be encrypted" > plaintext.txt
+		openssl pkeyutl -encrypt -in plaintext.txt -out ciphertext.bin -inkey sm2.pub -pubin -provider $engine_id
+		#decrypt
+		openssl pkeyutl -decrypt -in ciphertext.bin -out plaintext.txt -inkey sm2.key -provider $engine_id
+	fi
 fi
 
 if [[ $keyexch_algs =~ "uadk_provider" ]]; then
