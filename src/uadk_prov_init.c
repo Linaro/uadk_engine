@@ -68,7 +68,35 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ NULL, NULL, NULL }
 };
 
-const OSSL_ALGORITHM uadk_prov_ciphers[] = {
+const OSSL_ALGORITHM uadk_prov_ciphers_v2[] = {
+	{ "AES-128-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_cbc_functions, "uadk_provider aes-128-cbc" },
+	{ "AES-192-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_cbc_functions, "uadk_provider aes-192-cbc" },
+	{ "AES-256-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_cbc_functions, "uadk_provider aes-256-cbc" },
+	{ "AES-128-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_ecb_functions, "uadk_provider aes-128-ecb" },
+	{ "AES-192-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_ecb_functions, "uadk_provider aes-192-ecb" },
+	{ "AES-256-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_ecb_functions, "uadk_provider aes-256-ecb" },
+	{ "AES-128-XTS", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_xts_functions, "uadk_provider aes-128-xts" },
+	{ "AES-256-XTS", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_xts_functions, "uadk_provider aes-256-xts" },
+	{ "SM4-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm4_cbc_functions, "uadk_provider sm4-cbc" },
+	{ "SM4-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_sm4_ecb_functions, "uadk_provider sm4-ecb" },
+	{ "DES-EDE3-CBC", UADK_DEFAULT_PROPERTIES,
+	  uadk_des_ede3_cbc_functions, "uadk_provider des-ede3-cbc" },
+	{ "DES-EDE3-ECB", UADK_DEFAULT_PROPERTIES,
+	  uadk_des_ede3_ecb_functions, "uadk_provider des-ede3-ecb" },
+	{ NULL, NULL, NULL }
+};
+
+const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
 	{ "AES-128-CBC", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_128_cbc_functions, "uadk_provider aes-128-cbc" },
 	{ "AES-192-CBC", UADK_DEFAULT_PROPERTIES,
@@ -161,6 +189,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 					int *no_cache)
 {
 	static int prov_init;
+	int ver;
 
 	prov = OSSL_PROVIDER_load(NULL, "default");
 	if (!prov_init) {
@@ -176,7 +205,10 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 	case OSSL_OP_DIGEST:
 		return uadk_prov_digests;
 	case OSSL_OP_CIPHER:
-		return uadk_prov_ciphers;
+		ver = uadk_prov_cipher_version();
+		if (ver == HW_SEC_V3)
+			return uadk_prov_ciphers_v3;
+		return uadk_prov_ciphers_v2;
 	case OSSL_OP_SIGNATURE:
 		(void)uadk_prov_signature_alg();
 		return uadk_prov_signature;

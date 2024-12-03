@@ -26,6 +26,8 @@
 #define UADK_INIT_SUCCESS	1
 #define UADK_INIT_FAIL		2
 #define UADK_DEVICE_ERROR	3
+#define HW_SEC_V2		2
+#define HW_SEC_V3		3
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"
@@ -180,6 +182,7 @@ void uadk_prov_destroy_rsa(void);
 void uadk_prov_destroy_dh(void);
 void uadk_prov_sm2_uninit(void);
 void uadk_prov_dh_uninit(void);
+int uadk_prov_cipher_version(void);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;
