@@ -1285,6 +1285,27 @@ static void uadk_prov_cipher_freectx(void *ctx)
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
+int uadk_prov_cipher_version(void)
+{
+	struct uacce_dev *dev;
+	int ver;
+
+	dev = wd_get_accel_dev("cipher");
+	if (!dev) {
+		fprintf(stderr, "no device available!\n");
+		return 0;
+	}
+
+	if (!strcmp(dev->api, "hisi_qm_v2"))
+		ver = HW_SEC_V2;
+	else
+		ver = HW_SEC_V3;
+
+	free(dev);
+
+	return ver;
+}
+
 #define UADK_CIPHER_DESCR(nm, blk_size, key_len, iv_len,			\
 			  flags, e_nid, algnm, mode, typ)			\
 static OSSL_FUNC_cipher_newctx_fn uadk_##nm##_newctx;				\
