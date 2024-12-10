@@ -29,6 +29,7 @@
 #define PROV_SUPPORT		1
 #define SIGNATURE_TYPE		3
 #define ASYM_CIPHER_TYPE	3
+#define SECURITY_CHECK_DISABLE	0
 
 static int p_keymgmt_support_state[KEYMGMT_TYPE];
 static int p_signature_support_state[SIGNATURE_TYPE];
@@ -810,4 +811,10 @@ void uadk_prov_ecc_uninit(void)
 		g_ecc_prov.pid = 0;
 	}
 	pthread_mutex_unlock(&ecc_mutex);
+}
+
+/* Currently, disable the security checks in the default provider and uadk provider */
+int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx)
+{
+	return SECURITY_CHECK_DISABLE;
 }

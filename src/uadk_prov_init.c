@@ -190,6 +190,8 @@ static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
 static const OSSL_ALGORITHM uadk_prov_keyexch[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES,
 	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
+	{ "ECDH", UADK_DEFAULT_PROPERTIES,
+	  uadk_ecdh_keyexch_functions, "uadk_provider ecdh_keyexch" },
 	{ NULL, NULL, NULL }
 };
 
@@ -218,15 +220,16 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 			return uadk_prov_ciphers_v3;
 		return uadk_prov_ciphers_v2;
 	case OSSL_OP_SIGNATURE:
-		(void)uadk_prov_signature_alg();
+		uadk_prov_signature_alg();
 		return uadk_prov_signature;
 	case OSSL_OP_KEYMGMT:
-		(void)uadk_prov_keymgmt_alg();
+		uadk_prov_keymgmt_alg();
 		return uadk_prov_keymgmt;
 	case OSSL_OP_ASYM_CIPHER:
-		(void)uadk_prov_asym_cipher_alg();
+		uadk_prov_asym_cipher_alg();
 		return uadk_prov_asym_cipher;
 	case OSSL_OP_KEYEXCH:
+		uadk_prov_keyexch_alg();
 		return uadk_prov_keyexch;
 	case OSSL_OP_STORE:
 		return prov->query_operation(provctx, operation_id, no_cache);
