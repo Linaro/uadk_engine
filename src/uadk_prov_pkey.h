@@ -41,7 +41,6 @@
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
-#define UADK_P_INTI_SUCCESS		0
 #define UADK_P_SUCCESS			1
 #define UADK_P_FAIL			0
 #define UADK_P_INVALID			(-1)
@@ -440,5 +439,6 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *eckey);
 void uadk_prov_signature_alg(void);
 void uadk_prov_asym_cipher_alg(void);
 int uadk_prov_asym_cipher_get_support_state(int alg_tag);
+int uadk_prov_ecc_init(const char *alg_name);
 
 #endif
