@@ -2476,6 +2476,14 @@ static const OSSL_PARAM *uadk_asym_cipher_rsa_settable_ctx_params(void *vprsactx
 	return get_default_rsa_asym_cipher().settable_ctx_params(vprsactx, provctx);
 }
 
+static const char *uadk_keymgmt_rsa_query_operation_name(int operation_id)
+{
+	if (!get_default_rsa_keymgmt().query_operation_name)
+		return NULL;
+
+	return get_default_rsa_keymgmt().query_operation_name(operation_id);
+}
+
 static void *uadk_keymgmt_rsa_new(void *provctx)
 {
 	if (!get_default_rsa_keymgmt().new_fun)
