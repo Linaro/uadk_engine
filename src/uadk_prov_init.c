@@ -176,6 +176,8 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
 	{ "EC", UADK_DEFAULT_PROPERTIES,
 	  uadk_ec_keymgmt_functions, "uadk EC Keymgmt implementation."},
+	{ "X448", UADK_DEFAULT_PROPERTIES,
+	  uadk_x448_keymgmt_functions, "uadk X448 Keymgmt implementation."},
 	{ NULL, NULL, NULL }
 };
 
@@ -192,6 +194,8 @@ static const OSSL_ALGORITHM uadk_prov_keyexch[] = {
 	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
 	{ "ECDH", UADK_DEFAULT_PROPERTIES,
 	  uadk_ecdh_keyexch_functions, "uadk_provider ecdh_keyexch" },
+	{ "X448", UADK_DEFAULT_PROPERTIES,
+	  uadk_x448_keyexch_functions, "uadk X448 keyexch implementation."},
 	{ NULL, NULL, NULL }
 };
 
