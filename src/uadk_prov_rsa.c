@@ -32,17 +32,17 @@
 
 #define UN_SET				0
 #define IS_SET				1
+#define RSA_MAX_PRIME_NUM		2
 #define BIT_BYTES_SHIFT			3
 #define RSA_MIN_MODULUS_BITS		512
-#define RSA_MAX_PRIME_NUM		2
 #define RSA1024BITS			1024
 #define RSA2048BITS			2048
 #define RSA3072BITS			3072
 #define RSA4096BITS			4096
 #define OPENSSLRSA7680BITS		7680
 #define OPENSSLRSA15360BITS		15360
-#define CTX_ASYNC			1
 #define CTX_SYNC			0
+#define CTX_ASYNC			1
 #define CTX_NUM				2
 #define BN_CONTINUE			1
 #define BN_VALID			0
@@ -50,11 +50,11 @@
 #define BN_REDO				(-2)
 #define GET_ERR_FINISH			0
 #define UNUSED(x)			((void)(x))
-#define UADK_E_SUCCESS			1
 #define UADK_E_FAIL			0
+#define UADK_E_SUCCESS			1
 #define UADK_DO_SOFT			(-0xE0)
-#define UADK_E_POLL_SUCCESS		0
 #define UADK_E_POLL_FAIL		(-1)
+#define UADK_E_POLL_SUCCESS		0
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		(-1)
 #define ENV_ENABLED			1
@@ -67,15 +67,6 @@
 UADK_PKEY_KEYMGMT_DESCR(rsa, RSA);
 UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
 UADK_PKEY_ASYM_CIPHER_DESCR(rsa, RSA);
-
-struct bignum_st {
-	BN_ULONG *d;
-	int top;
-	int dmax;
-	int neg;
-	int flags;
-};
-
 struct rsa_keypair {
 	struct wd_rsa_pubkey *pubkey;
 	struct wd_rsa_prikey *prikey;
@@ -87,15 +78,18 @@ struct rsa_keygen_param {
 	struct wd_dtb *wd_q;
 };
 
+struct bignum_st {
+	BN_ULONG *d;
+	int top;
+	int dmax;
+	int neg;
+	int flags;
+};
+
 struct rsa_keygen_param_bn {
 	BIGNUM *e;
 	BIGNUM *p;
 	BIGNUM *q;
-};
-
-struct rsa_pubkey_param {
-	const BIGNUM *e;
-	const BIGNUM *n;
 };
 
 struct rsa_prikey_param {
@@ -118,6 +112,16 @@ struct rsa_prime_param {
 	BIGNUM *prime;
 };
 
+struct rsa_pubkey_param {
+	const BIGNUM *e;
+	const BIGNUM *n;
+};
+
+struct rsa_sched {
+	int sched_type;
+	struct wd_sched wd_sched;
+};
+
 struct uadk_rsa_sess {
 	handle_t sess;
 	struct wd_rsa_sess_setup setup;
@@ -126,11 +130,6 @@ struct uadk_rsa_sess {
 	int is_pubkey_ready;
 	int is_prikey_ready;
 	int key_size;
-};
-
-struct rsa_sched {
-	int sched_type;
-	struct wd_sched wd_sched;
 };
 
 struct rsa_prov {
@@ -506,11 +505,10 @@ static void free_tbuf(PROV_RSA_SIG_CTX *ctx)
 
 static int rsa_check_bit_useful(const int bits, int flen)
 {
-	if (flen > (bits >> BIT_BYTES_SHIFT))
-		return UADK_DO_SOFT;
-
 	if (bits < RSA_MIN_MODULUS_BITS)
 		return UADK_E_FAIL;
+	if (flen > (bits >> BIT_BYTES_SHIFT))
+		return UADK_DO_SOFT;
 
 	switch (bits) {
 	case RSA1024BITS:
@@ -554,6 +552,7 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 	ret = rsa_prime_mul_res(*num, param, ctx, cb);
 	if (ret)
 		return ret;
+
 	/*
 	 * If |r1|, product of factors so far, is not as long as expected
 	 * (by checking the first 4 bits are less than 0x9 or greater than
@@ -572,10 +571,10 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		return BN_ERR;
 
 	bitst = BN_get_word(param->r2);
-	if (bitst < 0x9 || bitst > 0xF) {
+	if (bitst > 0xF || bitst < 0x9) {
 	/*
-	 * For keys with more than 4 primes, we attempt longer factor to
-	 * meet length requirement.
+	 * For keys with more than 4 primes, we attempt longer factor
+	 * to meet length requirement.
 	 * Otherwise, we just re-generate the prime with the same length.
 	 * This strategy has the following goals:
 	 * 1. 1024-bit factors are efficient when using 3072 and 4096-bit key
@@ -586,15 +585,14 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		else
 			return BN_ERR;
 
-		ret = BN_GENCB_call(cb, GENCB_NEXT, *n);
-		(*n)++;
+		ret = BN_GENCB_call(cb, GENCB_NEXT, (*n)++);
 		if (!ret)
 			return BN_ERR;
 
 		if (retries == PRIME_RETRY_COUNT) {
-			*num = -1;
-			*bitse = 0;
 			retries = 0;
+			*bitse = 0;
+			*num = -1;
 			return BN_CONTINUE;
 		}
 		retries++;
@@ -616,6 +614,7 @@ static void rsa_set_primes(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
 		*prime = rsa_p;
 	else
 		*prime = rsa_q;
+
 	/* Set BN_FLG_CONSTTIME to prime exponent */
 	BN_set_flags(*prime, BN_FLG_CONSTTIME);
 }
@@ -624,18 +623,19 @@ static int check_rsa_prime_equal(int num, BIGNUM *rsa_p, BIGNUM *rsa_q,
 				 BIGNUM *prime)
 {
 	BIGNUM *prev_prime;
-	int j;
+	int k;
 
-	for (j = 0; j < num; j++) {
+	for (k = 0; k < num; k++) {
 		prev_prime = NULL;
-		if (j == 0)
+		if (k == 0)
 			prev_prime = rsa_p;
 		else
 			prev_prime = rsa_q;
+
 		/*
-		 * BN_cmp(a,b) returns -1 if a < b;
-		 * returns 0 if a == b;
-		 * returns 1 if a > b.
+		 * BN_cmp(a,b) return -1 if a < b;
+		 * return 0 if a == b;
+		 * return 1 if a > b.
 		 */
 		if (!BN_cmp(prime, prev_prime))
 			return UADK_E_FAIL;
@@ -660,10 +660,11 @@ static int check_rsa_prime_useful(int * const n, struct rsa_prime_param *param,
 		return BN_ERR;
 	ERR_set_mark();
 	BN_set_flags(param->r2, BN_FLG_CONSTTIME);
+
 	/*
 	 * BN_mod_inverse(r, a, n, ctx) used to compute inverse modulo n.
-	 * Precisely, it computes the inverse of "a" modulo "n", and places
-	 * the result in "r", which means (a * r) % n == 1.
+	 * Precisely, it computes the inverse of a modulo n, and places
+	 * the result in r, which means (a * r) % n == 1.
 	 * If r == NULL, error. If r != NULL, success.
 	 * The expected result: (r2 * r1) % e_pub == 1,
 	 * the inverse of r2 exist, that is r1.
@@ -678,8 +679,7 @@ static int check_rsa_prime_useful(int * const n, struct rsa_prime_param *param,
 	else
 		return BN_ERR;
 
-	ret = BN_GENCB_call(cb, GENCB_NEXT, *n);
-	(*n)++;
+	ret = BN_GENCB_call(cb, GENCB_NEXT, (*n)++);
 	if (!ret)
 		return BN_ERR;
 
@@ -694,6 +694,7 @@ static int get_rsa_prime_once(int num, const int *bitsr, int * const n,
 
 	if (num >= RSA_MAX_PRIME_NUM)
 		return ret;
+
 	while (1) {
 		/* Generate prime with bitsr[num] len. */
 		if (!BN_generate_prime_ex(param->prime, bitsr[num],
@@ -702,6 +703,7 @@ static int get_rsa_prime_once(int num, const int *bitsr, int * const n,
 		if (!check_rsa_prime_equal(num, param->rsa_p, param->rsa_q,
 					   param->prime))
 			continue;
+
 		ret = check_rsa_prime_useful(n, param, e_pub, ctx, cb);
 		if (ret == BN_ERR)
 			return BN_ERR;
@@ -722,8 +724,8 @@ static void rsa_switch_p_q(BIGNUM *rsa_p, BIGNUM *rsa_q, BIGNUM *p, BIGNUM *q)
 		rsa_q = tmp;
 	}
 
-	BN_copy(q, rsa_q);
 	BN_copy(p, rsa_p);
+	BN_copy(q, rsa_q);
 }
 
 static int check_rsa_is_crt(RSA *rsa)
@@ -755,23 +757,23 @@ static int get_rsa_prime_param(struct rsa_prime_param *param, BN_CTX *ctx)
 {
 	param->r1 = BN_CTX_get(ctx);
 	if (!param->r1)
-		goto end;
+		goto error;
 
 	param->r2 = BN_CTX_get(ctx);
 	if (!param->r2)
-		goto end;
-
-	param->rsa_p = BN_CTX_get(ctx);
-	if (!param->rsa_p)
-		goto end;
+		goto error;
 
 	param->rsa_q = BN_CTX_get(ctx);
 	if (!param->rsa_q)
-		goto end;
+		goto error;
+
+	param->rsa_p = BN_CTX_get(ctx);
+	if (!param->rsa_p)
+		goto error;
 
 	return UADK_E_SUCCESS;
 
-end:
+error:
 	fprintf(stderr, "failed to allocate rsa prime params\n");
 	return -ENOMEM;
 }
@@ -781,31 +783,31 @@ static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 {
 	struct rsa_prime_param *param = NULL;
 	int bitsr[RSA_MAX_PRIME_NUM] = {0};
-	int flag, quo, rmd, i;
-	BN_CTX *ctx;
+	int flag, quot, rmd, i;
+	BN_CTX *bnctx;
 	int bitse = 0;
 	int ret = 0;
 	/* n: modulo n, a part of public key */
 	int n = 0;
 
-	ctx = BN_CTX_new();
-	if (!ctx)
+	bnctx = BN_CTX_new();
+	if (!bnctx)
 		return ret;
 
-	BN_CTX_start(ctx);
+	BN_CTX_start(bnctx);
 	param = OPENSSL_zalloc(sizeof(struct rsa_prime_param));
 	if (!param)
 		goto free_ctx;
 
-	ret = get_rsa_prime_param(param, ctx);
+	ret = get_rsa_prime_param(param, bnctx);
 	if (ret != UADK_E_SUCCESS)
 		goto free_param;
 
 	/* Divide bits into 'primes' pieces evenly */
-	quo = bits / RSA_MAX_PRIME_NUM;
+	quot = bits / RSA_MAX_PRIME_NUM;
 	rmd = bits % RSA_MAX_PRIME_NUM;
 	for (i = 0; i < RSA_MAX_PRIME_NUM; i++)
-		bitsr[i] = (i < rmd) ? quo + 1 : quo;
+		bitsr[i] = (i < rmd) ? quot + 1 : quot;
 
 	/* Generate p, q and other primes (if any) */
 	for (i = 0; i < RSA_MAX_PRIME_NUM; i++) {
@@ -815,12 +817,12 @@ static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 		rsa_set_primes(i, param->rsa_p, param->rsa_q, &param->prime);
 		while (flag == 1) {
 			ret = get_rsa_prime_once(i, bitsr, &n, e_pub, param,
-						 ctx, cb);
+						 bnctx, cb);
 			if (ret == -1)
 				goto free_param;
 			bitse += bitsr[i];
 			ret = check_rsa_prime_sufficient(&i, bitsr, &bitse, &n,
-							 param, ctx, cb);
+							 param, bnctx, cb);
 			if (ret == BN_ERR)
 				goto free_param;
 			else if (ret == BN_REDO)
@@ -836,8 +838,8 @@ static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 free_param:
 	OPENSSL_free(param);
 free_ctx:
-	BN_CTX_end(ctx);
-	BN_CTX_free(ctx);
+	BN_CTX_end(bnctx);
+	BN_CTX_free(bnctx);
 	return ret;
 }
 
@@ -847,7 +849,7 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 	int ret;
 
 	if (!buf || !num) {
-		fprintf(stderr, "buf or num is invalid\n");
+		fprintf(stderr, "buf or num is invalid.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -855,12 +857,12 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_add_PKCS1_type_2(buf, num, from, flen);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_add_PKCS1_OAEP(buf, num, from, flen, NULL, 0);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -879,13 +881,13 @@ static int check_rsa_pridec_padding(unsigned char *to, int num,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_check_PKCS1_type_2(to, num, buf, flen, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, flen, num,
 						   NULL, 0);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -907,12 +909,12 @@ static int add_rsa_prienc_padding(int flen, const unsigned char *from,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_add_PKCS1_type_1(to_buf, tlen, from, flen);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_add_X931(to_buf, tlen, from, flen);
 		if (ret == -1)
-			fprintf(stderr, "RSA_X931_PADDING err\n");
+			fprintf(stderr, "RSA_X931_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -933,12 +935,12 @@ static int check_rsa_pubdec_padding(unsigned char *to, int num,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_check_PKCS1_type_1(to, num, buf, len, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_PADDING err\n");
+			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_check_X931(to, num, buf, len, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_X931_PADDING err\n");
+			fprintf(stderr, "RSA_X931_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -950,20 +952,20 @@ static int check_rsa_pubdec_padding(unsigned char *to, int num,
 	return ret;
 }
 
+static BN_ULONG *bn_get_words(const BIGNUM *a)
+{
+	return a->d;
+}
+
 static int check_rsa_input_para(const int flen, const unsigned char *from,
 				unsigned char *to, RSA *rsa)
 {
-	if (!rsa || !from || !to || flen <= 0) {
+	if (!rsa || !to || !from || flen <= 0) {
 		fprintf(stderr, "input param invalid\n");
 		return UADK_E_FAIL;
 	}
 
 	return rsa_check_bit_useful(uadk_rsa_bits(rsa), flen);
-}
-
-static BN_ULONG *bn_get_words(const BIGNUM *a)
-{
-	return a->d;
 }
 
 static int rsa_get_sign_res(int padding, BIGNUM *to_bn, const BIGNUM *n,
@@ -1053,8 +1055,8 @@ static struct uadk_rsa_sess *rsa_new_eng_session(RSA *rsa)
 
 	memset(rsa_sess, 0, sizeof(struct uadk_rsa_sess));
 	rsa_sess->alg = rsa;
-	rsa_sess->is_prikey_ready = UN_SET;
 	rsa_sess->is_pubkey_ready = UN_SET;
+	rsa_sess->is_prikey_ready = UN_SET;
 
 	return rsa_sess;
 }
@@ -1065,8 +1067,8 @@ static void rsa_free_eng_session(struct uadk_rsa_sess *rsa_sess)
 		return;
 
 	rsa_sess->alg = NULL;
-	rsa_sess->is_prikey_ready = UN_SET;
 	rsa_sess->is_pubkey_ready = UN_SET;
+	rsa_sess->is_prikey_ready = UN_SET;
 
 	wd_rsa_free_sess(rsa_sess->sess);
 	OPENSSL_free(rsa_sess);
@@ -1079,7 +1081,7 @@ static struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 	struct sched_params params = {0};
 	struct uadk_rsa_sess *rsa_sess;
 
-	rsa_sess =  rsa_new_eng_session(rsa);
+	rsa_sess = rsa_new_eng_session(rsa);
 	if (!rsa_sess)
 		return NULL;
 
@@ -1105,8 +1107,8 @@ static int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 			   unsigned char *in_buf, unsigned char *to)
 {
 	struct wd_rsa_pubkey *pubkey = NULL;
-	struct wd_dtb *wd_e = NULL;
 	struct wd_dtb *wd_n = NULL;
+	struct wd_dtb *wd_e = NULL;
 
 	if (!rsa_sess->is_pubkey_ready) {
 		wd_rsa_get_pubkey(rsa_sess->sess, &pubkey);
@@ -1114,17 +1116,17 @@ static int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 			return UADK_E_FAIL;
 
 		wd_rsa_get_pubkey_params(pubkey, &wd_e, &wd_n);
-		if (!wd_e || !wd_n)
+		if (!wd_n || !wd_e)
 			return UADK_E_FAIL;
 
-		wd_e->dsize = BN_bn2bin(pubkey_param->e,
-					(unsigned char *)wd_e->data);
 		wd_n->dsize = BN_bn2bin(pubkey_param->n,
 					(unsigned char *)wd_n->data);
-		rsa_sess->is_pubkey_ready = IS_SET;
+		wd_e->dsize = BN_bn2bin(pubkey_param->e,
+					(unsigned char *)wd_e->data);
 		rsa_sess->req.src_bytes = rsa_sess->key_size;
 		rsa_sess->req.dst_bytes = rsa_sess->key_size;
 		rsa_sess->req.op_type = WD_RSA_VERIFY;
+		rsa_sess->is_pubkey_ready = IS_SET;
 		rsa_sess->req.src = in_buf;
 		rsa_sess->req.dst = to;
 
@@ -1140,12 +1142,12 @@ static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 {
 	struct wd_rsa_prikey *prikey = NULL;
 	struct wd_dtb *wd_qinv = NULL;
-	struct wd_dtb *wd_dq = NULL;
 	struct wd_dtb *wd_dp = NULL;
-	struct wd_dtb *wd_q = NULL;
+	struct wd_dtb *wd_dq = NULL;
 	struct wd_dtb *wd_p = NULL;
-	struct wd_dtb *wd_d = NULL;
+	struct wd_dtb *wd_q = NULL;
 	struct wd_dtb *wd_n = NULL;
+	struct wd_dtb *wd_d = NULL;
 
 	if (!(rsa_sess->is_prikey_ready) && (pri->is_crt)) {
 		wd_rsa_get_prikey(rsa_sess->sess, &prikey);
@@ -1157,14 +1159,14 @@ static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 		if (!wd_dq || !wd_dp || !wd_qinv || !wd_q || !wd_p)
 			return UADK_E_FAIL;
 
-		wd_dq->dsize = BN_bn2bin(pri->dmq1,
-					 (unsigned char *)wd_dq->data);
 		wd_dp->dsize = BN_bn2bin(pri->dmp1,
 					 (unsigned char *)wd_dp->data);
-		wd_q->dsize = BN_bn2bin(pri->q,
-					(unsigned char *)wd_q->data);
+		wd_dq->dsize = BN_bn2bin(pri->dmq1,
+					 (unsigned char *)wd_dq->data);
 		wd_p->dsize = BN_bn2bin(pri->p,
 					(unsigned char *)wd_p->data);
+		wd_q->dsize = BN_bn2bin(pri->q,
+					(unsigned char *)wd_q->data);
 		wd_qinv->dsize = BN_bn2bin(pri->iqmp,
 					   (unsigned char *)wd_qinv->data);
 	} else if (!(rsa_sess->is_prikey_ready) && !(pri->is_crt)) {
@@ -1176,16 +1178,17 @@ static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 		if (!wd_d || !wd_n)
 			return UADK_E_FAIL;
 
-		wd_d->dsize = BN_bn2bin(pri->d,
-					(unsigned char *)wd_d->data);
 		wd_n->dsize = BN_bn2bin(pri->n,
 					(unsigned char *)wd_n->data);
+		wd_d->dsize = BN_bn2bin(pri->d,
+					(unsigned char *)wd_d->data);
 	} else {
 		return UADK_E_FAIL;
 	}
+
 	rsa_sess->is_prikey_ready = IS_SET;
-	rsa_sess->req.src_bytes = rsa_sess->key_size;
 	rsa_sess->req.op_type = WD_RSA_SIGN;
+	rsa_sess->req.src_bytes = rsa_sess->key_size;
 	rsa_sess->req.dst_bytes = rsa_sess->key_size;
 	rsa_sess->req.src = in_buf;
 	rsa_sess->req.dst = to;
@@ -1198,7 +1201,7 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 {
 	struct wd_rsa_kg_out *out = (struct wd_rsa_kg_out *)req->dst;
 	struct wd_dtb wd_d, wd_n, wd_qinv, wd_dq, wd_dp;
-	BIGNUM *dmp1, *dmq1, *iqmp, *n, *d;
+	BIGNUM *dmp1, *dmq1, *iqmp, *d, *n;
 	unsigned int key_bits, key_size;
 	BN_CTX *bn_ctx = *bn_ctx_in;
 
@@ -1210,12 +1213,12 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	wd_rsa_get_kg_out_params(out, &wd_d, &wd_n);
 	wd_rsa_get_kg_out_crt_params(out, &wd_qinv, &wd_dq, &wd_dp);
 
-	dmp1 = BN_CTX_get(bn_ctx);
-	if (!dmp1)
-		return UADK_E_FAIL;
-
 	dmq1 = BN_CTX_get(bn_ctx);
 	if (!dmq1)
+		return UADK_E_FAIL;
+
+	dmp1 = BN_CTX_get(bn_ctx);
+	if (!dmp1)
 		return UADK_E_FAIL;
 
 	iqmp = BN_CTX_get(bn_ctx);
@@ -1230,8 +1233,8 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	if (!d)
 		return UADK_E_FAIL;
 
-	BN_bin2bn((unsigned char *)wd_d.data, key_size, d);
 	BN_bin2bn((unsigned char *)wd_n.data, key_size, n);
+	BN_bin2bn((unsigned char *)wd_d.data, key_size, d);
 	BN_bin2bn((unsigned char *)wd_qinv.data, wd_qinv.dsize, iqmp);
 	BN_bin2bn((unsigned char *)wd_dq.data, wd_dq.dsize, dmq1);
 	BN_bin2bn((unsigned char *)wd_dp.data, wd_dp.dsize, dmp1);
@@ -1246,15 +1249,15 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 
 static void uadk_e_rsa_cb(void *req_t)
 {
-	struct wd_rsa_req *req_new = (struct wd_rsa_req *)req_t;
+	struct wd_rsa_req *req = (struct wd_rsa_req *)req_t;
 	struct uadk_e_cb_info *cb_param;
 	struct wd_rsa_req *req_origin;
 	struct async_op *op;
 
-	if (!req_new)
+	if (!req)
 		return;
 
-	cb_param = req_new->cb_param;
+	cb_param = req->cb_param;
 	if (!cb_param)
 		return;
 
@@ -1262,7 +1265,7 @@ static void uadk_e_rsa_cb(void *req_t)
 	if (!req_origin)
 		return;
 
-	req_origin->status = req_new->status;
+	req_origin->status = req->status;
 
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
@@ -1345,21 +1348,19 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 
 	wd_rsa_get_crt_prikey_params(key_pair->prikey, NULL, NULL, NULL,
 				     &keygen_param->wd_q, &keygen_param->wd_p);
-	if (!keygen_param->wd_q || !keygen_param->wd_p)
+	if (!keygen_param->wd_p || !keygen_param->wd_q)
 		return UADK_E_FAIL;
 
-	keygen_param->wd_q->dsize = BN_bn2bin(bn_param->q,
-				    (unsigned char *)keygen_param->wd_q->data);
 	keygen_param->wd_p->dsize = BN_bn2bin(bn_param->p,
 				    (unsigned char *)keygen_param->wd_p->data);
+	keygen_param->wd_q->dsize = BN_bn2bin(bn_param->q,
+				    (unsigned char *)keygen_param->wd_q->data);
 
 	rsa_sess->req.src_bytes = rsa_sess->key_size;
 	rsa_sess->req.dst_bytes = rsa_sess->key_size;
 	rsa_sess->req.op_type = WD_RSA_GENKEY;
-	rsa_sess->req.src = wd_rsa_new_kg_in(rsa_sess->sess,
-					     keygen_param->wd_e,
-					     keygen_param->wd_p,
-					     keygen_param->wd_q);
+	rsa_sess->req.src = wd_rsa_new_kg_in(rsa_sess->sess, keygen_param->wd_e,
+					     keygen_param->wd_p, keygen_param->wd_q);
 	if (!rsa_sess->req.src)
 		return UADK_E_FAIL;
 
@@ -1377,8 +1378,8 @@ static void rsa_free_keygen_data(struct uadk_rsa_sess *rsa_sess)
 	if (!rsa_sess)
 		return;
 
-	wd_rsa_del_kg_in(rsa_sess->sess, rsa_sess->req.src);
 	wd_rsa_del_kg_out(rsa_sess->sess, rsa_sess->req.dst);
+	wd_rsa_del_kg_in(rsa_sess->sess, rsa_sess->req.src);
 }
 
 static int rsa_keygen_param_alloc(struct rsa_keygen_param **keygen_param,
@@ -1389,7 +1390,7 @@ static int rsa_keygen_param_alloc(struct rsa_keygen_param **keygen_param,
 
 	*keygen_param = OPENSSL_malloc(sizeof(struct rsa_keygen_param));
 	if (!(*keygen_param))
-		goto err;
+		goto error;
 
 	*keygen_bn_param = (struct rsa_keygen_param_bn *)
 			   OPENSSL_malloc(sizeof(struct rsa_keygen_param_bn));
@@ -1407,16 +1408,16 @@ static int rsa_keygen_param_alloc(struct rsa_keygen_param **keygen_param,
 	BN_CTX_start(bn_ctx);
 	*bn_ctx_in = bn_ctx;
 
-	(*keygen_bn_param)->e = BN_CTX_get(bn_ctx);
-	if (!(*keygen_bn_param)->e)
-		goto free_bn_ctx;
-
 	(*keygen_bn_param)->p = BN_CTX_get(bn_ctx);
 	if (!(*keygen_bn_param)->p)
 		goto free_bn_ctx;
 
 	(*keygen_bn_param)->q = BN_CTX_get(bn_ctx);
 	if (!(*keygen_bn_param)->q)
+		goto free_bn_ctx;
+
+	(*keygen_bn_param)->e = BN_CTX_get(bn_ctx);
+	if (!(*keygen_bn_param)->e)
 		goto free_bn_ctx;
 
 	return UADK_E_SUCCESS;
@@ -1430,7 +1431,7 @@ free_keygen_bn_param:
 	OPENSSL_free(*keygen_bn_param);
 free_keygen_param:
 	OPENSSL_free(*keygen_param);
-err:
+error:
 	return -ENOMEM;
 }
 
@@ -1440,9 +1441,9 @@ static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 				  int free_bn_ctx_tag)
 {
 	/*
-	 * When an abnormal situation occurs, uadk engine needs
-	 * to switch to software keygen function, so we need to
-	 * free BN ctx we alloced before. But in normal situation,
+	 * When an abnormal situation occurs, uadk engine needs to
+	 * switch to software keygen function, so we need to free
+	 * BN ctx we alloced before. But in normal situation,
 	 * the BN ctx should be freed by OpenSSL tools or users.
 	 * Therefore, we use a tag to distinguish these cases.
 	 */
@@ -1451,20 +1452,14 @@ static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 		BN_CTX_free(*bn_ctx);
 	}
 
-	OPENSSL_free(*keygen_bn_param);
-	OPENSSL_free(*keygen_param);
 	OPENSSL_free(*key_pair);
+	OPENSSL_free(*keygen_param);
+	OPENSSL_free(*keygen_bn_param);
 }
 
 static int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
 				struct rsa_prikey_param **pri)
 {
-	if (pub) {
-		*pub = OPENSSL_malloc(sizeof(struct rsa_pubkey_param));
-		if (!(*pub))
-			return -ENOMEM;
-	}
-
 	if (pri) {
 		*pri = OPENSSL_malloc(sizeof(struct rsa_prikey_param));
 		if (!(*pri)) {
@@ -1474,23 +1469,29 @@ static int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
 		}
 	}
 
+	if (pub) {
+		*pub = OPENSSL_malloc(sizeof(struct rsa_pubkey_param));
+		if (!(*pub))
+			return -ENOMEM;
+	}
+
 	return UADK_E_SUCCESS;
 }
 
 static void rsa_pkey_param_free(struct rsa_pubkey_param **pub,
 				struct rsa_prikey_param **pri)
 {
-	if (pub)
-		OPENSSL_free(*pub);
 	if (pri)
 		OPENSSL_free(*pri);
+	if (pub)
+		OPENSSL_free(*pub);
 }
 
 static int rsa_create_pub_bn_ctx(RSA *rsa, struct rsa_pubkey_param *pub,
 				 unsigned char **from_buf, int *num_bytes)
 {
 	uadk_rsa_get0_key(rsa, &pub->n, &pub->e, NULL);
-	if (!(pub->n) || !(pub->e))
+	if (!(pub->e) || !(pub->n))
 		return UADK_E_FAIL;
 
 	*num_bytes = BN_num_bytes(pub->n);
@@ -1782,27 +1783,27 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 				   unsigned char *to, RSA *rsa, int padding)
 {
 	struct uadk_rsa_sess *rsa_sess = NULL;
-	struct rsa_prikey_param *pri = NULL;
+	struct rsa_prikey_param *prik = NULL;
 	unsigned char *from_buf = NULL;
-	int num_bytes, ret;
+	int ret, num_bytes;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
 	if (ret != UADK_E_SUCCESS)
 		return ret;
 
-	ret = rsa_pkey_param_alloc(NULL, &pri);
+	ret = rsa_pkey_param_alloc(NULL, &prik);
 	if (ret == -ENOMEM)
 		return UADK_E_FAIL;
 
-	pri->is_crt = check_rsa_is_crt(rsa);
+	prik->is_crt = check_rsa_is_crt(rsa);
 
-	rsa_sess = rsa_get_eng_session(rsa, uadk_rsa_bits(rsa), pri->is_crt);
+	rsa_sess = rsa_get_eng_session(rsa, uadk_rsa_bits(rsa), prik->is_crt);
 	if (!rsa_sess) {
 		ret = UADK_DO_SOFT;
 		goto free_pkey;
 	}
 
-	ret = rsa_create_pri_bn_ctx(rsa, pri, &from_buf, &num_bytes);
+	ret = rsa_create_pri_bn_ctx(rsa, prik, &from_buf, &num_bytes);
 	if (ret <= 0 || flen > num_bytes) {
 		ret = UADK_E_FAIL;
 		goto free_sess;
@@ -1814,7 +1815,7 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	ret = rsa_fill_prikey(rsa, rsa_sess, pri, from_buf, to);
+	ret = rsa_fill_prikey(rsa, rsa_sess, prik, from_buf, to);
 	if (!ret) {
 		ret = UADK_E_FAIL;
 		goto free_buf;
@@ -1826,14 +1827,14 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	ret = sign_trans_bn(rsa_sess, from_buf, pri, padding, to, num_bytes);
+	ret = sign_trans_bn(rsa_sess, from_buf, prik, padding, to, num_bytes);
 
 free_buf:
 	rsa_free_pri_bn_ctx(&from_buf);
 free_sess:
 	rsa_free_eng_session(rsa_sess);
 free_pkey:
-	rsa_pkey_param_free(NULL, &pri);
+	rsa_pkey_param_free(NULL, &prik);
 	return ret;
 }
 
@@ -1897,23 +1898,23 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 	ret = rsa_fill_pubkey(pub, rsa_sess, from_buf, to);
 	if (!ret) {
 		ret = UADK_E_FAIL;
-		goto free_buf;
+		goto free_buff;
 	}
 
 	memcpy(rsa_sess->req.src, from, rsa_sess->req.src_bytes);
 	ret = rsa_do_crypto(rsa_sess);
 	if (!ret || rsa_sess->req.status) {
 		ret = UADK_DO_SOFT;
-		goto free_buf;
+		goto free_buff;
 	}
 
 	ret = verify_trans_bn(rsa_sess, from_buf, num_bytes, pub, padding, &len);
 	if (!ret)
-		goto free_buf;
+		goto free_buff;
 
 	ret = check_rsa_pubdec_padding(to, num_bytes, from_buf, len, padding);
 
-free_buf:
+free_buff:
 	rsa_free_pub_bn_ctx(&from_buf);
 free_sess:
 	rsa_free_eng_session(rsa_sess);
@@ -1951,24 +1952,24 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 static int uadk_rsa_init(void *vprsactx, void *vrsa,
 			 const OSSL_PARAM params[], int operation)
 {
-	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
+	PROV_RSA_SIG_CTX *ctx = (PROV_RSA_SIG_CTX *)vprsactx;
 
-	if (priv == NULL || vrsa == NULL)
+	if (ctx == NULL || vrsa == NULL)
 		return UADK_E_FAIL;
 
-	priv->rsa = vrsa;
-	priv->operation = operation;
+	ctx->rsa = vrsa;
+	ctx->operation = operation;
 
 	/* Maximum for sign, auto for verify */
-	priv->saltlen = RSA_PSS_SALTLEN_AUTO;
-	priv->min_saltlen = -1;
+	ctx->saltlen = RSA_PSS_SALTLEN_AUTO;
+	ctx->min_saltlen = -1;
 
-	switch (uadk_rsa_test_flags(priv->rsa, RSA_FLAG_TYPE_MASK)) {
+	switch (uadk_rsa_test_flags(ctx->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
-		priv->pad_mode = RSA_PKCS1_PADDING;
+		ctx->pad_mode = RSA_PKCS1_PADDING;
 		break;
 	case RSA_FLAG_TYPE_RSASSAPSS:
-		priv->pad_mode = RSA_PKCS1_PSS_PADDING;
+		ctx->pad_mode = RSA_PKCS1_PSS_PADDING;
 		break;
 	default:
 		ERR_raise(ERR_LIB_RSA, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
@@ -1976,7 +1977,7 @@ static int uadk_rsa_init(void *vprsactx, void *vrsa,
 	}
 
 	if (uadk_prov_rsa_init())
-		priv->soft = 1;
+		ctx->soft = 1;
 
 	return UADK_E_SUCCESS;
 }
@@ -2430,7 +2431,6 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 		else
 			return UADK_E_FAIL;
 	}
-
 	*outlen = ret;
 
 	return UADK_E_SUCCESS;
