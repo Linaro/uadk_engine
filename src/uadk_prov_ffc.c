@@ -937,7 +937,7 @@ err:
 	return ret;
 }
 
-OSSL_LIB_CTX *ossl_bn_get_libctx(BN_CTX *ctx)
+static OSSL_LIB_CTX *ossl_bn_get_libctx(BN_CTX *ctx)
 {
 	if (ctx == NULL)
 		return NULL;
@@ -1064,9 +1064,9 @@ static int ffc_validate_LN(size_t L, size_t N, int type, int verify)
 }
 #endif /* FIPS_MODULE */
 
-int ossl_ffc_params_set_validate_params(FFC_PARAMS *params,
-					const unsigned char *seed,
-					size_t seedlen, int counter)
+static int ossl_ffc_params_set_validate_params(FFC_PARAMS *params,
+					       const unsigned char *seed,
+					       size_t seedlen, int counter)
 {
 	if (!ossl_ffc_params_set_seed(params, seed, seedlen))
 		return 0;
@@ -1086,10 +1086,10 @@ static const char *default_mdname(size_t N)
 }
 
 /* FIPS186-4 A.2.2 Unverifiable partial validation of Generator g */
-int ossl_ffc_params_validate_unverifiable_g(BN_CTX *ctx, BN_MONT_CTX *mont,
-					    const BIGNUM *p, const BIGNUM *q,
-					    const BIGNUM *g, BIGNUM *tmp,
-					    int *ret)
+static int ossl_ffc_params_validate_unverifiable_g(BN_CTX *ctx, BN_MONT_CTX *mont,
+						   const BIGNUM *p, const BIGNUM *q,
+						   const BIGNUM *g, BIGNUM *tmp,
+						   int *ret)
 {
 	/*
 	 * A.2.2 Step (1) AND
@@ -1574,10 +1574,10 @@ static int generate_canonical_g(BN_CTX *ctx, BN_MONT_CTX *mont,
  *   - FFC_PARAM_RET_STATUS_UNVERIFIABLE_G if the validation of G succeeded,
  *     but G is unverifiable.
  */
-int ossl_ffc_params_FIPS186_4_gen_verify(OSSL_LIB_CTX *libctx,
-					 FFC_PARAMS *params, int mode, int type,
-					 size_t L, size_t N, int *res,
-					 BN_GENCB *cb)
+static int ossl_ffc_params_FIPS186_4_gen_verify(OSSL_LIB_CTX *libctx,
+						FFC_PARAMS *params, int mode,
+						int type, size_t L, size_t N,
+						int *res, BN_GENCB *cb)
 {
 	int ok = FFC_PARAM_RET_STATUS_FAILED;
 	unsigned char *seed = NULL, *seed_tmp = NULL;

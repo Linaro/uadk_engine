@@ -137,6 +137,12 @@ const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
 	  uadk_aes_192_cfb128_functions, "uadk_provider aes-192-cfb" },
 	{ "AES-256-CFB", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_256_cfb128_functions, "uadk_provider aes-256-cfb" },
+	{ "AES-128-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_gcm_functions, "uadk_provider aes-128-gcm" },
+	{ "AES-192-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_gcm_functions, "uadk_provider aes-192-gcm" },
+	{ "AES-256-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_gcm_functions, "uadk_provider aes-256-gcm" },
 	{ "SM4-CBC", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm4_cbc_functions, "uadk_provider sm4-cbc" },
 	{ "SM4-ECB", UADK_DEFAULT_PROPERTIES,
@@ -168,6 +174,10 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
+	{ "EC", UADK_DEFAULT_PROPERTIES,
+	  uadk_ec_keymgmt_functions, "uadk EC Keymgmt implementation."},
+	{ "X448", UADK_DEFAULT_PROPERTIES,
+	  uadk_x448_keymgmt_functions, "uadk X448 Keymgmt implementation."},
 	{ NULL, NULL, NULL }
 };
 
@@ -182,6 +192,10 @@ static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
 static const OSSL_ALGORITHM uadk_prov_keyexch[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES,
 	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
+	{ "ECDH", UADK_DEFAULT_PROPERTIES,
+	  uadk_ecdh_keyexch_functions, "uadk_provider ecdh_keyexch" },
+	{ "X448", UADK_DEFAULT_PROPERTIES,
+	  uadk_x448_keyexch_functions, "uadk X448 keyexch implementation."},
 	{ NULL, NULL, NULL }
 };
 
@@ -210,15 +224,16 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 			return uadk_prov_ciphers_v3;
 		return uadk_prov_ciphers_v2;
 	case OSSL_OP_SIGNATURE:
-		(void)uadk_prov_signature_alg();
+		uadk_prov_signature_alg();
 		return uadk_prov_signature;
 	case OSSL_OP_KEYMGMT:
-		(void)uadk_prov_keymgmt_alg();
+		uadk_prov_keymgmt_alg();
 		return uadk_prov_keymgmt;
 	case OSSL_OP_ASYM_CIPHER:
-		(void)uadk_prov_asym_cipher_alg();
+		uadk_prov_asym_cipher_alg();
 		return uadk_prov_asym_cipher;
 	case OSSL_OP_KEYEXCH:
+		uadk_prov_keyexch_alg();
 		return uadk_prov_keyexch;
 	case OSSL_OP_STORE:
 		return prov->query_operation(provctx, operation_id, no_cache);
@@ -232,8 +247,9 @@ static void uadk_teardown(void *provctx)
 
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
+	uadk_prov_destroy_aead();
 	uadk_prov_destroy_rsa();
-	uadk_prov_sm2_uninit();
+	uadk_prov_ecc_uninit();
 	uadk_prov_dh_uninit();
 	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
