@@ -390,7 +390,9 @@ void async_module_uninit(void)
 		return;
 
 	sem_post(&poll_queue.full_sem);
-	pthread_join(poll_queue.thread_id, NULL);
+
+	if (poll_queue.thread_id)
+		pthread_join(poll_queue.thread_id, NULL);
 
 	task = poll_queue.head;
 	if (task)
