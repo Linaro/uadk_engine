@@ -136,7 +136,7 @@ static handle_t ec_alloc_sess(EC_KEY *ec, struct wd_ecc_out **ec_out)
 	handle_t sess;
 	int ret;
 
-	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_EC);
+	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_ECDH);
 	if (!ret) {
 		fprintf(stderr, "failed to get hardware ecdh keygen support!\n");
 		return ret;
