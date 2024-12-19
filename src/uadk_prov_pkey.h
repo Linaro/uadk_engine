@@ -168,6 +168,7 @@ static OSSL_FUNC_keymgmt_import_types_fn uadk_keymgmt_##nm##_import_types;	\
 static OSSL_FUNC_keymgmt_export_fn uadk_keymgmt_##nm##_export;	\
 static OSSL_FUNC_keymgmt_export_types_fn uadk_keymgmt_##nm##_export_types;	\
 static OSSL_FUNC_keymgmt_dup_fn uadk_keymgmt_##nm##_dup;	\
+static OSSL_FUNC_keymgmt_query_operation_name_fn uadk_keymgmt_##nm##_query_operation_name;	\
 static UADK_PKEY_KEYMGMT get_default_##nm##_keymgmt(void)	\
 {				\
 	static UADK_PKEY_KEYMGMT s_keymgmt;	\
@@ -215,6 +216,8 @@ const OSSL_DISPATCH uadk_##nm##_keymgmt_functions[] = {	\
 	{ OSSL_FUNC_KEYMGMT_EXPORT, (void (*)(void))uadk_keymgmt_##nm##_export },	\
 	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_##nm##_export_types },	\
 	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_##nm##_dup },	\
+	{ OSSL_FUNC_KEYMGMT_QUERY_OPERATION_NAME,	\
+		(void (*)(void))uadk_keymgmt_##nm##_query_operation_name },	\
 	{ 0, NULL }	\
 }	\
 
