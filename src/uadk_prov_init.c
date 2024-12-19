@@ -174,6 +174,8 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
+	{ "EC", UADK_DEFAULT_PROPERTIES,
+	  uadk_ec_keymgmt_functions, "uadk EC Keymgmt implementation."},
 	{ NULL, NULL, NULL }
 };
 
