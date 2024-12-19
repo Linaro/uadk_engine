@@ -137,6 +137,12 @@ const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
 	  uadk_aes_192_cfb128_functions, "uadk_provider aes-192-cfb" },
 	{ "AES-256-CFB", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_256_cfb128_functions, "uadk_provider aes-256-cfb" },
+	{ "AES-128-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_128_gcm_functions, "uadk_provider aes-128-gcm" },
+	{ "AES-192-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_192_gcm_functions, "uadk_provider aes-192-gcm" },
+	{ "AES-256-GCM", UADK_DEFAULT_PROPERTIES,
+	  uadk_aes_256_gcm_functions, "uadk_provider aes-256-gcm" },
 	{ "SM4-CBC", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm4_cbc_functions, "uadk_provider sm4-cbc" },
 	{ "SM4-ECB", UADK_DEFAULT_PROPERTIES,
@@ -232,6 +238,7 @@ static void uadk_teardown(void *provctx)
 
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
+	uadk_prov_destroy_aead();
 	uadk_prov_destroy_rsa();
 	uadk_prov_sm2_uninit();
 	uadk_prov_dh_uninit();
