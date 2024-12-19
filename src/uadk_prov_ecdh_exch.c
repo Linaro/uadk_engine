@@ -72,12 +72,6 @@ struct ecdh_sess_ctx {
 };
 
 UADK_PKEY_KEYEXCH_DESCR(ecdh, ECDH);
-static bool g_keyexch_ecdh_support;
-
-void uadk_prov_keyexch_alg(void)
-{
-	g_keyexch_ecdh_support = uadk_prov_support_algorithm("ecdh");
-}
 
 static size_t ecdh_get_ec_size(const EC_GROUP *group)
 {
@@ -169,7 +163,8 @@ static handle_t ecdh_alloc_sess(EC_KEY *privk)
 {
 	int ret;
 
-	if (!g_keyexch_ecdh_support) {
+	ret = uadk_prov_keyexch_get_support_state(KEYEXCH_ECDH);
+	if (!ret) {
 		fprintf(stderr, "invalid: hardware not support ecdh!\n");
 		return UADK_P_FAIL;
 	}
