@@ -628,7 +628,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	return UADK_P_SUCCESS;
 }
 
-static bool uadk_prov_support_algorithm(const char *alg)
+bool uadk_prov_support_algorithm(const char *alg)
 {
 	struct uacce_dev_list *list = wd_get_accel_list(alg);
 
@@ -642,7 +642,7 @@ static bool uadk_prov_support_algorithm(const char *alg)
 
 void uadk_prov_keymgmt_alg(void)
 {
-	static const char * const keymgmt_alg[] = {"sm2"};
+	static const char * const keymgmt_alg[] = {"sm2", "ecdh"};
 	__u32 i, size;
 	bool sp;
 
@@ -810,4 +810,26 @@ void uadk_prov_ecc_uninit(void)
 		g_ecc_prov.pid = 0;
 	}
 	pthread_mutex_unlock(&ecc_mutex);
+}
+
+int uadk_prov_ecc_bit_check(const EC_GROUP *group)
+{
+	int bits = EC_GROUP_order_bits(group);
+
+	switch (bits) {
+	case ECC128BITS:
+	case ECC192BITS:
+	case ECC224BITS:
+	case ECC256BITS:
+	case ECC320BITS:
+	case ECC384BITS:
+	case ECC521BITS:
+		return UADK_P_SUCCESS;
+	default:
+		break;
+	}
+
+	fprintf(stderr, "invalid: unsupport key bits %d!\n", bits);
+
+	return UADK_P_FAIL;
 }

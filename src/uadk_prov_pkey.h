@@ -68,12 +68,19 @@
 
 enum {
 	KEYMGMT_SM2 = 0x0,
+	KEYMGMT_EC = 0x1,
 	KEYMGMT_MAX = 0x6
 };
 
 enum {
 	SIGNATURE_SM2 = 0x0,
 	SIGNATURE_MAX = 0x3
+};
+
+enum {
+	COFACTOR_MODE_USE_KEY = -1,
+	COFACTOR_MODE_DISABLED = 0,
+	COFACTOR_MODE_ENABLED = 1,
 };
 
 struct curve_param {
@@ -102,6 +109,7 @@ struct ec_gen_ctx {
 	int selection;
 	int ecdh_mode;
 	EC_GROUP *gen_group;
+	BIGNUM *priv_key;
 };
 
 typedef struct {
@@ -443,5 +451,6 @@ void uadk_prov_signature_alg(void);
 void uadk_prov_asym_cipher_alg(void);
 int uadk_prov_asym_cipher_get_support_state(int alg_tag);
 int uadk_prov_ecc_init(const char *alg_name);
+int uadk_prov_ecc_bit_check(const EC_GROUP *group);
 
 #endif
