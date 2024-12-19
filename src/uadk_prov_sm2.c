@@ -36,8 +36,6 @@ UADK_PKEY_KEYMGMT_DESCR(sm2, SM2);
 UADK_PKEY_SIGNATURE_DESCR(sm2, SM2);
 UADK_PKEY_ASYM_CIPHER_DESCR(sm2, SM2);
 
-static pthread_mutex_t sm2_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 static const OSSL_PARAM sm2_asym_cipher_known_settable_ctx_params[] = {
 	OSSL_PARAM_utf8_string(OSSL_ASYM_CIPHER_PARAM_DIGEST, NULL, 0),
 	OSSL_PARAM_utf8_string(OSSL_ASYM_CIPHER_PARAM_PROPERTIES, NULL, 0),
@@ -63,12 +61,6 @@ static const OSSL_PARAM sm2_sig_known_gettable_ctx_params[] = {
 	OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_DIGEST, NULL, 0),
 	OSSL_PARAM_END
 };
-
-struct sm2_prov {
-	int pid;
-};
-
-static struct sm2_prov g_sm2_prov;
 
 enum {
 	CTX_INIT_FAIL = -1,
@@ -457,43 +449,6 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_gen_settable_params(ossl_unused void *
 	return get_default_sm2_keymgmt().gen_settable_params(genctx, provctx);
 }
 
-static void uadk_prov_sm2_mutex_infork(void)
-{
-	/* Release the replication lock of the child process */
-	pthread_mutex_unlock(&sm2_mutex);
-}
-
-int uadk_prov_sm2_init(void)
-{
-	int ret;
-
-	pthread_atfork(NULL, NULL, uadk_prov_sm2_mutex_infork);
-	pthread_mutex_lock(&sm2_mutex);
-	if (g_sm2_prov.pid != getpid()) {
-		ret = wd_ecc_init2("sm2", SCHED_POLICY_RR, TASK_HW);
-		if (unlikely(ret)) {
-			pthread_mutex_unlock(&sm2_mutex);
-			return ret;
-		}
-		g_sm2_prov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_ECC, uadk_prov_ecc_poll);
-	}
-	pthread_mutex_unlock(&sm2_mutex);
-
-	return UADK_P_INTI_SUCCESS;
-}
-
-/* Uninit only when the process exits, will not uninit when thread exits. */
-void uadk_prov_sm2_uninit(void)
-{
-	pthread_mutex_lock(&sm2_mutex);
-	if (g_sm2_prov.pid == getpid()) {
-		wd_ecc_uninit2();
-		g_sm2_prov.pid = 0;
-	}
-	pthread_mutex_unlock(&sm2_mutex);
-}
-
 static int uadk_prov_sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 {
 	struct wd_ecc_out *ecc_out = wd_sm2_new_kg_out(sess);
@@ -671,8 +626,8 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	}
 
 	/* SM2 hardware init */
-	ret = uadk_prov_sm2_init();
-	if (ret) {
+	ret = uadk_prov_ecc_init("sm2");
+	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
 		goto free_ec_key;
 	}
@@ -1001,10 +956,10 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 	}
 
 	/* Init with UADK */
-	ret = uadk_prov_sm2_init();
-	if (ret) {
+	ret = uadk_prov_ecc_init("sm2");
+	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
-		return UADK_P_FAIL;
+		return ret;
 	}
 
 	psm2ctx->sm2_pctx->init_status = CTX_INIT_SUCC;
@@ -2408,10 +2363,10 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 	}
 
 	/* Init with UADK */
-	ret = uadk_prov_sm2_init();
-	if (ret) {
+	ret = uadk_prov_ecc_init("sm2");
+	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
-		return UADK_P_FAIL;
+		return ret;
 	}
 
 	smctx->init_status = CTX_INIT_SUCC;
