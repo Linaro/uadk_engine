@@ -34,6 +34,13 @@ static int p_keymgmt_support_state[KEYMGMT_TYPE];
 static int p_signature_support_state[SIGNATURE_TYPE];
 static int p_asym_cipher_support_state[ASYM_CIPHER_TYPE];
 
+struct ecc_prov {
+	int pid;
+};
+
+static struct ecc_prov g_ecc_prov;
+static pthread_mutex_t ecc_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Mapping between a flag and a name */
 static const OSSL_ITEM encoding_nameid_map[] = {
 	{ OPENSSL_EC_EXPLICIT_CURVE, OSSL_PKEY_EC_ENCODING_EXPLICIT },
@@ -766,4 +773,41 @@ void uadk_prov_asym_cipher_alg(void)
 		if (sp)
 			uadk_prov_asym_cipher_set_support_state(i, PROV_SUPPORT);
 	}
+}
+
+static void uadk_prov_ecc_mutex_infork(void)
+{
+	/* Release the replication lock of the child process */
+	pthread_mutex_unlock(&ecc_mutex);
+}
+
+int uadk_prov_ecc_init(const char *alg_name)
+{
+	int ret;
+
+	pthread_atfork(NULL, NULL, uadk_prov_ecc_mutex_infork);
+	pthread_mutex_lock(&ecc_mutex);
+	if (g_ecc_prov.pid != getpid()) {
+		ret = wd_ecc_init2((char *)alg_name, SCHED_POLICY_RR, TASK_HW);
+		if (unlikely(ret)) {
+			pthread_mutex_unlock(&ecc_mutex);
+			return UADK_P_FAIL;
+		}
+		g_ecc_prov.pid = getpid();
+		async_register_poll_fn(ASYNC_TASK_ECC, uadk_prov_ecc_poll);
+	}
+	pthread_mutex_unlock(&ecc_mutex);
+
+	return UADK_P_SUCCESS;
+}
+
+/* Uninit only when the process exits, will not uninit when thread exits. */
+void uadk_prov_ecc_uninit(void)
+{
+	pthread_mutex_lock(&ecc_mutex);
+	if (g_ecc_prov.pid == getpid()) {
+		wd_ecc_uninit2();
+		g_ecc_prov.pid = 0;
+	}
+	pthread_mutex_unlock(&ecc_mutex);
 }
