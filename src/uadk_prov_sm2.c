@@ -191,6 +191,16 @@ ASN1_SEQUENCE(SM2_Ciphertext) = {
 
 IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
 
+static const char *uadk_keymgmt_sm2_query_operation_name(int operation_id)
+{
+	if (!get_default_sm2_keymgmt().query_operation_name) {
+		fprintf(stderr, "failed to get keymgmt query_operation_name function\n");
+		return NULL;
+	}
+
+	return get_default_sm2_keymgmt().query_operation_name(operation_id);
+}
+
 /**
  * Create an uadk provider side sm2 key object.
  *
