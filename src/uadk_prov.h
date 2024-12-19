@@ -179,6 +179,8 @@ extern const OSSL_DISPATCH uadk_sm2_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm2_signature_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sm2_asym_cipher_functions[FUNC_MAX_NUM];
 
+extern const OSSL_DISPATCH uadk_ec_keymgmt_functions[FUNC_MAX_NUM];
+
 void uadk_prov_destroy_digest(void);
 void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_aead(void);
