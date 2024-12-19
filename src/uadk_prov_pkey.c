@@ -29,6 +29,9 @@
 #define PROV_SUPPORT		1
 #define SIGNATURE_TYPE		3
 #define ASYM_CIPHER_TYPE	3
+#define SECURITY_CHECK_DISABLE	0
+#define UADK_PROV_MIN_BITS	112
+#define UADK_PROV_SECURITY_BITS	80
 
 static int p_keymgmt_support_state[KEYMGMT_TYPE];
 static int p_signature_support_state[SIGNATURE_TYPE];
@@ -833,3 +836,68 @@ int uadk_prov_ecc_bit_check(const EC_GROUP *group)
 
 	return UADK_P_FAIL;
 }
+
+/* Currently, disable the security checks in the default provider and uadk provider */
+int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx)
+{
+	return SECURITY_CHECK_DISABLE;
+}
+
+#ifdef OPENSSL_NO_FIPS_SECURITYCHECKS
+int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
+{
+	return UADK_P_SUCCESS;
+}
+#else
+int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
+{
+	const EC_GROUP *group = EC_KEY_get0_group(ec);
+	const char *curve_name;
+	int nid, strength;
+
+	if (!uadk_prov_securitycheck_enabled(ctx))
+		return UADK_P_SUCCESS;
+
+	if (!group) {
+		fprintf(stderr, "invalid: group is NULL!\n");
+		return UADK_P_FAIL;
+	}
+
+	nid = EC_GROUP_get_curve_name(group);
+	if (nid == NID_undef) {
+		fprintf(stderr, "invalid: explicit curves are not allowed in fips mode!\n");
+		return UADK_P_FAIL;
+	}
+
+	curve_name = EC_curve_nid2nist(nid);
+	if (!curve_name) {
+		fprintf(stderr, "invalid: Curve %s is not approved in FIPS mode!\n",
+			curve_name);
+		return UADK_P_FAIL;
+	}
+
+	/*
+	 * For EC the security strength is the (order_bits / 2)
+	 * e.g. P-224 is 112 bits.
+	 */
+	strength = (unsigned int)EC_GROUP_order_bits(group) >> 1;
+	/* The min security strength allowed for legacy verification is 80 bits */
+	if (strength < UADK_PROV_SECURITY_BITS) {
+		fprintf(stderr, "invalid: Curve %s strength %d is not approved in FIPS mode!\n",
+			curve_name, strength);
+		return UADK_P_FAIL;
+	}
+
+	/*
+	 * For signing or key agreement only allow curves with at least 112 bits of
+	 * security strength
+	 */
+	if (protect && strength < UADK_PROV_MIN_BITS) {
+		fprintf(stderr, "invalid: Curve %s strength %d cannot be used for signing\n",
+			curve_name, strength);
+		return UADK_P_FAIL;
+	}
+
+	return UADK_P_SUCCESS;
+}
+#endif /* OPENSSL_NO_FIPS_SECURITYCHECKS */
