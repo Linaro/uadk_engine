@@ -178,7 +178,6 @@ mutex_unlock:
 
 static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 {
-	struct wd_aead_sess_setup setup = {0};
 	struct sched_params params = {0};
 	int ret;
 
@@ -201,11 +200,10 @@ static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 	params.type = 0;
 	/* Use the default numa parameters */
 	params.numa_id = -1;
-	memcpy(&setup, &priv->setup, sizeof(struct wd_aead_sess_setup));
-	setup.sched_param = &params;
+	priv->setup.sched_param = &params;
 
 	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(&setup);
+		priv->sess = wd_aead_alloc_sess(&priv->setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk failed to alloc session!\n");
 			return UADK_AEAD_FAIL;
@@ -234,21 +232,17 @@ free_sess:
 
 static void *uadk_prov_aead_cb(struct wd_aead_req *req, void *data)
 {
-	struct uadk_e_cb_info *cb_param;
+	struct uadk_e_cb_info *aead_cb_param;
 	struct wd_aead_req *req_origin;
 	struct async_op *op;
 
-	if (!req)
+	if (!req || !req->cb_param)
 		return NULL;
 
-	cb_param = req->cb_param;
-	if (!cb_param)
-		return NULL;
-
-	req_origin = cb_param->priv;
+	aead_cb_param = req->cb_param;
+	req_origin = aead_cb_param->priv;
 	req_origin->state = req->state;
-
-	op = cb_param->op;
+	op = aead_cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
@@ -280,18 +274,18 @@ static int do_aes_gcm_prepare(struct aead_priv_ctx *priv)
 	return UADK_AEAD_SUCCESS;
 }
 
-static void uadk_do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char *out,
-				  const unsigned char *in, size_t inlen)
+static void uadk_do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char *output,
+				  const unsigned char *input, size_t inlen)
 {
 	priv->req.in_bytes = inlen;
-	/* AAD data is input or output together with plaintext or ciphertext. */
+	/* AAD data will be input and output together with plaintext or ciphertext. */
 	if (priv->req.assoc_bytes) {
-		memcpy(priv->data + priv->req.assoc_bytes, in, inlen);
+		memcpy(priv->data + priv->req.assoc_bytes, input, inlen);
 		priv->req.src = priv->data;
 		priv->req.dst = priv->data + AEAD_BLOCK_SIZE;
 	} else {
-		priv->req.src = (unsigned char *)in;
-		priv->req.dst = out;
+		priv->req.src = (unsigned char *)input;
+		priv->req.dst = output;
 	}
 }
 
@@ -790,6 +784,25 @@ static const OSSL_PARAM *uadk_prov_aead_gettable_ctx_params(ossl_unused void *cc
 	return uadk_prov_aead_ctx_params;
 }
 
+static int uadk_prov_aead_get_ctx_iv(OSSL_PARAM *p, struct aead_priv_ctx *priv)
+{
+	if (priv->iv_set == IV_STATE_UNINITIALISED)
+		return UADK_OSSL_FAIL;
+
+	if (priv->ivlen > p->data_size) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
+		return UADK_OSSL_FAIL;
+	}
+
+	if (!OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
+		&& !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		return UADK_OSSL_FAIL;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
 static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
@@ -822,34 +835,12 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
-	if (p) {
-		if (priv->iv_set == IV_STATE_UNINITIALISED)
-			return UADK_OSSL_FAIL;
-		if (priv->ivlen > p->data_size) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
-			return UADK_OSSL_FAIL;
-		}
-		if (!OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
-			&& !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-			return UADK_OSSL_FAIL;
-		}
-	}
+	if (p && !uadk_prov_aead_get_ctx_iv(p, priv))
+		return UADK_OSSL_FAIL;
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_UPDATED_IV);
-	if (p) {
-		if (priv->iv_set == IV_STATE_UNINITIALISED)
-			return UADK_OSSL_FAIL;
-		if (priv->ivlen > p->data_size) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
-			return UADK_OSSL_FAIL;
-		}
-		if (!OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
-			&& !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
-			return UADK_OSSL_FAIL;
-		}
-	}
+	if (p && !uadk_prov_aead_get_ctx_iv(p, priv))
+		return UADK_OSSL_FAIL;
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_AEAD_TAG);
 	if (p) {
@@ -958,10 +949,13 @@ static void uadk_prov_aead_freectx(void *ctx)
 		priv->sess = 0;
 	}
 
+
 	if (priv->data) {
 		OPENSSL_clear_free(priv->data, AEAD_BLOCK_SIZE << 1);
 		priv->data = NULL;
 	}
+
+
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
@@ -974,9 +968,9 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	if (!ctx)								\
 		return NULL;							\
 										\
-	ctx->data = OPENSSL_zalloc(AEAD_BLOCK_SIZE << 1);			\
+	ctx->data = OPENSSL_clear_free(ctx, sizeof(*ctx));			\
 	if (!ctx->data) {							\
-		OPENSSL_clear_free(ctx, sizeof(*ctx));				\
+		OPENSSL_free(ctx);						\
 		return NULL;							\
 	}									\
 										\
