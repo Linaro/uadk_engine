@@ -209,13 +209,13 @@ static void uadk_prov_fill_ecc_cv_param(struct wd_ecc_curve *ecc_param,
 {
 	ecc_param->p.dsize = BN_bn2bin(cv_param->p, (void *)ecc_param->p.data);
 	ecc_param->a.dsize = BN_bn2bin(cv_param->a, (void *)ecc_param->a.data);
-	if (!ecc_param->a.dsize) {
+	if (ecc_param->a.dsize == 0) {
 		ecc_param->a.dsize = 1;
 		ecc_param->a.data[0] = 0;
 	}
 
 	ecc_param->b.dsize = BN_bn2bin(cv_param->b, (void *)ecc_param->b.data);
-	if (!ecc_param->b.dsize) {
+	if (ecc_param->b.dsize == 0) {
 		ecc_param->b.dsize = 1;
 		ecc_param->b.data[0] = 0;
 	}
@@ -235,33 +235,33 @@ static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
 	BN_CTX *bn_ctx;
 
 	bn_ctx = BN_CTX_new();
-	if (!bn_ctx)
+	if (bn_ctx == NULL)
 		return ret;
 
 	BN_CTX_start(bn_ctx);
 
 	cv_param = OPENSSL_malloc(sizeof(struct curve_param));
-	if (!cv_param)
+	if (cv_param == NULL)
 		goto free_ctx;
 
 	cv_param->p = BN_CTX_get(bn_ctx);
-	if (!cv_param->p)
+	if (cv_param->p == NULL)
 		goto free_cv;
 
 	cv_param->a = BN_CTX_get(bn_ctx);
-	if (!cv_param->a)
+	if (cv_param->a == NULL)
 		goto free_cv;
 
 	cv_param->b = BN_CTX_get(bn_ctx);
-	if (!cv_param->b)
+	if (cv_param->b == NULL)
 		goto free_cv;
 
 	g_x = BN_CTX_get(bn_ctx);
-	if (!g_x)
+	if (g_x == NULL)
 		goto free_cv;
 
 	g_y = BN_CTX_get(bn_ctx);
-	if (!g_y)
+	if (g_y == NULL)
 		goto free_cv;
 
 	ret = uadk_prov_get_curve(group, cv_param->p, cv_param->a, cv_param->b, bn_ctx);
@@ -269,7 +269,7 @@ static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
 		goto free_cv;
 
 	cv_param->g = EC_GROUP_get0_generator(group);
-	if (!cv_param->g)
+	if (cv_param->g == NULL)
 		goto free_cv;
 
 	ret = uadk_prov_get_affine_coordinates(group, cv_param->g, g_x, g_y, bn_ctx);
@@ -277,7 +277,7 @@ static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
 		goto free_cv;
 
 	cv_param->order = EC_GROUP_get0_order(group);
-	if (!cv_param->order)
+	if (cv_param->order == NULL)
 		goto free_cv;
 
 	uadk_prov_fill_ecc_cv_param(ecc_param, cv_param, g_x, g_y);
@@ -665,7 +665,7 @@ static bool uadk_prov_support_algorithm(const char *alg)
 
 void uadk_prov_keymgmt_alg(void)
 {
-	static const char * const keymgmt_alg[] = {"sm2", "x448", "ecdh"};
+	static const char * const keymgmt_alg[] = {"sm2", "x448", "ecdh", "x25519"};
 	__u32 i, size;
 	bool sp;
 
@@ -837,7 +837,7 @@ void uadk_prov_ecc_uninit(void)
 
 void uadk_prov_keyexch_alg(void)
 {
-	static const char * const keyexch_alg[] = {"x448", "ecdh"};
+	static const char * const keyexch_alg[] = {"x448", "ecdh", "x25519"};
 	__u32 i, size;
 	bool sp;
 
