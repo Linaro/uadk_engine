@@ -12,10 +12,66 @@
 #include <string.h>
 #include "uadk_prov_der_writer.h"
 
-#define DER_OID_SZ_sm2_with_SM3		10
-#define PACKET_LEN_TAG			30
+#define PACKET_LEN_TAG				30
+#define DER_P_OBJECT				6
+#define DER_OID_SZ_sm2_with_SM3			10
+#define DER_OID_SZ_ecdsa_with_SHA1		9
+#define DER_OID_SZ_ecdsa_with_SHA224		10
+#define DER_OID_SZ_ecdsa_with_SHA256		10
+#define DER_OID_SZ_ecdsa_with_SHA384		10
+#define DER_OID_SZ_ecdsa_with_SHA512		10
+#define DER_OID_SZ_id_ecdsa_with_sha3_224	11
+#define DER_OID_SZ_id_ecdsa_with_sha3_256	11
+#define DER_OID_SZ_id_ecdsa_with_sha3_384	11
+#define DER_OID_SZ_id_ecdsa_with_sha3_512	11
 
-unsigned char ossl_der_oid_sm2_with_SM3[DER_OID_SZ_sm2_with_SM3] = {
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha1[DER_OID_SZ_ecdsa_with_SHA1] = {
+	DER_P_OBJECT, 7, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x01
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha224[DER_OID_SZ_ecdsa_with_SHA224] = {
+	DER_P_OBJECT, 8, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x01
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha256[DER_OID_SZ_ecdsa_with_SHA256] = {
+	DER_P_OBJECT, 8, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha384[DER_OID_SZ_ecdsa_with_SHA384] = {
+	DER_P_OBJECT, 8, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha512[DER_OID_SZ_ecdsa_with_SHA384] = {
+	DER_P_OBJECT, 8, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x04
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha3_224[DER_OID_SZ_id_ecdsa_with_sha3_224] = {
+	DER_P_OBJECT, 9, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x09
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha3_256[DER_OID_SZ_id_ecdsa_with_sha3_256] = {
+	DER_P_OBJECT, 9, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x0A
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha3_384[DER_OID_SZ_id_ecdsa_with_sha3_384] = {
+	DER_P_OBJECT, 9, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x0B
+};
+
+static const unsigned char
+ossl_der_oid_id_ecdsa_with_sha3_512[DER_OID_SZ_id_ecdsa_with_sha3_512] = {
+	DER_P_OBJECT, 9, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x0C
+};
+
+static const unsigned char
+ossl_der_oid_sm2_with_SM3[DER_OID_SZ_sm2_with_SM3] = {
 	6, 8, 0x2A, 0x81, 0x1C, 0xCF, 0x55, 0x01, 0x83, 0x75
 };
 
@@ -233,4 +289,54 @@ int ossl_DER_w_algorithmIdentifier_SM2_with_MD(WPACKET *pkt, int cont,
 	return ossl_DER_w_begin_sequence(pkt, cont) /* No parameters (yet?) */
 		&& ossl_DER_w_precompiled(pkt, -1, precompiled, precompiled_sz)
 		&& ossl_DER_w_end_sequence(pkt, cont);
+}
+
+int ossl_DER_w_algorithmIdentifier_ECDSA_with_MD(WPACKET *pkt, int cont,
+						 EC_KEY *ec, int mdnid)
+{
+	const unsigned char *precompiled = NULL;
+	size_t precompiled_sz = 0;
+
+#define MD_CASE(name) \
+do { \
+	precompiled = ossl_der_oid_id_ecdsa_with_##name; \
+	precompiled_sz = sizeof(ossl_der_oid_id_ecdsa_with_##name); \
+} while (0)
+
+	switch (mdnid) {
+	case NID_sha1:
+		MD_CASE(sha1);
+		break;
+	case NID_sha224:
+		MD_CASE(sha224);
+		break;
+	case NID_sha256:
+		MD_CASE(sha256);
+		break;
+	case NID_sha384:
+		MD_CASE(sha384);
+		break;
+	case NID_sha512:
+		MD_CASE(sha512);
+		break;
+	case NID_sha3_224:
+		MD_CASE(sha3_224);
+		break;
+	case NID_sha3_256:
+		MD_CASE(sha3_256);
+		break;
+	case NID_sha3_384:
+		MD_CASE(sha3_384);
+		break;
+	case NID_sha3_512:
+		MD_CASE(sha3_512);
+		break;
+	default:
+		return 0;
+	}
+
+	return ossl_DER_w_begin_sequence(pkt, cont) &&
+		/* No parameters (yet?) */
+	       ossl_DER_w_precompiled(pkt, -1, precompiled, precompiled_sz) &&
+	       ossl_DER_w_end_sequence(pkt, cont);
 }

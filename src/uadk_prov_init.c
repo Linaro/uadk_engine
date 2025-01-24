@@ -165,6 +165,8 @@ static const OSSL_ALGORITHM uadk_prov_signature[] = {
 	  uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_signature_functions, "uadk_provider sm2_signature" },
+	{ "ECDSA", UADK_DEFAULT_PROPERTIES,
+	  uadk_ecdsa_signature_functions, "uadk_provider ecdsa_signature" },
 	{ NULL, NULL, NULL }
 };
 
