@@ -126,4 +126,6 @@ int ossl_DER_w_end_sequence(WPACKET *pkt, int tag);
 
 int ossl_DER_w_algorithmIdentifier_SM2_with_MD(WPACKET *pkt, int cont,
 					EC_KEY *ec, int mdnid);
+int ossl_DER_w_algorithmIdentifier_ECDSA_with_MD(WPACKET *pkt, int cont,
+						 EC_KEY *ec, int mdnid);
 #endif
