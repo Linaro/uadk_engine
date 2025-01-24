@@ -680,7 +680,7 @@ void uadk_prov_keymgmt_alg(void)
 
 void uadk_prov_signature_alg(void)
 {
-	static const char * const signature_alg[] = {"sm2"};
+	static const char * const signature_alg[] = {"sm2", "ecdsa"};
 	__u32 i, size;
 	bool sp;
 

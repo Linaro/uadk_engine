@@ -75,6 +75,7 @@ enum {
 
 enum {
 	SIGNATURE_SM2 = 0x0,
+	SIGNATURE_ECDSA = 0x1,
 	SIGNATURE_MAX = 0x3
 };
 
