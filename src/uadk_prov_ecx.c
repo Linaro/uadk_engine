@@ -34,6 +34,9 @@
 #define X448_KEYBITS		448
 #define ECX_MAX_KEYLEN		57
 #define X448_SECURITY_BITS	224
+#define X25519_KEYBITS		256
+#define X25519_KEYLEN		32
+#define X25519_SECURITY_BITS	128
 
 #define ECX_POSSIBLE_SELECTIONS (OSSL_KEYMGMT_SELECT_KEYPAIR)
 
@@ -50,6 +53,11 @@ static inline int UADK_CRYPTO_DOWN_REF(int *val, int *ret,
 
 UADK_PKEY_KEYMGMT_DESCR(x448, X448);
 UADK_PKEY_KEYEXCH_DESCR(x448, X448);
+UADK_PKEY_KEYMGMT_DESCR(x25519, X25519);
+UADK_PKEY_KEYEXCH_DESCR(x25519, X25519);
+
+static pthread_mutex_t x25519_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t x448_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef enum {
 	ECX_KEY_TYPE_X25519 = 0x0,
@@ -349,20 +357,26 @@ static int ossl_ecx_gen_set_params(void *genctx, const OSSL_PARAM params[])
 	return UADK_P_SUCCESS;
 }
 
-static handle_t uadk_prov_x448_alloc_sess(void)
+static handle_t uadk_prov_ecx_alloc_sess(int type)
 {
 	struct wd_ecc_sess_setup setup = {0};
 	struct sched_params params = {0};
 
-	setup.alg = "x448";
-	setup.key_bits = X448_KEYBITS;
+	if (type == ECX_KEY_TYPE_X448) {
+		setup.alg = "x448";
+		setup.key_bits = X448_KEYBITS;
+	} else {
+		setup.alg = "x25519";
+		setup.key_bits = X25519_KEYBITS;
+	}
+
 	params.numa_id = -1;
 	setup.sched_param = &params;
 
 	return wd_ecc_alloc_sess(&setup);
 }
 
-static void uadk_prov_x448_free_sess(handle_t sess)
+static void uadk_prov_ecx_free_sess(handle_t sess)
 {
 	if (sess)
 		wd_ecc_free_sess(sess);
@@ -431,13 +445,17 @@ static ECX_KEY *uadk_prov_ecx_key_new(OSSL_LIB_CTX *libctx, ECX_KEY_TYPE type, i
 	switch (type) {
 	case ECX_KEY_TYPE_X448:
 		ecx_key->keylen = X448_KEYLEN;
-		ecx_key->type = type;
-		ecx_key->references = 1;
+		break;
+	case ECX_KEY_TYPE_X25519:
+		ecx_key->keylen = X25519_KEYLEN;
 		break;
 	default:
 		fprintf(stderr, "invalid: unsupported ecx type\n");
 		goto free_ecx_key;
 	}
+
+	ecx_key->type = type;
+	ecx_key->references = 1;
 
 	if (propq) {
 		ecx_key->propq = OPENSSL_strdup(propq);
@@ -493,7 +511,11 @@ static ECX_KEY *uadk_prov_ecx_create_prikey(PROV_ECX_KEYMGMT_CTX *gctx)
 		fprintf(stderr, "failed to new ecx_key\n");
 		return UADK_P_FAIL;
 	}
-	gctx->keylen = X448_KEYLEN;
+
+	if (gctx->type == ECX_KEY_TYPE_X448)
+		gctx->keylen = X448_KEYLEN;
+	else
+		gctx->keylen = X25519_KEYLEN;
 
 	/* If we're doing parameter generation then we just return a blank key */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) == 0)
@@ -637,7 +659,7 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 		return ret;
 	}
 	/*
-	 * This is a pretreatment of X448 described in RFC 7748.
+	 * This is a pretreatment of X448 and X25519 described in RFC 7748.
 	 * In order to decode the random bytes as an integer scaler, there
 	 * are some special data processing. And use little-endian mode for
 	 * decoding.
@@ -648,6 +670,14 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 
 		/* Set the MSB of the last byte to 1 */
 		ecx_key->privkey[X448_KEYLEN - 1] |= 0x80;
+	} else if (gctx->type == ECX_KEY_TYPE_X25519) {
+		ecx_key->privkey[0] &= 0xF8;
+
+		/* Set the MSB of the last byte to 0 */
+		ecx_key->privkey[X25519_KEYLEN - 1] &= 0x7F;
+
+		/* Set the second MSB of the last byte to 1 */
+		ecx_key->privkey[X25519_KEYLEN - 1] |= 0x40;
 	} else {
 		fprintf(stderr, "invalid: unsupported ecx type\n");
 		return UADK_P_FAIL;
@@ -744,7 +774,7 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 		return NULL;
 	}
 
-	gctx->sess = uadk_prov_x448_alloc_sess();
+	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (gctx->sess == (handle_t)0) {
 		fprintf(stderr, "failed to alloc x448 sess\n");
 		return NULL;
@@ -754,7 +784,7 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 	if (ecx_key == NULL)
 		fprintf(stderr, "failed to generate x448 key\n");
 
-	uadk_prov_x448_free_sess(gctx->sess);
+	uadk_prov_ecx_free_sess(gctx->sess);
 
 	return ecx_key;
 }
@@ -764,6 +794,7 @@ static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
 	static UADK_PKEY_KEYEXCH s_keyexch;
 	static int initilazed;
 
+	pthread_mutex_lock(&x448_mutex);
 	if (!initilazed) {
 		UADK_PKEY_KEYEXCH *keyexch =
 			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X448", "provider=default");
@@ -775,6 +806,8 @@ static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
 			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X448 provider\n");
 		}
 	}
+	pthread_mutex_unlock(&x448_mutex);
+
 	return s_keyexch;
 }
 
@@ -838,7 +871,7 @@ static int uadk_keyexch_x448_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 	return get_default_x448_keyexch().get_ctx_params(ecxctx, params);
 }
 
-static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
+static int uadk_keyexch_ecx_init(void *vecxctx, void *vkey,
 				  ossl_unused const OSSL_PARAM params[])
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
@@ -866,6 +899,12 @@ static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
 	return UADK_P_SUCCESS;
 }
 
+static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
+				  ossl_unused const OSSL_PARAM params[])
+{
+	return uadk_keyexch_ecx_init(vecxctx, vkey, params);
+}
+
 static int ossl_ecx_key_up_ref(ECX_KEY *key)
 {
 	int i = 0;
@@ -876,31 +915,36 @@ static int ossl_ecx_key_up_ref(ECX_KEY *key)
 	return ((i > 1) ? UADK_P_SUCCESS : UADK_P_FAIL);
 }
 
-static int uadk_keyexch_x448_set_peer(void *vecxctx, void *vkey)
+static int uadk_keyexch_ecx_set_peer(void *vecxctx, void *vkey)
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
-	ECX_KEY *key = vkey;
+	ECX_KEY *peerkey = vkey;
 
 	if (ecxctx == NULL) {
 		fprintf(stderr, "invalid: ecxctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
-	if (key == NULL) {
+	if (peerkey == NULL) {
 		fprintf(stderr, "invalid: key is NULL\n");
 		return UADK_P_FAIL;
 	}
 
-	if (key->keylen != ecxctx->keylen || !ossl_ecx_key_up_ref(key)) {
-		fprintf(stderr, "invalid: key->keylen(%zu) != ecxctx->keylen(%zu)\n",
-			key->keylen, ecxctx->keylen);
+	if (peerkey->keylen != ecxctx->keylen || !ossl_ecx_key_up_ref(peerkey)) {
+		fprintf(stderr, "invalid: peerkey->keylen(%zu) != ecxctx->keylen(%zu)\n",
+			peerkey->keylen, ecxctx->keylen);
 		return UADK_P_FAIL;
 	}
 
 	uadk_prov_ecx_key_free(ecxctx->peerkey);
-	ecxctx->peerkey = key;
+	ecxctx->peerkey = peerkey;
 
 	return UADK_P_SUCCESS;
+}
+
+static int uadk_keyexch_x448_set_peer(void *vecxctx, void *vkey)
+{
+	return uadk_keyexch_ecx_set_peer(vecxctx, vkey);
 }
 
 static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct wd_ecc_req *req)
@@ -934,7 +978,7 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	if (ecx_out == NULL) {
 		fprintf(stderr, "failed to new ecxdh out\n");
 		ret = UADK_P_FAIL;
-		goto del_in;
+		goto del_ecx_in;
 	}
 
 	uadk_prov_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
@@ -942,15 +986,15 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	/* Trans public key from big-endian to little-endian */
 	ret = uadk_prov_reverse_bytes(ecxctx->peerkey->pubkey, ecxctx->keylen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to trans public key\n");
-		goto del_out;
+		fprintf(stderr, "failed to trans peer public key\n");
+		goto del_ecx_out;
 	}
 
 	return ret;
 
-del_out:
+del_ecx_out:
 	wd_ecc_del_out(sess, ecx_out);
-del_in:
+del_ecx_in:
 	wd_ecc_del_in(sess, ecx_in);
 
 	return ret;
@@ -995,25 +1039,31 @@ static int uadk_prov_ecx_derive_set_prikey(PROV_ECX_KEYEXCH_CTX *ecxctx)
 	return UADK_P_SUCCESS;
 }
 
-static void uadk_prov_x448_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
-			     size_t len)
-{
-	unsigned char x448_pad_key[X448_KEYLEN] = {0};
-
-	if (len != X448_KEYLEN) {
-		memcpy(x448_pad_key, src_key, len);
-		memcpy(dst_key, x448_pad_key, X448_KEYLEN);
-	} else {
-		memcpy(dst_key, src_key, X448_KEYLEN);
-	}
-}
-
-static void uadk_prov_ecx_pad_out_key(unsigned char *dst_key, unsigned char *src_key,
+static void uadk_prov_ecx_pad_out_key(unsigned char *dst, unsigned char *src,
 				      size_t len, int type)
 {
-	if (type == ECX_KEY_TYPE_X448) {
-		uadk_prov_x448_pad_out_key(dst_key, src_key, len);
-		return;
+	unsigned char x448_pad_key[X448_KEYLEN] = {0};
+	unsigned char x25519_pad_key[X25519_KEYLEN] = {0};
+
+	switch (type) {
+	case ECX_KEY_TYPE_X448:
+		if (len != X448_KEYLEN) {
+			memcpy(x448_pad_key, src, len);
+			memcpy(dst, x448_pad_key, X448_KEYLEN);
+		} else {
+			memcpy(dst, src, X448_KEYLEN);
+		}
+		break;
+	case ECX_KEY_TYPE_X25519:
+		if (len != X25519_KEYLEN) {
+			memcpy(x25519_pad_key, src, len);
+			memcpy(dst, x25519_pad_key, X25519_KEYLEN);
+		} else {
+			memcpy(dst, src, X25519_KEYLEN);
+		}
+		break;
+	default:
+		break;
 	}
 }
 
@@ -1078,12 +1128,11 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 	int ret;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ecxctx is NULL in derive op\n");
+		fprintf(stderr, "invalid: ecxctx is NULL in x448 derive op\n");
 		return UADK_P_FAIL;
 	}
 
-	if (ecxctx->key == NULL || ecxctx->key->privkey == NULL ||
-	    ecxctx->peerkey == NULL) {
+	if (ecxctx->key == NULL || ecxctx->key->privkey == NULL || ecxctx->peerkey == NULL) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_KEY);
 		return UADK_P_FAIL;
 	}
@@ -1115,7 +1164,7 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 		return UADK_P_FAIL;
 	}
 
-	ecxctx->sess = uadk_prov_x448_alloc_sess();
+	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (ecxctx->sess == (handle_t)0) {
 		fprintf(stderr, "failed to alloc sess\n");
 		return UADK_P_FAIL;
@@ -1127,12 +1176,12 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 
 	*secretlen = ecxctx->keylen;
 
-	uadk_prov_x448_free_sess(ecxctx->sess);
+	uadk_prov_ecx_free_sess(ecxctx->sess);
 
 	return ret;
 }
 
-static void *uadk_keyexch_x448_dupctx(void *vecxctx)
+static void *uadk_keyexch_ecx_dupctx(void *vecxctx)
 {
 	PROV_ECX_KEYEXCH_CTX *srcctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
 	PROV_ECX_KEYEXCH_CTX *dstctx;
@@ -1161,4 +1210,382 @@ static void *uadk_keyexch_x448_dupctx(void *vecxctx)
 	}
 
 	return dstctx;
+}
+
+static void *uadk_keyexch_x448_dupctx(void *vecxctx)
+{
+	return uadk_keyexch_ecx_dupctx(vecxctx);
+}
+
+static void *uadk_keymgmt_x25519_new(void *provctx)
+{
+	if (get_default_x25519_keymgmt().new_fun == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().new_fun(provctx);
+}
+
+void uadk_keymgmt_x25519_free(void *keydata)
+{
+	if (get_default_x25519_keymgmt().free == NULL)
+		return;
+
+	get_default_x25519_keymgmt().free(keydata);
+}
+
+static int uadk_keymgmt_x25519_has(const void *keydata, int selection)
+{
+	if (get_default_x25519_keymgmt().has == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().has(keydata, selection);
+}
+
+static int uadk_keymgmt_x25519_match(const void *keydata1, const void *keydata2, int selection)
+{
+	if (get_default_x25519_keymgmt().match == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().match(keydata1, keydata2, selection);
+}
+
+static int uadk_keymgmt_x25519_import(void *keydata, int selection, const OSSL_PARAM params[])
+{
+	if (get_default_x25519_keymgmt().import == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().import(keydata, selection, params);
+}
+
+static int uadk_keymgmt_x25519_export(void *keydata, int selection,
+				    OSSL_CALLBACK *cb, void *cb_params)
+{
+	if (get_default_x25519_keymgmt().export_fun == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().export_fun(keydata, selection, cb, cb_params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_import_types(int selection)
+{
+	if (get_default_x25519_keymgmt().import_types == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().import_types(selection);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_export_types(int selection)
+{
+	if (get_default_x25519_keymgmt().export_types == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().export_types(selection);
+}
+
+void *uadk_keymgmt_x25519_load(const void *reference, size_t reference_sz)
+{
+	if (get_default_x25519_keymgmt().load == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().load(reference, reference_sz);
+}
+
+static void *uadk_keymgmt_x25519_dup(const void *keydata_from, int selection)
+{
+	if (get_default_x25519_keymgmt().dup == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().dup(keydata_from, selection);
+}
+
+static int uadk_keymgmt_x25519_validate(const void *keydata, int selection, int checktype)
+{
+	if (get_default_x25519_keymgmt().validate == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().validate(keydata, selection, checktype);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_gettable_params(void *provctx)
+{
+	if (get_default_x25519_keymgmt().gettable_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().gettable_params(provctx);
+}
+
+static int uadk_keymgmt_x25519_set_params(void *key, const OSSL_PARAM params[])
+{
+	if (get_default_x25519_keymgmt().set_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().set_params(key, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_settable_params(void *provctx)
+{
+	if (get_default_x25519_keymgmt().settable_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().settable_params(provctx);
+}
+
+static int uadk_keymgmt_x25519_gen_set_params(void *genctx,
+					  const OSSL_PARAM params[])
+{
+	if (get_default_x25519_keymgmt().gen_set_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().gen_set_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused void *genctx,
+						ossl_unused void *provctx)
+{
+	if (get_default_x25519_keymgmt().gen_settable_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().gen_settable_params(genctx, provctx);
+}
+
+static int uadk_keymgmt_x25519_gen_set_template(void *genctx, void *templ)
+{
+	if (get_default_x25519_keymgmt().gen_set_template == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().gen_set_template(genctx, templ);
+}
+
+static const char *uadk_keymgmt_x25519_query_operation_name(int operation_id)
+{
+	if (get_default_x25519_keymgmt().query_operation_name == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().query_operation_name(operation_id);
+}
+
+static int uadk_keymgmt_x25519_get_params(void *key, OSSL_PARAM params[])
+{
+	return uadk_prov_ecx_get_params(key, params, X25519_KEYBITS, X25519_SECURITY_BITS,
+					X25519_KEYLEN);
+}
+
+static void uadk_keymgmt_x25519_gen_cleanup(void *genctx)
+{
+	/* genctx will be freed in cleanup function */
+	if (get_default_x25519_keymgmt().gen_cleanup == NULL)
+		return;
+
+	get_default_x25519_keymgmt().gen_cleanup(genctx);
+}
+
+static void *uadk_keymgmt_x25519_gen_init(void *provctx, int selection,
+					const OSSL_PARAM params[])
+{
+	if (provctx == NULL) {
+		fprintf(stderr, "invalid: provctx is NULL\n");
+		return NULL;
+	}
+
+	return ossl_ecx_gen_init(provctx, selection, params, ECX_KEY_TYPE_X25519);
+}
+
+static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
+{
+	PROV_ECX_KEYMGMT_CTX *gctx = (PROV_ECX_KEYMGMT_CTX *)genctx;
+	ECX_KEY *ecx_key = NULL;
+	int ret;
+
+	if (gctx == NULL) {
+		fprintf(stderr, "invalid: ecx keygen ctx is NULL\n");
+		return NULL;
+	}
+
+	if (gctx->type != ECX_KEY_TYPE_X25519) {
+		fprintf(stderr, "invalid: unsupported ecx type\n");
+		return NULL;
+	}
+
+	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X25519);
+	if (ret == UADK_P_FAIL) {
+		fprintf(stderr, "failed to get hardware x25519 keygen support\n");
+		return NULL;
+	}
+
+	ret = uadk_prov_ecc_init("x25519");
+	if (ret != UADK_P_SUCCESS) {
+		fprintf(stderr, "failed to init x25519\n");
+		return NULL;
+	}
+
+	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
+	if (gctx->sess == (handle_t)0) {
+		fprintf(stderr, "failed to alloc x25519 sess\n");
+		return NULL;
+	}
+
+	ecx_key = uadk_prov_ecx_keygen(gctx);
+	if (ecx_key == NULL)
+		fprintf(stderr, "failed to generate x25519 key\n");
+
+	uadk_prov_ecx_free_sess(gctx->sess);
+
+	return ecx_key;
+}
+
+static UADK_PKEY_KEYEXCH get_default_x25519_keyexch(void)
+{
+	static UADK_PKEY_KEYEXCH s_keyexch;
+	static int initilazed;
+
+	pthread_mutex_lock(&x25519_mutex);
+	if (!initilazed) {
+		UADK_PKEY_KEYEXCH *keyexch =
+			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
+		if (keyexch) {
+			s_keyexch = *keyexch;
+			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+			initilazed = 1;
+		} else {
+			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X25519 provider\n");
+		}
+	}
+	pthread_mutex_unlock(&x25519_mutex);
+
+	return s_keyexch;
+}
+
+static void *uadk_keyexch_x25519_newctx(void *provctx)
+{
+	PROV_ECX_KEYEXCH_CTX *ecxctx = NULL;
+
+	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
+	if (ecxctx == NULL) {
+		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+		return NULL;
+	}
+
+	ecxctx->keylen = X25519_KEYLEN;
+
+	return ecxctx;
+}
+
+static void uadk_keyexch_x25519_freectx(void *vecxctx)
+{
+	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
+
+	if (ecxctx == NULL)
+		return;
+
+	OPENSSL_free(ecxctx);
+}
+
+static int uadk_keyexch_x25519_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
+{
+	if (get_default_x25519_keyexch().set_ctx_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keyexch().set_ctx_params(ecxctx, params);
+}
+
+static const OSSL_PARAM *uadk_keyexch_x25519_settable_ctx_params(ossl_unused void *ecxctx,
+						ossl_unused void *provctx)
+{
+	if (get_default_x25519_keyexch().settable_ctx_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keyexch().settable_ctx_params(ecxctx, provctx);
+}
+
+static const OSSL_PARAM *uadk_keyexch_x25519_gettable_ctx_params(ossl_unused void *ecxctx,
+						ossl_unused void *provctx)
+{
+	if (get_default_x25519_keyexch().gettable_ctx_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keyexch().gettable_ctx_params(ecxctx, provctx);
+}
+
+static int uadk_keyexch_x25519_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
+{
+	if (get_default_x25519_keyexch().get_ctx_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keyexch().get_ctx_params(ecxctx, params);
+}
+
+static int uadk_keyexch_x25519_init(void *vecxctx, void *vkey,
+				  ossl_unused const OSSL_PARAM params[])
+{
+	return uadk_keyexch_ecx_init(vecxctx, vkey, params);
+}
+
+static int uadk_keyexch_x25519_set_peer(void *vecxctx, void *vkey)
+{
+	return uadk_keyexch_ecx_set_peer(vecxctx, vkey);
+}
+
+static int uadk_keyexch_x25519_derive(void *vecxctx, unsigned char *secret, size_t *secretlen,
+				    size_t outlen)
+{
+	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
+	int ret;
+
+	if (ecxctx == NULL) {
+		fprintf(stderr, "invalid: ecxctx is NULL in x25519 derive op\n");
+		return UADK_P_FAIL;
+	}
+
+	if (ecxctx->key == NULL || ecxctx->key->privkey == NULL || ecxctx->peerkey == NULL) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_KEY);
+		return UADK_P_FAIL;
+	}
+
+	if (ecxctx->keylen != X25519_KEYLEN) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+		return UADK_P_FAIL;
+	}
+
+	if (secret == NULL) {
+		*secretlen = ecxctx->keylen;
+		return UADK_P_SUCCESS;
+	}
+
+	if (outlen < ecxctx->keylen) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		return UADK_P_FAIL;
+	}
+
+	ret = uadk_prov_keyexch_get_support_state(KEYEXCH_X25519);
+	if (ret == UADK_P_FAIL) {
+		fprintf(stderr, "failed to get hardware x25519 keyexch support\n");
+		return UADK_P_FAIL;
+	}
+
+	ret = uadk_prov_ecc_init("x25519");
+	if (ret != UADK_P_SUCCESS) {
+		fprintf(stderr, "failed to init x25519\n");
+		return UADK_P_FAIL;
+	}
+
+	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
+	if (ecxctx->sess == (handle_t)0) {
+		fprintf(stderr, "failed to alloc sess\n");
+		return UADK_P_FAIL;
+	}
+
+	ret = uadk_prov_ecx_derive(ecxctx, secret, &ecxctx->keylen);
+	if (ret == UADK_P_FAIL)
+		fprintf(stderr, "failed to do x25519 derive\n");
+
+	*secretlen = ecxctx->keylen;
+
+	uadk_prov_ecx_free_sess(ecxctx->sess);
+
+	return ret;
+}
+
+static void *uadk_keyexch_x25519_dupctx(void *vecxctx)
+{
+	return uadk_keyexch_ecx_dupctx(vecxctx);
 }
