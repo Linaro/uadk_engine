@@ -98,6 +98,8 @@ struct digest_priv_ctx {
 	size_t md_size;
 	size_t blk_size;
 	char alg_name[ALG_NAME_SIZE];
+	size_t total_data_len;
+	bool is_stream_copy;
 };
 
 struct digest_info {
@@ -358,28 +360,36 @@ soft_init:
 	return uadk_digest_soft_init(priv);
 }
 
-static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv)
+static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv, bool is_end)
 {
 	/* Sha224 and Sha384 and Sha512-XXX need full length mac buffer as doing long hash */
 	switch (priv->e_nid) {
 	case NID_sha224:
-		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
-					WD_DIGEST_SHA224_FULL_LEN : WD_DIGEST_SHA224_LEN;
+		priv->req.out_bytes = !is_end ? WD_DIGEST_SHA224_FULL_LEN : WD_DIGEST_SHA224_LEN;
 		break;
 	case NID_sha384:
-		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
-					WD_DIGEST_SHA384_FULL_LEN : WD_DIGEST_SHA384_LEN;
+		priv->req.out_bytes = !is_end ? WD_DIGEST_SHA384_FULL_LEN : WD_DIGEST_SHA384_LEN;
 		break;
 	case NID_sha512_224:
-		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+		priv->req.out_bytes = !is_end ?
 					WD_DIGEST_SHA512_224_FULL_LEN : WD_DIGEST_SHA512_224_LEN;
 		break;
 	case NID_sha512_256:
-		priv->req.out_bytes = (priv->req.has_next == DIGEST_DOING) ?
+		priv->req.out_bytes = !is_end ?
 					WD_DIGEST_SHA512_256_FULL_LEN : WD_DIGEST_SHA512_256_LEN;
 		break;
 	default:
 		break;
+	}
+}
+
+static void uadk_digest_set_msg_state(struct digest_priv_ctx *priv, bool is_end)
+{
+	if (unlikely(priv->is_stream_copy)) {
+		priv->req.has_next = is_end ? WD_DIGEST_STREAM_END : WD_DIGEST_STREAM_DOING;
+		priv->is_stream_copy = false;
+	} else {
+		priv->req.has_next = is_end ? WD_DIGEST_END : WD_DIGEST_DOING;
 	}
 }
 
@@ -394,8 +404,8 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 	if (ret != UADK_DIGEST_SUCCESS)
 		return UADK_DIGEST_FAIL;
 
-	priv->req.has_next = DIGEST_DOING;
-	uadk_fill_mac_buffer_len(priv);
+	uadk_digest_set_msg_state(priv, false);
+	uadk_fill_mac_buffer_len(priv, false);
 
 	do {
 		/*
@@ -469,6 +479,8 @@ static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, si
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT))
 		goto soft_update;
+
+	priv->total_data_len += data_len;
 
 	if (priv->last_update_bufflen + data_len <= DIGEST_BLOCK_SIZE) {
 		uadk_memcpy(priv->data + priv->last_update_bufflen, data, data_len);
@@ -576,12 +588,12 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	if (ret != UADK_DIGEST_SUCCESS)
 		return UADK_DIGEST_FAIL;
 
-	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
 
-	uadk_fill_mac_buffer_len(priv);
+	uadk_digest_set_msg_state(priv, true);
+	uadk_fill_mac_buffer_len(priv, true);
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
@@ -642,13 +654,13 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 		return UADK_DIGEST_FAIL;
 	}
 
-	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
 	priv->req.in_bytes = data_len;
 	uadk_memcpy(priv->data, data, data_len);
 
-	uadk_fill_mac_buffer_len(priv);
+	uadk_digest_set_msg_state(priv, true);
+	uadk_fill_mac_buffer_len(priv, true);
 
 	if (op.job == NULL)
 		ret = uadk_do_digest_sync(priv);
@@ -739,16 +751,50 @@ static void uadk_prov_freectx(void *dctx)
 
 static void *uadk_prov_dupctx(void *dctx)
 {
-	struct digest_priv_ctx *in, *ret;
+	struct digest_priv_ctx *dst_ctx, *src_ctx;
 
+	src_ctx = (struct digest_priv_ctx *)dctx;
 	if (!dctx)
 		return NULL;
 
-	in = (struct digest_priv_ctx *)dctx;
-	ret = OPENSSL_malloc(sizeof(struct digest_priv_ctx));
-	if (ret)
-		memcpy(ret, in, sizeof(struct digest_priv_ctx));
-	return ret;
+	dst_ctx = OPENSSL_memdup(src_ctx, sizeof(struct digest_priv_ctx));
+	if (!dst_ctx)
+		return NULL;
+
+	/*
+	 * When a copy is performed during digest execution,
+	 * the status in the sess needs to be synchronized.
+	 */
+	if (dst_ctx->sess && dst_ctx->state != SEC_DIGEST_INIT) {
+		dst_ctx->is_stream_copy = true;
+		/*
+		 * Length that the hardware has processed should be equal to
+		 * total input data length minus software cache data length.
+		 */
+		dst_ctx->req.long_data_len = dst_ctx->total_data_len
+						- dst_ctx->last_update_bufflen;
+	}
+
+	dst_ctx->sess = 0;
+	dst_ctx->data = OPENSSL_memdup(src_ctx->data, DIGEST_BLOCK_SIZE);
+	if (!dst_ctx->data)
+		goto free_ctx;
+
+	if (dst_ctx->soft_ctx) {
+		dst_ctx->soft_ctx = EVP_MD_CTX_new();
+		if (!dst_ctx->soft_ctx) {
+			fprintf(stderr, "EVP_MD_CTX_new failed in ctx copy.\n");
+			goto free_data;
+		}
+	}
+
+	return dst_ctx;
+
+free_data:
+	OPENSSL_clear_free(dst_ctx->data, DIGEST_BLOCK_SIZE);
+free_ctx:
+	OPENSSL_clear_free(dst_ctx, sizeof(*dst_ctx));
+	return NULL;
 }
 
 static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
