@@ -147,7 +147,8 @@ err:
 	if (pthread_mutex_unlock(&poll_queue.async_task_mutex))
 		return NULL;
 
-	if (cur_task && !cur_task->op)
+	if (!cur_task || !cur_task->op ||
+	    !cur_task->ctx || cur_task->type == ASYNC_TASK_MAX)
 		return NULL;
 
 	return cur_task;
@@ -197,6 +198,8 @@ int async_get_free_task(int *id)
 	task_queue = poll_queue.head;
 	task = &task_queue[idx];
 	task->op = NULL;
+	task->ctx = NULL;
+	task->type = ASYNC_TASK_MAX;
 	ret = UADK_E_SUCCESS;
 
 out:
