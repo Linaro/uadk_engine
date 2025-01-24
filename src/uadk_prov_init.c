@@ -25,6 +25,7 @@
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/provider.h>
+#include <openssl/rand.h>
 
 #include "uadk_async.h"
 #include "uadk_prov.h"
@@ -210,10 +211,18 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 	prov = OSSL_PROVIDER_load(NULL, "default");
 	if (!prov_init) {
 		prov_init = 1;
-		/* uadk_provider takes the highest priority
+		/*
+		 * uadk_provider takes the highest priority
 		 * and overwrite the openssl.cnf property.
 		 */
 		EVP_set_default_properties(NULL, "?provider=uadk_provider");
+		/*
+		 * In asynchronous scenarios, if random numbers are obtained using
+		 * uadk provider cipher, deadlocks may occur. Therefore, random numbers are
+		 * obtained using default provider cipher.
+		 */
+		(void)RAND_set_DRBG_type(prov_libctx_of(provctx), NULL,
+					 "provider=default", NULL, NULL);
 	}
 
 	*no_cache = 0;
