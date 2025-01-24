@@ -1909,6 +1909,8 @@ static RSA_METHOD *uadk_e_get_rsa_methods(void)
 				      RSA_PKCS1_OpenSSL()));
 	(void)RSA_meth_set_mod_exp(rsa_hw_meth, RSA_meth_get_mod_exp(
 				   RSA_PKCS1_OpenSSL()));
+	(void)RSA_meth_set_finish(rsa_hw_meth, RSA_meth_get_finish(
+				  RSA_PKCS1_OpenSSL()));
 
 	return rsa_hw_meth;
 }
