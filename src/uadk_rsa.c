@@ -1938,6 +1938,14 @@ static EVP_PKEY_METHOD *uadk_rsa_get_pkey_meth(void)
 	return g_hpre_pkey_meth;
 }
 
+static void uadk_rsa_free_pkey_meth(EVP_PKEY_METHOD *pmeth)
+{
+	if (g_hpre_pkey_meth) {
+		EVP_PKEY_meth_free(g_hpre_pkey_meth);
+		g_hpre_pkey_meth = NULL;
+	}
+}
+
 /**
  * uadk_e_bind_rsa() - Set the access to get rsa methods to the ENGINE.
  * @e: uadk engine
@@ -1951,6 +1959,7 @@ int uadk_e_bind_rsa(ENGINE *e)
 void uadk_e_destroy_rsa(void)
 {
 	pthread_spin_destroy(&g_rsa_res.lock);
+	uadk_rsa_free_pkey_meth(g_hpre_pkey_meth);
 	uadk_e_delete_rsa_meth();
 	uadk_e_rsa_uninit();
 }
