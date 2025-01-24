@@ -417,7 +417,7 @@ static int bind_fn(ENGINE *e, const char *id)
 	bind_fn_uadk_alg(e);
 
 	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
-		pthread_atfork(NULL, NULL, engine_init_child_at_fork_handler);
+		pthread_atfork(async_module_uninit, NULL, engine_init_child_at_fork_handler);
 
 	ret = ENGINE_set_ctrl_function(e, uadk_engine_ctrl);
 	if (ret != 1) {
