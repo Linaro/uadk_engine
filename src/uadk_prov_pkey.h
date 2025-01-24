@@ -70,6 +70,7 @@ enum {
 	KEYMGMT_SM2 = 0x0,
 	KEYMGMT_X448 = 0x1,
 	KEYMGMT_ECDH = 0x2,
+	KEYMGMT_X25519 = 0x3,
 	KEYMGMT_MAX = 0x6
 };
 
@@ -88,6 +89,7 @@ enum {
 enum {
 	KEYEXCH_X448 = 0x0,
 	KEYEXCH_ECDH = 0x1,
+	KEYEXCH_X25519 = 0x2,
 };
 
 struct curve_param {

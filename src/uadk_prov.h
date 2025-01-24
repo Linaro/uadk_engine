@@ -185,6 +185,9 @@ extern const OSSL_DISPATCH uadk_ecdh_keyexch_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_x448_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_x448_keyexch_functions[FUNC_MAX_NUM];
 
+extern const OSSL_DISPATCH uadk_x25519_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_x25519_keyexch_functions[FUNC_MAX_NUM];
+
 extern const OSSL_DISPATCH uadk_ecdsa_signature_functions[FUNC_MAX_NUM];
 
 void uadk_prov_destroy_digest(void);
