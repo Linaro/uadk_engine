@@ -178,6 +178,7 @@ mutex_unlock:
 
 static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 {
+	struct wd_aead_sess_setup setup = {0};
 	struct sched_params params = {0};
 	int ret;
 
@@ -200,10 +201,12 @@ static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 	params.type = 0;
 	/* Use the default numa parameters */
 	params.numa_id = -1;
-	priv->setup.sched_param = &params;
+	setup.sched_param = &params;
+	setup.calg = priv->setup.calg;
+	setup.cmode = priv->setup.cmode;
 
 	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(&priv->setup);
+		priv->sess = wd_aead_alloc_sess(&setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk failed to alloc session!\n");
 			return UADK_AEAD_FAIL;
@@ -944,17 +947,11 @@ static void uadk_prov_aead_freectx(void *ctx)
 	if (!ctx)
 		return;
 
-	if (priv->sess) {
+	if (priv->sess)
 		wd_aead_free_sess(priv->sess);
-		priv->sess = 0;
-	}
 
-
-	if (priv->data) {
+	if (priv->data)
 		OPENSSL_clear_free(priv->data, AEAD_BLOCK_SIZE << 1);
-		priv->data = NULL;
-	}
-
 
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
@@ -968,7 +965,7 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	if (!ctx)								\
 		return NULL;							\
 										\
-	ctx->data = OPENSSL_clear_free(ctx, sizeof(*ctx));			\
+	ctx->data = OPENSSL_zalloc(AEAD_BLOCK_SIZE << 1);			\
 	if (!ctx->data) {							\
 		OPENSSL_free(ctx);						\
 		return NULL;							\

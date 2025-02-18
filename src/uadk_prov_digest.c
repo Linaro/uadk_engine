@@ -639,7 +639,7 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 	struct async_op op;
 	int ret;
 
-	if (!priv->data) {
+	if (!data) {
 		fprintf(stderr, "failed to do single digest, data in CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
@@ -654,11 +654,9 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 		return UADK_DIGEST_FAIL;
 	}
 
-	priv->req.in = priv->data;
-	priv->req.out = priv->out;
+	priv->req.in = (void *)data;
+	priv->req.out = digest;
 	priv->req.in_bytes = data_len;
-	uadk_memcpy(priv->data, data, data_len);
-
 	uadk_digest_set_msg_state(priv, true);
 	uadk_fill_mac_buffer_len(priv, true);
 
@@ -672,24 +670,30 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 		async_clear_async_event_notification();
 		return ret;
 	}
-	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
 	return UADK_DIGEST_SUCCESS;
 }
 
 static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 {
-	if (priv->sess) {
+	if (priv->sess)
 		wd_digest_free_sess(priv->sess);
-		priv->sess = 0;
-	}
 
 	if (priv->data)
-		OPENSSL_free(priv->data);
+		OPENSSL_clear_free(priv->data, DIGEST_BLOCK_SIZE);
 
 	if (priv->soft_ctx)
-		OPENSSL_free(priv->data);
+		OPENSSL_clear_free(priv->soft_ctx, sizeof(EVP_MD_CTX));
 }
+
+static OSSL_FUNC_digest_freectx_fn	uadk_prov_freectx;
+static OSSL_FUNC_digest_dupctx_fn	uadk_prov_dupctx;
+static OSSL_FUNC_digest_init_fn		uadk_prov_init;
+static OSSL_FUNC_digest_update_fn	uadk_prov_update;
+static OSSL_FUNC_digest_final_fn	uadk_prov_final;
+static OSSL_FUNC_digest_digest_fn	uadk_prov_digest;
+static OSSL_FUNC_digest_gettable_params_fn
+					uadk_prov_gettable_params;
 
 /* some params related code is copied from OpenSSL v3.0 prov/digestcommon.h */
 static const OSSL_PARAM uadk_digest_default_known_gettable_params[] = {
@@ -895,15 +899,6 @@ void uadk_prov_destroy_digest(void)
 	}
 	pthread_mutex_unlock(&digest_mutex);
 }
-
-static OSSL_FUNC_digest_freectx_fn	uadk_prov_freectx;
-static OSSL_FUNC_digest_dupctx_fn	uadk_prov_dupctx;
-static OSSL_FUNC_digest_init_fn		uadk_prov_init;
-static OSSL_FUNC_digest_update_fn	uadk_prov_update;
-static OSSL_FUNC_digest_final_fn	uadk_prov_final;
-static OSSL_FUNC_digest_digest_fn	uadk_prov_digest;
-static OSSL_FUNC_digest_gettable_params_fn
-					uadk_prov_gettable_params;
 
 #define UADK_PROVIDER_IMPLEMENTATION(name, nid, mdsize, blksize)		\
 static OSSL_FUNC_digest_newctx_fn uadk_##name##_newctx;				\

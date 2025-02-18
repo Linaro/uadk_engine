@@ -1265,6 +1265,9 @@ static void uadk_prov_cipher_freectx(void *ctx)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)ctx;
 
+	if (ctx == NULL)
+		return;
+
 	if (priv->sw_cipher)
 		EVP_CIPHER_free(priv->sw_cipher);
 
