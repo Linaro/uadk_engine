@@ -53,6 +53,9 @@
 #define DIGEST_BLOCK_SIZE	(512 * 1024)
 #define ALG_NAME_SIZE           128
 
+#define UADK_DIGEST_DEF_CTXS	1
+#define UADK_DIGEST_OP_NUM	1
+
 enum sec_digest_state {
 	SEC_DIGEST_INIT,
 	SEC_DIGEST_FIRST_UPDATING,
@@ -272,41 +275,76 @@ static int uadk_get_digest_info(struct digest_priv_ctx *priv)
 	return UADK_DIGEST_SUCCESS;
 }
 
-static int uadk_digest_init(struct digest_priv_ctx *priv)
+static void uadk_digest_mutex_infork(void)
 {
+	/* Release the replication lock of the child process */
+	pthread_mutex_unlock(&digest_mutex);
+}
+
+static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
+{
+	struct wd_ctx_params cparams = {0};
+	struct wd_ctx_nums ctx_set_num;
+	int ret = UADK_DIGEST_SUCCESS;
+
+	pthread_atfork(NULL, NULL, uadk_digest_mutex_infork);
+	pthread_mutex_lock(&digest_mutex);
+	if (dprov.pid == getpid())
+		goto mutex_unlock;
+
+	cparams.op_type_num = UADK_DIGEST_OP_NUM;
+	cparams.ctx_set_num = &ctx_set_num;
+	cparams.bmp = numa_allocate_nodemask();
+	if (!cparams.bmp) {
+		ret = UADK_DIGEST_FAIL;
+		fprintf(stderr, "failed to create nodemask!\n");
+		goto mutex_unlock;
+	}
+
+	numa_bitmask_setall(cparams.bmp);
+
+	ctx_set_num.sync_ctx_num = UADK_DIGEST_DEF_CTXS;
+	ctx_set_num.async_ctx_num = UADK_DIGEST_DEF_CTXS;
+
+	ret = wd_digest_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	if (unlikely(ret)) {
+		fprintf(stderr, "uadk failed to initialize digest.\n");
+		goto free_nodemask;
+	}
+	ret = UADK_DIGEST_SUCCESS;
+
+	dprov.pid = getpid();
+	async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
+
+free_nodemask:
+	numa_free_nodemask(cparams.bmp);
+mutex_unlock:
+	pthread_mutex_unlock(&digest_mutex);
+	return ret;
+}
+
+static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
+{
+	struct wd_digest_sess_setup setup = {0};
 	struct sched_params params = {0};
 	int ret;
 
-	pthread_mutex_lock(&digest_mutex);
-	if (dprov.pid != getpid()) {
-		ret = wd_digest_init2(priv->alg_name, 0, 0);
-		if (unlikely(ret)) {
-			priv->switch_flag = UADK_DO_SOFT;
-			goto soft_init;
-		}
-		dprov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_DIGEST, uadk_digest_poll);
-	}
-	pthread_mutex_unlock(&digest_mutex);
-
-	ret = uadk_get_digest_info(priv);
-	if (unlikely(!ret))
-		return ret;
+	ret = uadk_prov_digest_dev_init(priv);
+	if (unlikely(ret <= 0))
+		goto soft_init;
 
 	/* Use the default numa parameters */
 	params.numa_id = -1;
-	priv->setup.sched_param = &params;
-	priv->sess = wd_digest_alloc_sess(&priv->setup);
-	if (unlikely(!priv->sess)) {
-		fprintf(stderr, "uadk failed to alloc sess.\n");
-		return UADK_DIGEST_FAIL;
-	}
+	setup.sched_param = &params;
+	setup.alg = priv->setup.alg;
+	setup.mode = priv->setup.mode;
 
-	priv->data = OPENSSL_malloc(DIGEST_BLOCK_SIZE);
-	if (unlikely(!priv->data)) {
-		wd_digest_free_sess(priv->sess);
-		fprintf(stderr, "uadk failed to apply mem for data storage.\n");
-		return UADK_DIGEST_FAIL;
+	if (!priv->sess) {
+		priv->sess = wd_digest_alloc_sess(&setup);
+		if (unlikely(!priv->sess)) {
+			fprintf(stderr, "uadk failed to alloc sess.\n");
+			return UADK_DIGEST_FAIL;
+		}
 	}
 
 	if (enable_sw_offload)
@@ -351,6 +389,10 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 	size_t remain_len = data_len;
 	size_t processing_len;
 	int ret;
+
+	ret = uadk_digest_ctx_init(priv);
+	if (ret != UADK_DIGEST_SUCCESS)
+		return UADK_DIGEST_FAIL;
 
 	priv->req.has_next = DIGEST_DOING;
 	uadk_fill_mac_buffer_len(priv);
@@ -530,6 +572,10 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 		return UADK_DIGEST_FAIL;
 	}
 
+	ret = uadk_digest_ctx_init(priv);
+	if (ret != UADK_DIGEST_SUCCESS)
+		return UADK_DIGEST_FAIL;
+
 	priv->req.has_next = DIGEST_END;
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -586,6 +632,10 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, si
 		return UADK_DIGEST_FAIL;
 	}
 
+	ret = uadk_digest_ctx_init(priv);
+	if (ret != UADK_DIGEST_SUCCESS)
+		return UADK_DIGEST_FAIL;
+
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
 		fprintf(stderr, "failed to setup async event notification.\n");
@@ -626,7 +676,7 @@ static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 		OPENSSL_free(priv->data);
 
 	if (priv->soft_ctx)
-		OPENSSL_free(priv->soft_ctx);
+		OPENSSL_free(priv->data);
 }
 
 /* some params related code is copied from OpenSSL v3.0 prov/digestcommon.h */
@@ -704,13 +754,22 @@ static void *uadk_prov_dupctx(void *dctx)
 static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
+	int ret;
 
 	if (!dctx) {
 		fprintf(stderr, "CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
-	return uadk_digest_init(priv);
+	ret = uadk_get_digest_info(priv);
+	if (unlikely(!ret))
+		return UADK_DIGEST_FAIL;
+
+	ret = uadk_prov_digest_dev_init(priv);
+	if (unlikely(ret <= 0))
+		return UADK_DIGEST_FAIL;
+
+	return UADK_DIGEST_SUCCESS;
 }
 
 static int uadk_prov_update(void *dctx, const unsigned char *in, size_t inl)
@@ -808,6 +867,13 @@ static void *uadk_##name##_newctx(void *provctx)				\
 	char *ptr;								\
 	if (!ctx)								\
 		return NULL;							\
+										\
+	ctx->data = OPENSSL_zalloc(DIGEST_BLOCK_SIZE);				\
+	if (!ctx->data) {							\
+		OPENSSL_free(ctx);						\
+		return NULL;							\
+	}									\
+										\
 	ctx->blk_size = blksize;						\
 	ctx->md_size = mdsize;							\
 	ctx->e_nid = nid;							\
