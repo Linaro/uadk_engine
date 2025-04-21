@@ -40,6 +40,7 @@
 
 #define UADK_OSSL_FAIL			0
 #define UADK_AEAD_SUCCESS		1
+#define SWITCH_TO_SOFT			2
 #define UADK_AEAD_FAIL			(-1)
 
 #define UNINITIALISED_SIZET		((size_t)-1)
@@ -52,6 +53,8 @@
 #define PROV_CIPHER_FLAG_CUSTOM_IV	0x0002
 #define AEAD_FLAGS			(PROV_CIPHER_FLAG_AEAD | PROV_CIPHER_FLAG_CUSTOM_IV)
 
+#define UADK_DO_SOFT			(-0xE0)
+#define UADK_DO_HW			(-0xF0)
 #define UADK_AEAD_DEF_CTXS		2
 #define UADK_AEAD_OP_NUM		1
 
@@ -94,6 +97,10 @@ struct aead_priv_ctx {
 	struct wd_aead_req req;
 	enum uadk_aead_mode mode;
 	handle_t sess;
+
+	int stream_switch_flag;    /* soft calculation switch flag for stream mode */
+	EVP_CIPHER_CTX *sw_ctx;
+	EVP_CIPHER *sw_aead;
 };
 
 struct aead_info {
@@ -107,6 +114,18 @@ static struct aead_info aead_info_table[] = {
 	{ NID_aes_192_gcm, WD_CIPHER_AES, WD_CIPHER_GCM },
 	{ NID_aes_256_gcm, WD_CIPHER_AES, WD_CIPHER_GCM }
 };
+
+static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
+{
+	EVP_CIPHER_CTX *out = EVP_CIPHER_CTX_new();
+
+	if (out != NULL && !EVP_CIPHER_CTX_copy(out, in)) {
+		EVP_CIPHER_CTX_free(out);
+		out = NULL;
+	}
+
+	return out;
+}
 
 static int uadk_aead_poll(void *ctx)
 {
@@ -132,6 +151,128 @@ static void uadk_aead_mutex_infork(void)
 {
 	/* Release the replication lock of the child process */
 	pthread_mutex_unlock(&aead_mutex);
+}
+
+static int uadk_fetch_sw_aead(struct aead_priv_ctx *priv)
+{
+	if (priv->sw_aead)
+		return UADK_AEAD_SUCCESS;
+
+	switch (priv->nid) {
+	case NID_aes_128_gcm:
+		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-128-GCM", "provider=default");
+		break;
+	case NID_aes_192_gcm:
+		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-192-GCM", "provider=default");
+		break;
+	case NID_aes_256_gcm:
+		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-256-GCM", "provider=default");
+		break;
+	default:
+		break;
+	}
+
+	if (unlikely(priv->sw_aead == NULL)) {
+		fprintf(stderr, "aead failed to fetch\n");
+		return UADK_AEAD_FAIL;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned char *key,
+				    const unsigned char *iv, const OSSL_PARAM *params)
+{
+	int ret;
+
+	if (!priv->sw_aead || !priv->sw_ctx)
+		return UADK_AEAD_FAIL;
+
+	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
+		ret = EVP_EncryptInit_ex2(priv->sw_ctx, priv->sw_aead, key, iv, params);
+	else
+		ret = EVP_DecryptInit_ex2(priv->sw_ctx, priv->sw_aead, key, iv, params);
+
+	if (!ret) {
+		fprintf(stderr, "aead soft init error!\n");
+		return UADK_AEAD_FAIL;
+	}
+
+	priv->stream_switch_flag = UADK_DO_SOFT;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_aead_soft_update(struct aead_priv_ctx *priv, unsigned char *out,
+				 int *outl, const unsigned char *in, size_t len)
+{
+	int ret;
+
+	if (!priv->sw_aead || !priv->sw_ctx)
+		return UADK_AEAD_FAIL;
+
+	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
+		ret = EVP_EncryptUpdate(priv->sw_ctx, out, outl, in, len);
+	else
+		ret = EVP_DecryptUpdate(priv->sw_ctx, out, outl, in, len);
+
+	if (!ret) {
+		fprintf(stderr, "aead soft update error.\n");
+		return UADK_AEAD_FAIL;
+	}
+
+	priv->stream_switch_flag = UADK_DO_SOFT;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_aead_soft_final(struct aead_priv_ctx *priv, unsigned char *digest, size_t *outl)
+{
+	int ret;
+
+	if (!priv->sw_aead || !priv->sw_ctx)
+		goto error;
+
+	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST) {
+		ret = EVP_EncryptFinal_ex(priv->sw_ctx, digest, (int *)outl);
+		if (!ret)
+			goto error;
+
+		ret = EVP_CIPHER_CTX_ctrl(priv->sw_ctx, EVP_CTRL_GCM_GET_TAG,
+					  priv->taglen, priv->buf);
+		if (!ret)
+			goto error;
+	} else {
+		ret = EVP_CIPHER_CTX_ctrl(priv->sw_ctx, EVP_CTRL_GCM_SET_TAG,
+					  priv->taglen, priv->buf);
+		if (!ret)
+			goto error;
+
+		ret = EVP_DecryptFinal_ex(priv->sw_ctx, digest, (int *)outl);
+		if (!ret)
+			goto error;
+	}
+
+	priv->stream_switch_flag = 0;
+
+	return UADK_AEAD_SUCCESS;
+
+error:
+	fprintf(stderr, "aead soft final failed.\n");
+	return UADK_AEAD_FAIL;
+}
+
+static void uadk_aead_soft_cleanup(struct aead_priv_ctx *priv)
+{
+	if (priv->sw_ctx) {
+		EVP_CIPHER_CTX_free(priv->sw_ctx);
+		priv->sw_ctx = NULL;
+	}
+
+	if (priv->sw_aead) {
+		EVP_CIPHER_free(priv->sw_aead);
+		priv->sw_aead = NULL;
+	}
 }
 
 static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
@@ -293,7 +434,8 @@ static void uadk_do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char
 }
 
 static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
-			      const unsigned char *in, size_t inlen, enum wd_aead_msg_state state)
+				   const unsigned char *in, size_t inlen,
+				   enum wd_aead_msg_state state)
 {
 	int ret;
 
@@ -315,20 +457,16 @@ static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *ou
 		return UADK_AEAD_FAIL;
 	}
 
-	return inlen;
+	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
-			const unsigned char *in, size_t inlen)
+			     const unsigned char *in, size_t inlen)
 {
 	size_t nbytes, tail, processing_len, max_mid_len;
 	const unsigned char *in_block = in;
 	unsigned char *out_block = out;
 	int ret;
-
-	/* Due to a hardware limitation, zero-length aad using block mode. */
-	if (!priv->req.assoc_bytes)
-		return uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_BLOCK);
 
 	tail = inlen % AES_BLOCK_SIZE;
 	nbytes = inlen - tail;
@@ -354,11 +492,11 @@ static int uadk_do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
 			return UADK_AEAD_FAIL;
 	}
 
-	return inlen;
+	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
-			 unsigned char *out, const unsigned char *in, size_t inlen)
+			      unsigned char *out, const unsigned char *in, size_t inlen)
 {
 	struct uadk_e_cb_info cb_param;
 	int cnt = 0;
@@ -416,11 +554,14 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 }
 
 static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
-				   const unsigned char *in, size_t inlen)
+				      const unsigned char *in, size_t inlen)
 {
 	int ret;
 
 	if (inlen > MAX_AAD_LEN) {
+		if (priv->mode != ASYNC_MODE)
+			return SWITCH_TO_SOFT;
+
 		fprintf(stderr, "the aad len is out of range, aad len = %zu.\n", inlen);
 		return UADK_AEAD_FAIL;
 	}
@@ -428,20 +569,23 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 	priv->req.assoc_bytes = inlen;
 
 	/* Asynchronous jobs use the block mode. */
-	if (priv->mode == ASYNC_MODE || !priv->req.assoc_bytes) {
+	if (priv->mode == ASYNC_MODE) {
 		memcpy(priv->data, in, inlen);
 		return UADK_AEAD_SUCCESS;
 	}
 
+	if (!priv->req.assoc_bytes)
+		return SWITCH_TO_SOFT;
+
 	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
 	if (unlikely(ret < 0))
-		return UADK_AEAD_FAIL;
+		return SWITCH_TO_SOFT;
 
 	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
-				    const unsigned char *in, size_t inlen)
+				       const unsigned char *in, size_t inlen)
 {
 	struct async_op *op;
 	int ret;
@@ -464,8 +608,11 @@ static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char
 		}
 
 		free(op);
-		return inlen;
+		return UADK_AEAD_SUCCESS;
 	}
+
+	if (priv->stream_switch_flag == UADK_DO_SOFT)
+		return SWITCH_TO_SOFT;
 
 	return uadk_do_aead_sync(priv, out, in, inlen);
 
@@ -477,7 +624,7 @@ free_op:
 }
 
 static int uadk_prov_do_aes_gcm_final(struct aead_priv_ctx *priv, unsigned char *out,
-				   const unsigned char *in, size_t inlen)
+				      const unsigned char *in, size_t inlen)
 {
 	int ret;
 
@@ -500,8 +647,8 @@ out:
 }
 
 static int uadk_prov_do_aes_gcm(struct aead_priv_ctx *priv, unsigned char *out,
-			       size_t *outl, size_t outsize,
-			       const unsigned char *in, size_t inlen)
+				size_t *outl, size_t outsize,
+				const unsigned char *in, size_t inlen)
 {
 	int ret;
 
@@ -543,8 +690,8 @@ static OSSL_FUNC_cipher_set_ctx_params_fn uadk_prov_aead_set_ctx_params;
 static OSSL_FUNC_cipher_settable_ctx_params_fn uadk_prov_aead_settable_ctx_params;
 
 static int uadk_prov_aead_cipher(void *vctx, unsigned char *out, size_t *outl,
-				   size_t outsize, const unsigned char *in,
-				   size_t inl)
+				 size_t outsize, const unsigned char *in,
+				 size_t inl)
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 	int ret;
@@ -566,11 +713,11 @@ static int uadk_prov_aead_cipher(void *vctx, unsigned char *out, size_t *outl,
 }
 
 static int uadk_prov_aead_stream_update(void *vctx, unsigned char *out,
-					  size_t *outl, size_t outsize,
-					  const unsigned char *in, size_t inl)
+					size_t *outl, size_t outsize,
+					const unsigned char *in, size_t inl)
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
-	int ret;
+	int ret, outlen;
 
 	if (!vctx)
 		return UADK_OSSL_FAIL;
@@ -580,24 +727,45 @@ static int uadk_prov_aead_stream_update(void *vctx, unsigned char *out,
 		return UADK_OSSL_FAIL;
 	}
 
+	if (priv->stream_switch_flag == UADK_DO_SOFT)
+		goto do_soft;
 	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, in, inl);
-	if (ret < 0) {
+	if (ret == SWITCH_TO_SOFT)
+		goto do_soft;
+	else if (ret < 0) {
 		fprintf(stderr, "stream data update failed.\n");
 		return UADK_OSSL_FAIL;
+	} else {
+		*outl = inl;
+		return UADK_AEAD_SUCCESS;
 	}
 
-	*outl = inl;
+do_soft:
+	if (priv->stream_switch_flag != UADK_DO_SOFT) {
+		ret = uadk_prov_aead_soft_init(priv, priv->key, priv->iv, NULL);
+		if (ret <= 0)
+			return UADK_OSSL_FAIL;
+	}
+
+	ret = uadk_aead_soft_update(priv, out, &outlen, in, inl);
+	if (ret <= 0)
+		return UADK_OSSL_FAIL;
+
+	*outl = outlen;
 	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_prov_aead_stream_final(void *vctx, unsigned char *out,
-					 size_t *outl, size_t outsize)
+				       size_t *outl, size_t outsize)
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 	int ret;
 
 	if (!vctx || !out || !outl)
 		return UADK_OSSL_FAIL;
+
+	if (priv->stream_switch_flag == UADK_DO_SOFT)
+		goto do_soft;
 
 	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, NULL, 0);
 	if (ret < 0) {
@@ -607,6 +775,15 @@ static int uadk_prov_aead_stream_final(void *vctx, unsigned char *out,
 
 	*outl = 0;
 	return UADK_AEAD_SUCCESS;
+
+do_soft:
+	ret = uadk_aead_soft_final(priv, out, outl);
+	if (ret) {
+		*outl = 0;
+		return UADK_AEAD_SUCCESS;
+	}
+
+	return UADK_OSSL_FAIL;
 }
 
 static int uadk_get_aead_info(struct aead_priv_ctx *priv)
@@ -630,9 +807,8 @@ static int uadk_get_aead_info(struct aead_priv_ctx *priv)
 	return UADK_AEAD_SUCCESS;
 }
 
-static int uadk_prov_aead_init(struct aead_priv_ctx *priv,
-				 const unsigned char *key, size_t keylen,
-				 const unsigned char *iv, size_t ivlen)
+static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *key, size_t keylen,
+			       const unsigned char *iv, size_t ivlen, const OSSL_PARAM *params)
 {
 	int ret;
 
@@ -655,16 +831,26 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv,
 		priv->key_set = KEY_STATE_SET;
 	}
 
+	priv->stream_switch_flag = 0;
+
+	if (uadk_get_sw_offload_state())
+		uadk_fetch_sw_aead(priv);
+
 	ret = uadk_prov_aead_dev_init(priv);
-	if (unlikely(ret < 0))
-		return UADK_OSSL_FAIL;
+	if (unlikely(ret < 0)) {
+		if (ASYNC_get_current_job())
+			return UADK_OSSL_FAIL;
+
+		fprintf(stderr, "aead switch to soft init.!\n");
+		return uadk_prov_aead_soft_init(priv, key, iv, params);
+	}
 
 	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_prov_aead_einit(void *vctx, const unsigned char *key, size_t keylen,
-				  const unsigned char *iv, size_t ivlen,
-				  const OSSL_PARAM params[])
+				const unsigned char *iv, size_t ivlen,
+				const OSSL_PARAM params[])
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 
@@ -674,12 +860,12 @@ static int uadk_prov_aead_einit(void *vctx, const unsigned char *key, size_t key
 	priv->req.op_type = WD_CIPHER_ENCRYPTION_DIGEST;
 	priv->enc = 1;
 
-	return uadk_prov_aead_init(priv, key, keylen, iv, ivlen);
+	return uadk_prov_aead_init(priv, key, keylen, iv, ivlen, params);
 }
 
 static int uadk_prov_aead_dinit(void *vctx, const unsigned char *key, size_t keylen,
-				  const unsigned char *iv, size_t ivlen,
-				  const OSSL_PARAM params[])
+				const unsigned char *iv, size_t ivlen,
+				const OSSL_PARAM params[])
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 
@@ -689,7 +875,7 @@ static int uadk_prov_aead_dinit(void *vctx, const unsigned char *key, size_t key
 	priv->req.op_type = WD_CIPHER_DECRYPTION_DIGEST;
 	priv->enc = 0;
 
-	return uadk_prov_aead_init(priv, key, keylen, iv, ivlen);
+	return uadk_prov_aead_init(priv, key, keylen, iv, ivlen, params);
 }
 
 static const OSSL_PARAM uadk_prov_settable_ctx_params[] = {
@@ -869,8 +1055,8 @@ static const OSSL_PARAM *uadk_prov_aead_gettable_params(ossl_unused void *provct
 }
 
 static int uadk_cipher_aead_get_params(OSSL_PARAM params[], unsigned int md,
-					  uint64_t flags, size_t kbits,
-					  size_t blkbits, size_t ivbits)
+				       uint64_t flags, size_t kbits,
+				       size_t blkbits, size_t ivbits)
 {
 	OSSL_PARAM *p;
 
@@ -910,24 +1096,46 @@ static int uadk_cipher_aead_get_params(OSSL_PARAM params[], unsigned int md,
 
 static void *uadk_prov_aead_dupctx(void *ctx)
 {
-	struct aead_priv_ctx *priv, *ret;
+	struct aead_priv_ctx *dst_ctx, *src_ctx;
+	int ret;
 
-	priv = (struct aead_priv_ctx *)ctx;
-	if (!priv)
+	src_ctx = (struct aead_priv_ctx *)ctx;
+	if (!src_ctx)
 		return NULL;
 
-	ret = OPENSSL_memdup(priv, sizeof(*priv));
-	if (!ret)
+	dst_ctx = OPENSSL_memdup(src_ctx, sizeof(*src_ctx));
+	if (!dst_ctx)
 		return NULL;
 
-	ret->sess = 0;
-	ret->data = OPENSSL_memdup(priv->data, AEAD_BLOCK_SIZE << 1);
-	if (!ret->data) {
-		OPENSSL_clear_free(ret, sizeof(*ret));
-		return NULL;
+	dst_ctx->sess = 0;
+	dst_ctx->data = OPENSSL_memdup(src_ctx->data, AEAD_BLOCK_SIZE << 1);
+	if (!dst_ctx->data)
+		goto free_ctx;
+
+	if (dst_ctx->sw_ctx) {
+		dst_ctx->sw_ctx = EVP_CIPHER_CTX_dup(src_ctx->sw_ctx);
+		if (!dst_ctx->sw_ctx) {
+			fprintf(stderr, "EVP_CIPHER_CTX_dup failed in ctx copy.\n");
+			goto free_data;
+		}
 	}
 
-	return ret;
+	if (dst_ctx->sw_aead) {
+		ret = EVP_CIPHER_up_ref(dst_ctx->sw_aead);
+		if (!ret)
+			goto free_dup;
+	}
+
+	return dst_ctx;
+
+free_dup:
+	if (dst_ctx->sw_ctx)
+		EVP_CIPHER_CTX_free(dst_ctx->sw_ctx);
+free_data:
+	OPENSSL_clear_free(dst_ctx->data, AEAD_BLOCK_SIZE << 1);
+free_ctx:
+	OPENSSL_clear_free(dst_ctx, sizeof(*dst_ctx));
+	return NULL;
 }
 
 static void uadk_prov_aead_freectx(void *ctx)
@@ -942,6 +1150,9 @@ static void uadk_prov_aead_freectx(void *ctx)
 
 	if (priv->data)
 		OPENSSL_clear_free(priv->data, AEAD_BLOCK_SIZE << 1);
+
+	if (priv->sw_ctx)
+		uadk_aead_soft_cleanup(priv);
 
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
@@ -965,6 +1176,9 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
 	ctx->taglen = tag_len;							\
+	ctx->sw_ctx = EVP_CIPHER_CTX_new();					\
+	if (ctx->sw_ctx == NULL)						\
+		fprintf(stderr, "EVP_AEAD_CTX_new failed.\n");			\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
 										\
 	return ctx;								\
