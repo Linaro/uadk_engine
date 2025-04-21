@@ -497,12 +497,15 @@ soft_update:
 static void uadk_async_cb(struct wd_digest_req *req, void *data)
 {
 	struct uadk_e_cb_info *digest_cb_param;
+	struct wd_digest_req *req_origin;
 	struct async_op *op;
 
 	if (!req || !req->cb_param)
 		return;
 
 	digest_cb_param = req->cb_param;
+	req_origin = digest_cb_param->priv;
+	req_origin->state = req->state;
 	op = digest_cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
@@ -540,9 +543,10 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	}
 
 	cb_param.op = op;
-	cb_param.priv = priv;
+	cb_param.priv = &priv->req;
 	priv->req.cb = (void *)uadk_async_cb;
 	priv->req.cb_param = &cb_param;
+	priv->req.state = POLL_ERROR;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)

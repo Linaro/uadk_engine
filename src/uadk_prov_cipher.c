@@ -418,12 +418,15 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 static void async_cb(struct wd_cipher_req *req, void *data)
 {
 	struct uadk_e_cb_info *cipher_cb_param;
+	struct wd_cipher_req *req_origin;
 	struct async_op *op;
 
 	if (!req || !req->cb_param)
 		return;
 
 	cipher_cb_param = req->cb_param;
+	req_origin = cipher_cb_param->priv;
+	req_origin->state = req->state;
 	op = cipher_cb_param->op;
 	if (op && op->job && !op->done) {
 		op->done = 1;
@@ -454,9 +457,10 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	}
 
 	cb_param.op = op;
-	cb_param.priv = priv;
+	cb_param.priv = &priv->req;
 	priv->req.cb = (void *)async_cb;
 	priv->req.cb_param = &cb_param;
+	priv->req.state = POLL_ERROR;
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		return UADK_P_FAIL;
@@ -472,7 +476,7 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
-	if (!ret)
+	if (!ret || priv->req.state)
 		return UADK_P_FAIL;
 
 	return UADK_P_SUCCESS;
