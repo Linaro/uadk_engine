@@ -321,16 +321,23 @@ static void digest_soft_cleanup(struct digest_priv_ctx *md_ctx)
 static int uadk_e_digest_soft_work(struct digest_priv_ctx *md_ctx, int len,
 				   unsigned char *digest)
 {
-	(void)digest_soft_init(md_ctx);
+	int ret;
 
-	if (len != 0)
-		(void)digest_soft_update(md_ctx, md_ctx->data, len);
+	ret = digest_soft_init(md_ctx);
+	if (unlikely(!ret))
+		return 0;
 
-	(void)digest_soft_final(md_ctx, digest);
+	if (len != 0) {
+		ret = digest_soft_update(md_ctx, md_ctx->data, len);
+		if (unlikely(!ret))
+			goto out;
+	}
 
+	ret = digest_soft_final(md_ctx, digest);
+
+out:
 	digest_soft_cleanup(md_ctx);
-
-	return 1;
+	return ret;
 }
 
 static int uadk_engine_digests(ENGINE *e, const EVP_MD **digest,
@@ -730,19 +737,30 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 do_soft_digest:
 	if (priv->state == SEC_DIGEST_FIRST_UPDATING) {
 		priv->switch_flag = UADK_DO_SOFT;
-		(void)digest_soft_init(priv);
+		ret = digest_soft_init(priv);
+		if (!ret)
+			return ret;
 		/* filling buf has been executed */
 		if (processing_len < DIGEST_BLOCK_SIZE) {
 			ret = digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
-			if (ret != 1)
-				return ret;
+			if (!ret)
+				goto out;
 		}
 
-		return digest_soft_update(priv, tmpdata, left_len);
+		ret = digest_soft_update(priv, tmpdata, left_len);
+		if (!ret)
+			goto out;
+
+		/* the soft ctx will be free in the final stage. */
+		return ret;
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
 	return 0;
+
+out:
+	digest_soft_cleanup(priv);
+	return ret;
 }
 
 static int uadk_e_digest_update(EVP_MD_CTX *ctx, const void *data, size_t data_len)
