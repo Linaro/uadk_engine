@@ -144,11 +144,29 @@ typedef struct {
 	SM2_PROV_CTX *sm2_pctx;
 } PROV_SM2_SIGN_CTX;
 
+/*
+ * To stay same structure with openssl sm2 cipher context,
+ * add openssl PROV_DIGEST type to uadk provider.
+ * It will not be used in uadk provider, so set it all zero.
+ */
+struct PROV_DIGEST {
+	const EVP_MD *md;
+	EVP_MD *alloc_md;
+
+	ENGINE *engine;
+
+	/* The resv is additional field, not in openssl structure.
+	 * Add it to prevent possible field changes of openssl in future.
+	 */
+	char resv[OSSL_MAX_NAME_SIZE];
+};
+
 typedef struct {
 	OSSL_LIB_CTX *libctx;
 	/* Use EC_KEY refer to keymgmt */
 	EC_KEY *key;
-	char mdname[OSSL_MAX_NAME_SIZE];
+	/* The md will used by openssl, but not used by uadk provider */
+	struct PROV_DIGEST md;
 
 	SM2_PROV_CTX *sm2_pctx;
 } PROV_SM2_ASYM_CTX;
@@ -597,6 +615,16 @@ error:
 	return UADK_P_FAIL;
 }
 
+static void *uadk_keymgmt_sm2_gen_sw(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 keygen.\n");
+		return get_default_sm2_keymgmt().gen(genctx, osslcb, cbarg);
+	}
+
+	return NULL;
+}
+
 /**
  * @brief Generate SM2 key pair.
  *
@@ -632,14 +660,14 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_SM2);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to get hardware sm2 keygen support\n");
-		goto free_ec_key;
+		goto do_soft;
 	}
 
 	/* SM2 hardware init */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
-		goto free_ec_key;
+		goto do_soft;
 	}
 
 	/* Do sm2 keygen with hardware */
@@ -651,15 +679,39 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	ret = uadk_prov_sm2_keygen(ec);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to generate sm2 key\n");
-		goto free_ec_key;
+		goto do_soft;
 	}
 
 	return ec;
 
+do_soft:
+	EC_KEY_free(ec);
+	return uadk_keymgmt_sm2_gen_sw(genctx, osslcb, cbarg);
 free_ec_key:
 	/* Something went wrong, throw the key away */
 	EC_KEY_free(ec);
 	return NULL;
+}
+
+static UADK_PKEY_SIGNATURE get_default_sm2_signature(void)
+{
+	static UADK_PKEY_SIGNATURE s_signature;
+	static int initilazed;
+
+	if (__atomic_compare_exchange_n(&initilazed, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
+	    __ATOMIC_SEQ_CST)) {
+		UADK_PKEY_SIGNATURE *signature =
+			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "SM2", "provider=default");
+
+		if (signature) {
+			s_signature = *signature;
+			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
+		} else {
+			__atomic_store_n(&initilazed, 0, __ATOMIC_SEQ_CST);
+			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default SM2 provider\n");
+		}
+	}
+	return s_signature;
 }
 
 static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
@@ -919,6 +971,17 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 	return UADK_P_SUCCESS;
 }
 
+static int uadk_signature_sm2_sign_init_sw(void *vpsm2ctx, void *ec,
+					const OSSL_PARAM params[])
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 sign_init.\n");
+		return get_default_sm2_signature().sign_init(vpsm2ctx, ec, params);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 					const OSSL_PARAM params[])
 {
@@ -956,20 +1019,20 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 	ret = uadk_signature_sm2_set_ctx_params((void *)psm2ctx, params);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to set sm2 sig ctx params\n");
-		return ret;
+		goto do_soft;
 	}
 
 	ret = uadk_prov_signature_get_support_state(SIGNATURE_SM2);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to get hardware sm2 signature support\n");
-		return ret;
+		goto do_soft;
 	}
 
 	/* Init with UADK */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
-		return ret;
+		goto do_soft;
 	}
 
 	psm2ctx->sm2_pctx->init_status = CTX_INIT_SUCC;
@@ -977,10 +1040,13 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 	ret = uadk_prov_sm2_update_sess(psm2ctx->sm2_pctx);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to update sess in sign init\n");
-		return ret;
+		goto do_soft;
 	}
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_signature_sm2_sign_init_sw(vpsm2ctx, ec, params);
 }
 
 static int uadk_signature_sm2_verify_init(void *vpsm2ctx, void *ec,
@@ -1124,9 +1190,11 @@ static int uadk_prov_sm2_sign_bin_to_ber(struct wd_dtb *r, struct wd_dtb *s,
 	sltmp = i2d_ECDSA_SIG(e_sig, &sig);
 	if (sltmp < 0) {
 		fprintf(stderr, "failed to i2d_ECDSA_SIG\n");
-		goto free_s;
+		/* bs and br set to e_sig, use unified interface to prevent double release. */
+		goto free_sig;
 	}
 	*siglen = (size_t)sltmp;
+	ECDSA_SIG_free(e_sig);
 
 	return UADK_P_SUCCESS;
 
@@ -1248,6 +1316,18 @@ uninit_iot:
 	return UADK_P_FAIL;
 }
 
+static int uadk_signature_sm2_sign_sw(void *vpsm2ctx, unsigned char *sig, size_t *siglen,
+				   size_t sigsize, const unsigned char *tbs, size_t tbslen)
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to soft sm2 sign\n");
+		return get_default_sm2_signature().sign(vpsm2ctx, sig, siglen, sigsize,
+							tbs, tbslen);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_signature_sm2_sign(void *vpsm2ctx, unsigned char *sig, size_t *siglen,
 				   size_t sigsize, const unsigned char *tbs, size_t tbslen)
 {
@@ -1283,24 +1363,27 @@ static int uadk_signature_sm2_sign(void *vpsm2ctx, unsigned char *sig, size_t *s
 
 	if (sigsize < (size_t)ecsize) {
 		fprintf(stderr, "sigsize(%zu) < ecsize(%d)\n", sigsize, ecsize);
-		return UADK_P_FAIL;
+		goto do_soft;
 	}
 
 	ret = uadk_prov_sm2_check_tbs_params(psm2ctx, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to check sm2 signature params\n");
-		return ret;
+		goto do_soft;
 	}
 
 	ret = uadk_prov_sm2_sign(psm2ctx, sig, &sltmp, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to do sm2 sign\n");
-		return ret;
+		goto do_soft;
 	}
 
 	*siglen = sltmp;
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_signature_sm2_sign_sw(vpsm2ctx, sig, siglen, sigsize, tbs, tbslen);
 }
 
 static int uadk_prov_sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
@@ -1415,6 +1498,17 @@ uninit_iot:
 	return UADK_P_FAIL;
 }
 
+static int uadk_signature_sm2_verify_sw(void *vpsm2ctx, const unsigned char *sig, size_t siglen,
+				     const unsigned char *tbs, size_t tbslen)
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to soft sm2 verify\n");
+		return get_default_sm2_signature().verify(vpsm2ctx, sig, siglen, tbs, tbslen);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_signature_sm2_verify(void *vpsm2ctx, const unsigned char *sig, size_t siglen,
 				     const unsigned char *tbs, size_t tbslen)
 {
@@ -1435,10 +1529,13 @@ static int uadk_signature_sm2_verify(void *vpsm2ctx, const unsigned char *sig, s
 	ret = uadk_prov_sm2_verify(psm2ctx, sig, siglen, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to do sm2 verify\n");
-		return ret;
+		goto do_soft;
 	}
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_signature_sm2_verify_sw(vpsm2ctx, sig, siglen, tbs, tbslen);
 }
 
 static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdname,
@@ -2076,6 +2173,16 @@ static int uadk_prov_sm2_locate_id_digest(PROV_SM2_SIGN_CTX *psm2ctx,  const OSS
 	return UADK_P_SUCCESS;
 }
 
+static int uadk_signature_sm2_set_ctx_params_sw(void *vpsm2ctx, const OSSL_PARAM params[])
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 set_ctx_params\n");
+		return get_default_sm2_signature().set_ctx_params(vpsm2ctx, params);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM params[])
 {
 	PROV_SM2_SIGN_CTX *psm2ctx = (PROV_SM2_SIGN_CTX *)vpsm2ctx;
@@ -2110,11 +2217,14 @@ static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM pa
 		ret = uadk_prov_sm2_update_sess(smctx);
 		if (ret == UADK_P_FAIL) {
 			fprintf(stderr, "failed to update sess in set_ctx\n");
-			return ret;
+			goto do_soft;
 		}
 	}
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_signature_sm2_set_ctx_params_sw(vpsm2ctx, params);
 }
 
 static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
@@ -2250,6 +2360,28 @@ static int uadk_signature_sm2_verify_recover(void *vpsm2ctx, unsigned char *rout
 	return UADK_P_SUCCESS;
 }
 
+static UADK_PKEY_ASYM_CIPHER get_default_sm2_asym_cipher(void)
+{
+	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
+	static int initilazed;
+
+	if (__atomic_compare_exchange_n(&initilazed, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
+	    __ATOMIC_SEQ_CST)) {
+		UADK_PKEY_ASYM_CIPHER *asym_cipher =
+			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "SM2",
+								       "provider=default");
+
+		if (asym_cipher) {
+			s_asym_cipher = *asym_cipher;
+			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
+		} else {
+			__atomic_store_n(&initilazed, 0, __ATOMIC_SEQ_CST);
+			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default SM2 provider\n");
+		}
+	}
+	return s_asym_cipher;
+}
+
 static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 {
 	PROV_SM2_ASYM_CTX *psm2ctx = OPENSSL_zalloc(sizeof(PROV_SM2_ASYM_CTX));
@@ -2275,7 +2407,6 @@ static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 	}
 	/* Use SM3 in default, other digest can be set with set_ctx_params API. */
 	smctx->sm2_md->mdsize = SM3_DIGEST_LENGTH;
-	strcpy(psm2ctx->mdname, OSSL_DIGEST_NAME_SM3);
 
 	smctx->sm2_pd = OPENSSL_zalloc(sizeof(SM2_PKEY_DATA));
 	if (smctx->sm2_pd == NULL) {
@@ -2332,6 +2463,17 @@ static void uadk_prov_sm2_set_default_md(PROV_SM2_ASYM_CTX *psm2ctx)
 	smd->md_nid = NID_sm3;
 }
 
+static int uadk_asym_cipher_sm2_encrypt_init_sw(void *vpsm2ctx, void *vkey,
+					     const OSSL_PARAM params[])
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 encrypt init\n");
+		return get_default_sm2_asym_cipher().encrypt_init(vpsm2ctx, vkey, params);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 					     const OSSL_PARAM params[])
 {
@@ -2363,20 +2505,20 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 	ret = uadk_asym_cipher_sm2_set_ctx_params(psm2ctx, params);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to set_ctx_params\n");
-		return ret;
+		goto do_soft;
 	}
 
 	ret = uadk_prov_asym_cipher_get_support_state(SIGNATURE_SM2);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to get hardware sm2 signature support\n");
-		return ret;
+		goto do_soft;
 	}
 
 	/* Init with UADK */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to init sm2\n");
-		return ret;
+		goto do_soft;
 	}
 
 	smctx->init_status = CTX_INIT_SUCC;
@@ -2384,10 +2526,13 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 	ret = uadk_prov_sm2_update_sess(smctx);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to update sess\n");
-		return ret;
+		goto do_soft;
 	}
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_asym_cipher_sm2_encrypt_init_sw(vpsm2ctx, vkey, params);
 }
 
 static int uadk_prov_sm2_encrypt_check(PROV_SM2_ASYM_CTX *psm2ctx,
@@ -2524,6 +2669,18 @@ free_x1:
 	return ret;
 }
 
+static int uadk_prov_sm2_encrypt_sw(PROV_SM2_ASYM_CTX *vpsm2ctx,
+				 unsigned char *out, size_t *outlen,
+				 const unsigned char *in, size_t inlen)
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 encrypt\n");
+		return get_default_sm2_asym_cipher().encrypt(vpsm2ctx, out, outlen, 0, in, inlen);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 				 unsigned char *out, size_t *outlen,
 				 const unsigned char *in, size_t inlen)
@@ -2538,7 +2695,7 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 
 	ret = uadk_prov_sm2_encrypt_init_iot(smctx->sess, &req, (void *)in, inlen);
 	if (ret == UADK_P_FAIL)
-		return ret;
+		goto do_soft;
 
 	ret = uadk_prov_sm2_update_public_key(smctx, vpsm2ctx->key);
 	if (ret == UADK_P_FAIL)
@@ -2551,8 +2708,10 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 	}
 
 	wd_sm2_get_enc_out_params(req.dst, &c1, &c2, &c3);
-	if (c1 == NULL || c2 == NULL || c3 == NULL)
+	if (c1 == NULL || c2 == NULL || c3 == NULL) {
+		ret = UADK_P_FAIL;
 		goto uninit_iot;
+	}
 
 	ret = uadk_prov_sm2_asym_bin_to_ber(c1, c2, c3, out, outlen);
 	if (ret == UADK_P_FAIL)
@@ -2562,6 +2721,7 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 	md_size = EVP_MD_size(md);
 	if (c3->dsize != md_size) {
 		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
+		ret = UADK_P_FAIL;
 		goto uninit_iot;
 	}
 
@@ -2573,8 +2733,8 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
-
-	return UADK_P_FAIL;
+do_soft:
+	return uadk_prov_sm2_encrypt_sw(vpsm2ctx, out, outlen, in, inlen);
 }
 
 static size_t uadk_prov_ec_field_size(const EC_GROUP *group)
@@ -2792,10 +2952,23 @@ static int uadk_prov_sm2_get_plaintext(struct wd_ecc_req *req,
 	return UADK_P_SUCCESS;
 }
 
+static int uadk_prov_sm2_decrypt_sw(PROV_SM2_ASYM_CTX *ctx,
+				unsigned char *out, size_t *outlen,
+				const unsigned char *in, size_t inlen)
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 decrypt\n");
+		return get_default_sm2_asym_cipher().decrypt(ctx, out, outlen, 0, in, inlen);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 				unsigned char *out, size_t *outlen,
 				const unsigned char *in, size_t inlen)
 {
+	const unsigned char *original_in = in;
 	SM2_PROV_CTX *smctx = ctx->sm2_pctx;
 	struct sm2_ciphertext *ctext;
 	struct wd_ecc_req req = {0};
@@ -2806,11 +2979,11 @@ static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 
 	ret = uadk_prov_sm2_decrypt_check(smctx, out, outlen, in, inlen);
 	if (ret == UADK_P_FAIL)
-		return ret;
+		goto do_soft;
 
 	ctext = d2i_SM2_Ciphertext(NULL, &in, inlen);
 	if (ctext == NULL)
-		return UADK_P_FAIL;
+		goto do_soft;
 
 	md = (smctx->sm2_md->md == NULL) ? EVP_sm3() : smctx->sm2_md->md;
 	ret = uadk_prov_sm2_asym_ber_to_bin(md, ctext, &c1, &c2, &c3);
@@ -2849,7 +3022,8 @@ free_c1:
 	free(c1.x.data);
 free_ctext:
 	SM2_Ciphertext_free(ctext);
-	return UADK_P_FAIL;
+do_soft:
+	return uadk_prov_sm2_decrypt_sw(ctx, out, outlen, original_in, inlen);
 }
 
 static int uadk_prov_sm2_plaintext_size(const unsigned char *ct, size_t ct_size, size_t *pt_size)
@@ -3043,6 +3217,16 @@ static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PA
 	return smd->md;
 }
 
+static int uadk_asym_cipher_sm2_set_ctx_params_sw(void *vpsm2ctx, const OSSL_PARAM params[])
+{
+	if (uadk_get_sw_offload_state()) {
+		fprintf(stderr, "switch to software sm2 set ctx params\n");
+		return get_default_sm2_asym_cipher().set_ctx_params(vpsm2ctx, params);
+	}
+
+	return UADK_P_FAIL;
+}
+
 static int uadk_asym_cipher_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM params[])
 {
 	PROV_SM2_ASYM_CTX *psm2ctx = (PROV_SM2_ASYM_CTX *)vpsm2ctx;
@@ -3084,11 +3268,14 @@ static int uadk_asym_cipher_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM 
 		ret = uadk_prov_sm2_update_sess(smctx);
 		if (ret == UADK_P_FAIL) {
 			fprintf(stderr, "failed to update sess\n");
-			return ret;
+			goto do_soft;
 		}
 	}
 
 	return UADK_P_SUCCESS;
+
+do_soft:
+	return uadk_asym_cipher_sm2_set_ctx_params_sw(vpsm2ctx, params);
 }
 
 static const OSSL_PARAM *uadk_asym_cipher_sm2_gettable_ctx_params(ossl_unused void *vpsm2ctx,
