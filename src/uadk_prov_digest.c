@@ -956,3 +956,18 @@ UADK_PROVIDER_IMPLEMENTATION(sha384, NID_sha384, 48, 128);
 UADK_PROVIDER_IMPLEMENTATION(sha512, NID_sha512, 64, 128);
 UADK_PROVIDER_IMPLEMENTATION(sha512_224, NID_sha512_224, 28, 128);
 UADK_PROVIDER_IMPLEMENTATION(sha512_256, NID_sha512_256, 32, 128);
+
+int uadk_prov_digest_version(void)
+{
+	struct uacce_dev *dev;
+
+	dev = wd_get_accel_dev("digest");
+	if (!dev) {
+		fprintf(stderr, "no digest device available!\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	free(dev);
+
+	return UADK_DIGEST_SUCCESS;
+}

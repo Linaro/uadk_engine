@@ -41,6 +41,7 @@
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
+#define UADK_DO_SOFT			(-0xE0)
 #define UADK_P_SUCCESS			1
 #define UADK_P_FAIL			0
 #define UADK_P_INVALID			(-1)
@@ -65,6 +66,9 @@
 #define TRANS_BITS_BYTES_SHIFT		3
 #define GET_MS_BYTE(n)			((n) >> 8)
 #define GET_LS_BYTE(n)			((n) & 0xFF)
+#define HW_PKEY_V2			2
+#define HW_PKEY_V3			3
+#define HW_PKEY_INVALID			0
 
 enum {
 	KEYMGMT_SM2 = 0x0,
@@ -400,6 +404,7 @@ typedef struct {
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
+	void *lock;
 
 	OSSL_FUNC_keyexch_newctx_fn *newctx;
 	OSSL_FUNC_keyexch_init_fn *init;
@@ -467,5 +472,6 @@ int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 				     BIGNUM *x, BIGNUM *y, BN_CTX *ctx);
 int uadk_prov_securitycheck_enabled(OSSL_LIB_CTX *ctx);
 int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect);
+int uadk_prov_pkey_version(void);
 
 #endif
