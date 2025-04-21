@@ -260,13 +260,17 @@ static void uadk_teardown(void *provctx)
 {
 	struct uadk_prov_ctx *ctx = (struct uadk_prov_ctx *)provctx;
 
+	if (ctx) {
+		BIO_meth_free(ctx->corebiometh);
+		OPENSSL_free(ctx);
+	}
+
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_cipher();
 	uadk_prov_destroy_aead();
 	uadk_prov_destroy_rsa();
 	uadk_prov_ecc_uninit();
 	uadk_prov_dh_uninit();
-	OPENSSL_free(ctx);
 	OSSL_PROVIDER_unload(prov);
 	async_module_uninit();
 }
