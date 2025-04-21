@@ -344,6 +344,37 @@ static int uadk_signature_ecdsa_verify_init(void *vctx, void *ec, const OSSL_PAR
 	return ecdsa_signverify_init(vctx, ec, params, EVP_PKEY_OP_VERIFY);
 }
 
+static int ecdsa_soft_sign(struct ecdsa_ctx *ctx, unsigned char *sig, size_t *siglen,
+			   size_t sigsize, const unsigned char *tbs, size_t tbslen)
+{
+	unsigned int tmplen;
+	int ret;
+
+	if (!enable_sw_offload)
+		return UADK_P_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation in ecdsa signature.\n");
+
+	ret = ECDSA_sign_ex(0, tbs, tbslen, sig, &tmplen, ctx->kinv, ctx->r, ctx->ec);
+	if (ret <= 0)
+		return UADK_P_FAIL;
+
+	*siglen = (size_t)tmplen;
+
+	return UADK_P_SUCCESS;
+}
+
+static int ecdsa_soft_verify(struct ecdsa_ctx *ctx, const unsigned char *sig, size_t siglen,
+			     const unsigned char *tbs, size_t tbslen)
+{
+	if (!enable_sw_offload)
+		return UADK_P_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation in ecdsa verification.\n");
+
+	return ECDSA_verify(0, tbs, tbslen, sig, siglen, ctx->ec);
+}
+
 static int ecdsa_common_params_check(struct ecdsa_ctx *ctx,
 				     struct ecdsa_opdata *opdata)
 {
@@ -371,7 +402,7 @@ static int ecdsa_common_params_check(struct ecdsa_ctx *ctx,
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
 		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	opdata->ec = ctx->ec;
@@ -563,7 +594,7 @@ static int ecdsa_hw_sign(struct ecdsa_opdata *opdata)
 	sess = ecdsa_alloc_sess(opdata->ec);
 	if (unlikely(!sess)) {
 		fprintf(stderr, "failed to alloc ecdsa sess!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = ecdsa_sign_init_iot(sess, &req, opdata);
@@ -579,8 +610,9 @@ static int ecdsa_hw_sign(struct ecdsa_opdata *opdata)
 	}
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
-	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to sign!\n");
+	if (unlikely(!ret || req.status)) {
+		fprintf(stderr, "failed to hardware sign!\n");
+		ret = UADK_DO_SOFT;
 		goto free_iot;
 	}
 
@@ -639,13 +671,13 @@ static int uadk_signature_ecdsa_sign(void *vctx, unsigned char *sig, size_t *sig
 	ret = ecdsa_sign_params_check(ctx, &opdata, sig, siglen, sigsize);
 	if (ret == UADK_SIGN_SIG_NULL) {
 		return UADK_P_SUCCESS;
-	} else if (unlikely(!ret)) {
+	} else if (unlikely(ret != UADK_P_SUCCESS)) {
 		fprintf(stderr, "failed to check params to sign!\n");
 		goto err;
 	}
 
 	ret = ecdsa_hw_sign(&opdata);
-	if (unlikely(!ret))
+	if (unlikely(ret != UADK_P_SUCCESS))
 		goto err;
 	ret = i2d_ECDSA_SIG(opdata.sig, &sig);
 	/* ECDSA_SIG_free will free br and bs applied for in ecdsa_get_sign_data() */
@@ -659,6 +691,10 @@ static int uadk_signature_ecdsa_sign(void *vctx, unsigned char *sig, size_t *sig
 err:
 	if (siglen)
 		*siglen = 0;
+
+	if (ret == UADK_DO_SOFT)
+		return ecdsa_soft_sign(ctx, sig, siglen, sigsize, tbs, tbslen);
+
 	return UADK_P_FAIL;
 }
 
@@ -706,20 +742,24 @@ static int ecdsa_hw_verify(struct ecdsa_opdata *opdata)
 	int ret;
 
 	sess = ecdsa_alloc_sess(opdata->ec);
-	if (!sess) {
+	if (unlikely(!sess)) {
 		fprintf(stderr, "failed to alloc ecdsa sess!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = ecdsa_verify_init_iot(sess, &req, opdata);
-	if (!ret)
+	if (unlikely(!ret))
 		goto free_sess;
 
 	ret = uadk_prov_ecc_set_public_key(sess, opdata->ec);
-	if (!ret)
+	if (unlikely(!ret))
 		goto free_iot;
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
+	if (unlikely(ret != UADK_P_SUCCESS || req.status)) {
+		fprintf(stderr, "failed to hardware verify!\n");
+		ret = UADK_DO_SOFT;
+	}
 
 free_iot:
 	ecdsa_uninit_req_iot(sess, &req);
@@ -791,9 +831,9 @@ static int uadk_signature_ecdsa_verify(void *vctx, const unsigned char *sig,
 	opdata.tbs = tbs;
 	opdata.tbslen = tbslen;
 	ret = ecdsa_verify_params_check(ctx, &opdata, sig, siglen);
-	if (!ret) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to check params to sign!\n");
-		return UADK_P_FAIL;
+		goto err;
 	}
 
 	opdata.sig = ecdsa_create_sig(sig, siglen);
@@ -805,6 +845,11 @@ static int uadk_signature_ecdsa_verify(void *vctx, const unsigned char *sig,
 	ret = ecdsa_hw_verify(&opdata);
 
 	ECDSA_SIG_free(opdata.sig);
+
+err:
+	if (ret == UADK_DO_SOFT)
+		return ecdsa_soft_verify(ctx, sig, siglen, tbs, tbslen);
+
 	return ret;
 }
 
