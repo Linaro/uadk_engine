@@ -209,24 +209,29 @@ static const OSSL_ALGORITHM uadk_prov_keyexch[] = {
 static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 					int *no_cache)
 {
+	OSSL_LIB_CTX *libctx;
 	static int prov_init;
 	int ver;
 
-	prov = OSSL_PROVIDER_load(NULL, "default");
-	if (!prov_init) {
-		prov_init = 1;
+	if (__atomic_compare_exchange_n(&prov_init, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
+		__ATOMIC_SEQ_CST)) {
+		libctx = prov_libctx_of(provctx);
+		prov = OSSL_PROVIDER_load(libctx, "default");
+		if (!prov) {
+			fprintf(stderr, "failed to load default provider\n");
+			return NULL;
+		}
 		/*
 		 * uadk_provider takes the highest priority
 		 * and overwrite the openssl.cnf property.
 		 */
-		EVP_set_default_properties(NULL, "?provider=uadk_provider");
+		EVP_set_default_properties(libctx, "?provider=uadk_provider");
 		/*
 		 * In asynchronous scenarios, if random numbers are obtained using
 		 * uadk provider cipher, deadlocks may occur. Therefore, random numbers are
 		 * obtained using default provider cipher.
 		 */
-		(void)RAND_set_DRBG_type(prov_libctx_of(provctx), NULL,
-					 "provider=default", NULL, NULL);
+		(void)RAND_set_DRBG_type(libctx, NULL, "provider=default", NULL, NULL);
 	}
 
 	*no_cache = 0;
