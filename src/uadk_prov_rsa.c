@@ -1297,7 +1297,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	cb_param.priv = &(rsa_sess->req);
 	rsa_sess->req.cb = uadk_e_rsa_cb;
 	rsa_sess->req.cb_param = &cb_param;
-	rsa_sess->req.status = -1;
+	rsa_sess->req.status = POLL_ERROR;
 
 	ret = async_get_free_task(&idx);
 	if (ret == 0)

@@ -845,7 +845,7 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		cb_param.priv = &dh_sess->req;
 		dh_sess->req.cb = uadk_prov_dh_cb;
 		dh_sess->req.cb_param = &cb_param;
-		dh_sess->req.status = -1;
+		dh_sess->req.status = POLL_ERROR;
 		ret = async_get_free_task(&idx);
 		if (!ret)
 			goto err;
