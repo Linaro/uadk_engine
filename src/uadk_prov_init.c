@@ -33,7 +33,7 @@
 #include "uadk_prov_pkey.h"
 
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
-static OSSL_PROVIDER *prov;
+static OSSL_PROVIDER *default_prov;
 
 /* Functions provided by the core */
 static OSSL_FUNC_core_gettable_params_fn *c_gettable_params;
@@ -48,11 +48,11 @@ struct uadk_provider_params {
 int enable_sw_offload;
 
 const OSSL_ALGORITHM uadk_prov_digests[] = {
-	{ OSSL_DIGEST_NAME_MD5, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_MD5, UADK_DEFAULT_PROPERTIES,
 	  uadk_md5_functions, "uadk_provider md5" },
-	{ OSSL_DIGEST_NAME_SM3, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SM3, UADK_DEFAULT_PROPERTIES,
 	  uadk_sm3_functions, "uadk_provider sm3" },
-	{ OSSL_DIGEST_NAME_SHA1, UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA1, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha1_functions, "uadk_provider sha1" },
 	{ PROV_NAMES_SHA2_224, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha224_functions, "uadk_provider sha2-224" },
@@ -62,9 +62,9 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	  uadk_sha384_functions, "uadk_provider sha2-384" },
 	{ PROV_NAMES_SHA2_512, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_functions, "uadk_provider sha2-512" },
-	{ "SHA2-512/224:SHA-512/224:SHA512-224", UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_512_224, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_224_functions, "uadk_provider sha2-512-224" },
-	{ "SHA2-512/256:SHA-512/256:SHA512-256", UADK_DEFAULT_PROPERTIES,
+	{ PROV_NAMES_SHA2_512_256, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_256_functions, "uadk_provider sha2-512-256" },
 	{ NULL, NULL, NULL }
 };
@@ -161,7 +161,13 @@ const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
 	{ NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM uadk_prov_signature[] = {
+static const OSSL_ALGORITHM uadk_prov_signature_v2[] = {
+	{ "RSA", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
+	{ NULL, NULL, NULL }
+};
+
+static const OSSL_ALGORITHM uadk_prov_signature_v3[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
@@ -171,7 +177,14 @@ static const OSSL_ALGORITHM uadk_prov_signature[] = {
 	{ NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
+static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
+	{ "RSA", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
+	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
+	{ NULL, NULL, NULL }
+};
+
+static const OSSL_ALGORITHM uadk_prov_keymgmt_v3[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
@@ -186,7 +199,13 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt[] = {
 	{ NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
+static const OSSL_ALGORITHM uadk_prov_asym_cipher_v2[] = {
+	{ "RSA", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsa_asym_cipher_functions, "uadk RSA asym cipher implementation." },
+	{ NULL, NULL, NULL }
+};
+
+static const OSSL_ALGORITHM uadk_prov_asym_cipher_v3[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_asym_cipher_functions, "uadk RSA asym cipher implementation." },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
@@ -194,7 +213,13 @@ static const OSSL_ALGORITHM uadk_prov_asym_cipher[] = {
 	{ NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM uadk_prov_keyexch[] = {
+static const OSSL_ALGORITHM uadk_prov_keyexch_v2[] = {
+	{ "DH", UADK_DEFAULT_PROPERTIES,
+	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
+	{ NULL, NULL, NULL }
+};
+
+static const OSSL_ALGORITHM uadk_prov_keyexch_v3[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES,
 	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
 	{ "ECDH", UADK_DEFAULT_PROPERTIES,
@@ -216,8 +241,8 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 	if (__atomic_compare_exchange_n(&prov_init, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
 		__ATOMIC_SEQ_CST)) {
 		libctx = prov_libctx_of(provctx);
-		prov = OSSL_PROVIDER_load(libctx, "default");
-		if (!prov) {
+		default_prov = OSSL_PROVIDER_load(libctx, "default");
+		if (!default_prov) {
 			fprintf(stderr, "failed to load default provider\n");
 			return NULL;
 		}
@@ -234,31 +259,59 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		(void)RAND_set_DRBG_type(libctx, NULL, "provider=default", NULL, NULL);
 	}
 
-	*no_cache = 0;
+	if (no_cache)
+		*no_cache = 0;
+
 	switch (operation_id) {
 	case OSSL_OP_DIGEST:
+		ver = uadk_prov_digest_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
 		return uadk_prov_digests;
 	case OSSL_OP_CIPHER:
 		ver = uadk_prov_cipher_version();
-		if (ver == HW_SEC_V3)
+		if (!ver && uadk_get_sw_offload_state())
+			break;
+		else if (ver == HW_SEC_V3)
 			return uadk_prov_ciphers_v3;
 		return uadk_prov_ciphers_v2;
 	case OSSL_OP_SIGNATURE:
 		uadk_prov_signature_alg();
-		return uadk_prov_signature;
+		ver = uadk_prov_pkey_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
+		else if (ver == HW_PKEY_V3)
+			return uadk_prov_signature_v3;
+		return uadk_prov_signature_v2;
 	case OSSL_OP_KEYMGMT:
 		uadk_prov_keymgmt_alg();
-		return uadk_prov_keymgmt;
+		ver = uadk_prov_pkey_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
+		else if (ver == HW_PKEY_V3)
+			return uadk_prov_keymgmt_v3;
+		return uadk_prov_keymgmt_v2;
 	case OSSL_OP_ASYM_CIPHER:
 		uadk_prov_asym_cipher_alg();
-		return uadk_prov_asym_cipher;
+		ver = uadk_prov_pkey_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
+		else if (ver == HW_PKEY_V3)
+			return uadk_prov_asym_cipher_v3;
+		return uadk_prov_asym_cipher_v2;
 	case OSSL_OP_KEYEXCH:
 		uadk_prov_keyexch_alg();
-		return uadk_prov_keyexch;
-	case OSSL_OP_STORE:
-		return prov->query_operation(provctx, operation_id, no_cache);
+		ver = uadk_prov_pkey_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
+		else if (ver == HW_PKEY_V3)
+			return uadk_prov_keyexch_v3;
+		return uadk_prov_keyexch_v2;
+	default:
+		break;
 	}
-	return NULL;
+
+	return OSSL_PROVIDER_query_operation(default_prov, operation_id, no_cache);
 }
 
 static void uadk_teardown(void *provctx)
@@ -276,36 +329,60 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_destroy_rsa();
 	uadk_prov_ecc_uninit();
 	uadk_prov_dh_uninit();
-	OSSL_PROVIDER_unload(prov);
 	async_module_uninit();
+	if (default_prov) {
+		OSSL_PROVIDER_unload(default_prov);
+		default_prov = NULL;
+	}
+}
+
+static int uadk_get_params(OSSL_PARAM params[])
+{
+	return UADK_P_SUCCESS;
 }
 
 static const OSSL_DISPATCH uadk_dispatch_table[] = {
 	{ OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))uadk_query },
 	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))uadk_teardown },
+	{ OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))uadk_get_params },
 	{ 0, NULL }
 };
+
+int uadk_get_sw_offload_state(void)
+{
+	return enable_sw_offload;
+}
+
+/* enable = 0 means disable sw offload, enable = 1 means enable sw offload */
+void uadk_set_sw_offload_state(int enable)
+{
+	enable_sw_offload = enable;
+}
 
 int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 {
 	OSSL_PARAM core_params[2], *p = core_params;
 
+	if (handle == NULL) {
+		fprintf(stderr, "invalid: OSSL_CORE_HANDLE is NULL\n");
+		return UADK_P_FAIL;
+	}
+
 	*p++ = OSSL_PARAM_construct_utf8_ptr(
 			"enable_sw_offload",
 			(char **)&uadk_params.enable_sw_offload,
 			0);
-
 	*p = OSSL_PARAM_construct_end();
 
 	if (!c_get_params(handle, core_params)) {
 		fprintf(stderr, "WARN: UADK get parameters from core is failed.\n");
-		return 0;
+		return UADK_P_FAIL;
 	}
 
 	if (uadk_params.enable_sw_offload)
-		enable_sw_offload = atoi(uadk_params.enable_sw_offload);
+		uadk_set_sw_offload_state(atoi(uadk_params.enable_sw_offload));
 
-	return 1;
+	return UADK_P_SUCCESS;
 }
 
 static void provider_init_child_at_fork_handler(void)
@@ -324,12 +401,12 @@ static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
 	core_bio = ossl_bio_prov_init_bio_method();
 	if (core_bio == NULL) {
 		fprintf(stderr, "failed to set bio from dispatch\n");
-		return 0;
+		return UADK_P_FAIL;
 	}
 
 	ctx->corebiometh = core_bio;
 
-	return 1;
+	return UADK_P_SUCCESS;
 }
 
 static void ossl_prov_core_from_dispatch(const OSSL_DISPATCH *fns)
@@ -363,7 +440,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	if (oin == NULL) {
 		fprintf(stderr, "failed to get dispatch in\n");
-		return 0;
+		return UADK_P_FAIL;
 	}
 
 	ossl_prov_bio_from_dispatch(oin);
@@ -371,12 +448,12 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	/* get parameters from uadk_provider.cnf */
 	if (!uadk_get_params_from_core(handle))
-		return 0;
+		return UADK_P_FAIL;
 
 	ctx = OPENSSL_zalloc(sizeof(*ctx));
 	if (ctx == NULL) {
 		fprintf(stderr, "failed to alloc ctx\n");
-		return 0;
+		return UADK_P_FAIL;
 	}
 
 	/* Set handle from core to get core functions */
@@ -385,7 +462,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	ret = uadk_prov_ctx_set_core_bio_method(ctx);
 	if (!ret)
-		return 0;
+		return UADK_P_FAIL;
 
 	ret = async_module_init();
 	if (!ret)
@@ -395,5 +472,5 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	*provctx = (void *)ctx;
 	*out = uadk_dispatch_table;
 
-	return 1;
+	return UADK_P_SUCCESS;
 }

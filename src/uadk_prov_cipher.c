@@ -1288,7 +1288,7 @@ int uadk_prov_cipher_version(void)
 
 	dev = wd_get_accel_dev("cipher");
 	if (!dev) {
-		fprintf(stderr, "no device available!\n");
+		fprintf(stderr, "no cipher device available!\n");
 		return 0;
 	}
 

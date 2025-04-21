@@ -869,7 +869,7 @@ int uadk_prov_ecc_bit_check(const EC_GROUP *group)
 
 	fprintf(stderr, "invalid: unsupport key bits %d!\n", bits);
 
-	return UADK_P_FAIL;
+	return UADK_DO_SOFT;
 }
 
 /* Currently, disable the security checks in the default provider and uadk provider */
@@ -906,8 +906,8 @@ int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
 
 	curve_name = EC_curve_nid2nist(nid);
 	if (!curve_name) {
-		fprintf(stderr, "invalid: Curve %s is not approved in FIPS mode!\n",
-			curve_name);
+		fprintf(stderr, "invalid: Curve NID %d is not approved in FIPS mode!\n",
+			nid);
 		return UADK_P_FAIL;
 	}
 
@@ -936,3 +936,25 @@ int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
 	return UADK_P_SUCCESS;
 }
 #endif /* OPENSSL_NO_FIPS_SECURITYCHECKS */
+
+int uadk_prov_pkey_version(void)
+{
+	struct uacce_dev *dev1, *dev2;
+
+	dev1 = wd_get_accel_dev("rsa");
+	if (!dev1) {
+		fprintf(stderr, "no pkey device available!\n");
+		return HW_PKEY_INVALID;
+	}
+
+	dev2 = wd_get_accel_dev("sm2");
+	if (!dev2) {
+		free(dev1);
+		return HW_PKEY_V2;
+	}
+
+	free(dev1);
+	free(dev2);
+
+	return HW_PKEY_V3;
+}
