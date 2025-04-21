@@ -60,6 +60,28 @@ UADK_PKEY_KEYMGMT_DESCR(dh, DH);
 UADK_PKEY_KEYEXCH_DESCR(dh, DH);
 
 static pthread_mutex_t dh_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t dh_default_mutex = PTHREAD_MUTEX_INITIALIZER;
+static UADK_PKEY_KEYEXCH get_default_dh_keyexch(void)
+{
+	static UADK_PKEY_KEYEXCH s_keyexch;
+	static int initilazed;
+
+	pthread_mutex_lock(&dh_default_mutex);
+	if (!initilazed) {
+		UADK_PKEY_KEYEXCH *keyexch =
+			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "dh", "provider=default");
+		if (keyexch) {
+			s_keyexch = *keyexch;
+			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+			initilazed = 1;
+		} else {
+			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default dh provider\n");
+		}
+	}
+	pthread_mutex_unlock(&dh_default_mutex);
+
+	return s_keyexch;
+}
 
 struct dh_st {
 	/*
@@ -705,7 +727,7 @@ static int uadk_prov_dh_prepare_data(const BIGNUM *g, DH *dh, struct uadk_dh_ses
 	ret = check_dh_bit_useful(bits);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "invalid: dh%u is not supported by uadk provider\n", bits);
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	*dh_sess = uadk_prov_dh_new_session(dh, bits, is_g2);
@@ -916,7 +938,7 @@ static int uadk_prov_dh_generate_key(DH *dh)
 	ret = uadk_prov_dh_init();
 	if (ret) {
 		fprintf(stderr, "failed to init dh\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	uadk_DH_get0_pqg(dh, &p, NULL, &g);
@@ -927,7 +949,7 @@ static int uadk_prov_dh_generate_key(DH *dh)
 
 	/* Get session and prepare private key */
 	ret = uadk_prov_dh_prepare_data(g, dh, &dh_sess, &prikey);
-	if (ret == UADK_P_FAIL) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to prepare dh data\n");
 		return ret;
 	}
@@ -939,8 +961,9 @@ static int uadk_prov_dh_generate_key(DH *dh)
 	}
 
 	ret = uadk_prov_dh_do_crypto(dh_sess);
-	if (ret == UADK_P_FAIL) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to generate DH key\n");
+		ret = UADK_DO_SOFT;
 		goto free_req;
 	}
 
@@ -964,7 +987,7 @@ free_req:
 free_data:
 	uadk_prov_dh_free_prepare_data(dh_sess, prikey);
 
-	return UADK_P_FAIL;
+	return ret;
 }
 
 static int dh_gencb(int p, int n, BN_GENCB *cb)
@@ -1081,7 +1104,7 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 			fprintf(stderr, "failed to get dh from libctx\n");
 			return NULL;
 		}
-
+		dh->meth = DH_get_default_method();
 		ossl_ffc_named_group_set(&dh->params, group);
 		dh->params.nid = ossl_ffc_named_group_get_uid(group);
 		dh->dirty_cnt++;
@@ -1093,6 +1116,8 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 		ossl_dh_free_ex(dh);
 		return NULL;
 	}
+
+	dh->meth = DH_get_default_method();
 
 	return dh;
 }
@@ -1234,6 +1259,15 @@ static void uadk_prov_dh_free_params(DH *dh, BN_GENCB *gencb)
 	uadk_prov_dh_free_params_cb(gencb);
 }
 
+static void *uadk_dh_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
+{
+	if (!enable_sw_offload || !get_default_dh_keymgmt().gen)
+		return NULL;
+
+	fprintf(stderr, "switch to openssl software calculation in dh generation.\n");
+	return get_default_dh_keymgmt().gen(genctx, cb, cb_params);
+}
+
 static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
 {
 	PROV_DH_KEYMGMT_CTX *gctx = (PROV_DH_KEYMGMT_CTX *)genctx;
@@ -1256,9 +1290,10 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 		gctx->gen_type = DH_PARAMGEN_TYPE_GROUP;
 
 	dh = uadk_prov_dh_gen_params(gctx, &ffc, cb, cb_params, gencb);
-	if (dh == NULL || ffc == NULL)
-		return NULL;
-
+	if (dh == NULL || ffc == NULL) {
+		ret = UADK_DO_SOFT;
+		goto free_gen_params;
+	}
 	/* DH key generation */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
 		if (ffc->p == NULL || ffc->g == NULL) {
@@ -1273,7 +1308,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 					gctx->gen_type == DH_PARAMGEN_TYPE_FIPS_186_2);
 
 		ret = uadk_prov_dh_generate_key(dh);
-		if (ret == UADK_P_FAIL) {
+		if (ret != UADK_P_SUCCESS) {
 			fprintf(stderr, "failed to do dh generation key\n");
 			goto free_gen_params;
 		}
@@ -1287,6 +1322,9 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 
 free_gen_params:
 	uadk_prov_dh_free_params(dh, gencb);
+
+	if (ret == UADK_DO_SOFT)
+		return uadk_dh_sw_gen(genctx, cb, cb_params);
 	return NULL;
 }
 
@@ -1525,11 +1563,11 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 	ret = uadk_prov_dh_init();
 	if (ret) {
 		fprintf(stderr, "failed to init\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = uadk_prov_dh_prepare_data(g, dh, &dh_sess, &prikey);
-	if (ret == UADK_P_FAIL) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to prepare dh data\n");
 		return ret;
 	}
@@ -1541,8 +1579,9 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 	}
 
 	ret = uadk_prov_dh_do_crypto(dh_sess);
-	if (ret == UADK_P_FAIL) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to generate DH shared key\n");
+		ret = UADK_DO_SOFT;
 		goto free_req;
 	}
 
@@ -1712,12 +1751,14 @@ static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned c
 		return UADK_P_FAIL;
 	}
 
-	if (uadk_prov_dh_plain_derive(pdhctx, stmp, &stmplen, stmplen, USE_PAD) == UADK_P_FAIL)
+	ret = uadk_prov_dh_plain_derive(pdhctx, stmp, &stmplen, stmplen, USE_PAD);
+	if (ret != UADK_P_SUCCESS)
 		goto end;
 
 	/* Do KDF stuff */
 	if (pdhctx->kdf_type == PROV_DH_KDF_X9_42_ASN1) {
 		if (ossl_dh_kdf_X9_42_asn1(secret, pdhctx, stmp, stmplen, NULL) == UADK_P_FAIL) {
+			ret = UADK_P_FAIL;
 			fprintf(stderr, "failed to do ossl_dh_kdf_X9_42_asn1\n");
 			goto end;
 		}
@@ -1730,6 +1771,16 @@ end:
 	OPENSSL_secure_clear_free(stmp, stmplen);
 
 	return ret;
+}
+
+static int uadk_dh_sw_derive(void *dhctx, unsigned char *secret,
+			  size_t *psecretlen, size_t outlen)
+{
+	if (!enable_sw_offload || !get_default_dh_keyexch().derive)
+		return UADK_P_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation in dh derivation.\n");
+	return get_default_dh_keyexch().derive(dhctx, secret, psecretlen, outlen);
 }
 
 static int uadk_keyexch_dh_derive(void *dhctx, unsigned char *secret,
@@ -1752,10 +1803,15 @@ static int uadk_keyexch_dh_derive(void *dhctx, unsigned char *secret,
 		break;
 	default:
 		fprintf(stderr, "invalid: unsupport kdf type\n");
+		ret = UADK_DO_SOFT;
 		break;
 	}
 
-	return ret;
+	if (ret == UADK_P_SUCCESS)
+		return UADK_P_SUCCESS;
+	if (ret == UADK_DO_SOFT)
+		return uadk_dh_sw_derive(dhctx, secret, psecretlen, outlen);
+	return UADK_P_FAIL;
 }
 
 static void *uadk_keyexch_dh_dupctx(void *dhctx)
