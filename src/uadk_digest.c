@@ -187,72 +187,55 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
+/* OpenSSL 3.0 has no app_datasize, need set manually,
+ * check crypto/evp/legacy_md5.c: md5_md as example.
+ */
+#define SET_APP_DATASIZE(ctx_type) \
+do {\
+	app_datasize = EVP_MD_meth_get_app_datasize(priv->soft_md); \
+	if (!app_datasize) \
+		app_datasize = sizeof(EVP_MD *) + sizeof(ctx_type); \
+} while (0)
+
 static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 {
-	int app_datasize = 0;
+	int app_datasize;
 
-	if (priv->soft_md)
+	if (priv->soft_md && priv->soft_ctx)
 		return 1;
 
 	switch (priv->e_nid) {
 	case NID_sm3:
 		priv->soft_md = EVP_sm3();
+		SET_APP_DATASIZE(SM3_CTX);
 		break;
 	case NID_md5:
 		priv->soft_md = EVP_md5();
+		SET_APP_DATASIZE(MD5_CTX);
 		break;
 	case NID_sha1:
 		priv->soft_md = EVP_sha1();
+		SET_APP_DATASIZE(SHA_CTX);
 		break;
 	case NID_sha224:
 		priv->soft_md = EVP_sha224();
+		SET_APP_DATASIZE(SHA256_CTX);
 		break;
 	case NID_sha256:
 		priv->soft_md = EVP_sha256();
+		SET_APP_DATASIZE(SHA256_CTX);
 		break;
 	case NID_sha384:
 		priv->soft_md = EVP_sha384();
+		SET_APP_DATASIZE(SHA512_CTX);
 		break;
 	case NID_sha512:
 		priv->soft_md = EVP_sha512();
+		SET_APP_DATASIZE(SHA512_CTX);
 		break;
 	default:
-		break;
-	}
-
-	if (unlikely(priv->soft_md == NULL))
+		fprintf(stderr, "digest nid %d is invalid.\n", priv->e_nid);
 		return 0;
-
-	app_datasize = EVP_MD_meth_get_app_datasize(priv->soft_md);
-	if (app_datasize == 0) {
-		/* OpenSSL 3.0 has no app_datasize, need set manually
-		 * check crypto/evp/legacy_md5.c: md5_md as example
-		 */
-		switch (priv->e_nid) {
-		case NID_sm3:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SM3_CTX);
-			break;
-		case NID_md5:
-			app_datasize = sizeof(EVP_MD *) + sizeof(MD5_CTX);
-			break;
-		case NID_sha1:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SHA_CTX);
-			break;
-		case NID_sha224:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SHA256_CTX);
-			break;
-		case NID_sha256:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SHA256_CTX);
-			break;
-		case NID_sha384:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SHA512_CTX);
-			break;
-		case NID_sha512:
-			app_datasize = sizeof(EVP_MD *) + sizeof(SHA512_CTX);
-			break;
-		default:
-			break;
-		}
 	}
 
 	if (priv->soft_ctx == NULL) {
@@ -262,8 +245,10 @@ static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 			return 0;
 
 		ctx->md_data = OPENSSL_malloc(app_datasize);
-		if (ctx->md_data == NULL)
+		if (ctx->md_data == NULL) {
+			EVP_MD_CTX_free(ctx);
 			return 0;
+		}
 
 		priv->soft_ctx = ctx;
 		priv->app_datasize = app_datasize;
@@ -1033,6 +1018,7 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	}
 
 	if (t->soft_ctx) {
+		t->soft_md = NULL;
 		t->soft_ctx = NULL;
 		ret = digest_soft_init(t);
 		if (!ret)
