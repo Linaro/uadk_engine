@@ -54,10 +54,12 @@ static int ec_param_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
 		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
-	return uadk_prov_ecc_bit_check(group);
+	ret = uadk_prov_ecc_bit_check(group);
+
+	return ret;
 }
 
 static int ec_set_public_key(EC_KEY *ec, struct wd_ecc_out *ec_out)
@@ -235,7 +237,7 @@ static int ec_hw_keygen(EC_KEY *ec, BIGNUM *priv_key)
 	sess = ec_alloc_sess(ec, &ec_out);
 	if (!sess) {
 		fprintf(stderr, "failed to alloc sess!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = ec_update_private_key(ec, sess, priv_key);
@@ -246,8 +248,9 @@ static int ec_hw_keygen(EC_KEY *ec, BIGNUM *priv_key)
 
 	uadk_prov_ecc_fill_req(&req, WD_ECXDH_GEN_KEY, NULL, ec_out);
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
-	if (!ret) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to generate key!\n");
+		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
 
@@ -319,6 +322,15 @@ static int ec_set_check_group_type(EC_KEY *ec, const char *name)
 	return UADK_P_SUCCESS;
 }
 
+static void *uadk_ec_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
+{
+	if (!enable_sw_offload || !get_default_ec_keymgmt().gen)
+		return NULL;
+
+	fprintf(stderr, "switch to openssl software calculation in ecx generation.\n");
+	return get_default_ec_keymgmt().gen(genctx, osslcb, cbarg);
+}
+
 static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
 	struct ec_gen_ctx *gctx = genctx;
@@ -337,7 +349,7 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 	}
 
 	ret = ec_param_check(genctx, ec);
-	if (!ret) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to check genctx!\n");
 		goto free_ec_key;
 	}
@@ -345,7 +357,7 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 	/* Whether you want it or not, you get a keypair, not just one half */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
 		ret = ec_hw_keygen(ec, gctx->priv_key);
-		if (!ret) {
+		if (ret != UADK_P_SUCCESS) {
 			fprintf(stderr, "failed to gen public key!\n");
 			goto free_ec_key;
 		}
@@ -367,6 +379,9 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 
 free_ec_key:
 	EC_KEY_free(ec);
+
+	if (ret == UADK_DO_SOFT)
+		return uadk_ec_sw_gen(genctx, osslcb, cbarg);
 	return NULL;
 }
 
