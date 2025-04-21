@@ -234,7 +234,7 @@ static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 		SET_APP_DATASIZE(SHA512_CTX);
 		break;
 	default:
-		fprintf(stderr, "digest nid %d is invalid.\n", priv->e_nid);
+		fprintf(stderr, "digest nid %u is invalid.\n", priv->e_nid);
 		return 0;
 	}
 

@@ -421,7 +421,7 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 	int ret;
 
 	if (inlen > MAX_AAD_LEN) {
-		fprintf(stderr, "the aad len is out of range, aad len = %lu.\n", inlen);
+		fprintf(stderr, "the aad len is out of range, aad len = %zu.\n", inlen);
 		return UADK_AEAD_FAIL;
 	}
 
