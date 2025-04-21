@@ -62,7 +62,6 @@
 #define GENCB_NEXT			2
 #define GENCB_RETRY			3
 #define PRIME_CHECK_BIT_NUM		4
-#define SOFT_SWITCH			0
 
 UADK_PKEY_KEYMGMT_DESCR(rsa, RSA);
 UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
@@ -284,11 +283,14 @@ enum {
 	MAX_CODE,
 };
 
+static pthread_mutex_t sig_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t asym_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static UADK_PKEY_SIGNATURE get_default_rsa_signature(void)
 {
 	static UADK_PKEY_SIGNATURE s_signature;
 	static int initilazed;
-
+	pthread_mutex_lock(&sig_mutex);
 	if (!initilazed) {
 		UADK_PKEY_SIGNATURE *signature =
 			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "RSA", "provider=default");
@@ -301,6 +303,7 @@ static UADK_PKEY_SIGNATURE get_default_rsa_signature(void)
 			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default RSA provider\n");
 		}
 	}
+	pthread_mutex_unlock(&sig_mutex);
 	return s_signature;
 }
 
@@ -308,7 +311,7 @@ static UADK_PKEY_ASYM_CIPHER get_default_rsa_asym_cipher(void)
 {
 	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
 	static int initilazed;
-
+	pthread_mutex_lock(&asym_mutex);
 	if (!initilazed) {
 		UADK_PKEY_ASYM_CIPHER *asym_cipher =
 			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "RSA",
@@ -322,6 +325,7 @@ static UADK_PKEY_ASYM_CIPHER get_default_rsa_asym_cipher(void)
 			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default RSA provider\n");
 		}
 	}
+	pthread_mutex_unlock(&asym_mutex);
 	return s_asym_cipher;
 }
 
@@ -2001,6 +2005,17 @@ static int uadk_signature_rsa_verify_init(void *vprsactx, void *vrsa,
 	return uadk_rsa_init(vprsactx, vrsa, params, EVP_PKEY_OP_VERIFY);
 }
 
+static int uadk_rsa_sw_verify(void *vprsactx, const unsigned char *sig,
+			      size_t siglen, const unsigned char *tbs,
+			      size_t tbslen)
+{
+	if (!enable_sw_offload || !get_default_rsa_signature().verify)
+		return UADK_E_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation in verifaction.\n");
+	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
+}
+
 static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 			   size_t siglen, const unsigned char *tbs,
 			   size_t tbslen)
@@ -2008,10 +2023,10 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	size_t rslen = 0;
 
-	if (priv->soft && SOFT_SWITCH)
-		goto soft;
-	else if (priv->soft && !SOFT_SWITCH)
-		return UADK_E_FAIL;
+	if (priv->soft) {
+		rslen = UADK_DO_SOFT;
+		goto exe_soft;
+	}
 
 	/* todo call public_verify */
 	if (priv->md != NULL) {
@@ -2021,12 +2036,8 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 			return UADK_E_FAIL;
 		rslen = uadk_prov_rsa_public_verify(siglen, sig, priv->tbuf,
 						 priv->rsa, priv->pad_mode);
-		if (rslen == UADK_DO_SOFT || rslen == UADK_E_FAIL) {
-			if (rslen == UADK_DO_SOFT && SOFT_SWITCH)
-				goto soft;
-			else
-				return UADK_E_FAIL;
-		}
+		if (rslen == UADK_DO_SOFT || rslen == UADK_E_FAIL)
+			goto exe_soft;
 	}
 
 	if ((rslen != tbslen) || memcmp(tbs, priv->tbuf, rslen))
@@ -2034,12 +2045,21 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 
 	return UADK_E_SUCCESS;
 
-soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_signature().verify)
+exe_soft:
+	if (rslen == UADK_DO_SOFT)
+		return uadk_rsa_sw_verify(vprsactx, sig, siglen, tbs, tbslen);
+	return UADK_E_FAIL;
+}
+
+static int uadk_rsa_sw_sign(void *vprsactx, unsigned char *sig,
+			    size_t *siglen, size_t sigsize,
+			    const unsigned char *tbs, size_t tbslen)
+{
+	if (!enable_sw_offload || !get_default_rsa_signature().sign)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
+	fprintf(stderr, "switch to openssl software calculation in rsa signature.\n");
+	return get_default_rsa_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
 }
 
 static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
@@ -2050,10 +2070,10 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	size_t rsasize = uadk_rsa_size(priv->rsa);
 	int ret;
 
-	if (priv->soft && SOFT_SWITCH)
-		goto soft;
-	else if (priv->soft && !SOFT_SWITCH)
-		return UADK_E_FAIL;
+	if (priv->soft) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
 
 	if (sig == NULL) {
 		*siglen = rsasize;
@@ -2067,12 +2087,8 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	}
 
 	ret = uadk_prov_rsa_private_sign(tbslen, tbs, sig, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
-		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
-			goto soft;
-		else
-			return UADK_E_FAIL;
-	}
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL)
+		goto exe_soft;
 
 	if (ret < 0)
 		return ret;
@@ -2080,12 +2096,10 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	*siglen = ret;
 
 	return UADK_E_SUCCESS;
-soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_signature().sign)
-		return UADK_E_FAIL;
-
-	return get_default_rsa_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
+exe_soft:
+	if (ret == UADK_DO_SOFT)
+		return uadk_rsa_sw_sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
+	return UADK_E_FAIL;
 }
 
 static int uadk_signature_rsa_sign_init(void *vprsactx, void *vrsa, const OSSL_PARAM params[])
@@ -2355,6 +2369,17 @@ static int uadk_asym_cipher_rsa_decrypt_init(void *vprsactx, void *vrsa,
 	return uadk_rsa_asym_init(vprsactx, vrsa, params, EVP_PKEY_OP_DECRYPT);
 }
 
+static int uadk_rsa_sw_encrypt(void *vprsactx, unsigned char *out,
+			       size_t *outlen, size_t outsize,
+			       const unsigned char *in, size_t inlen)
+{
+	if (!enable_sw_offload || !get_default_rsa_asym_cipher().encrypt)
+		return UADK_E_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation	in rsa encryption.\n");
+	return get_default_rsa_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
+}
+
 static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 				 size_t *outlen, size_t outsize,
 				 const unsigned char *in, size_t inlen)
@@ -2363,10 +2388,10 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	size_t len;
 	int ret;
 
-	if (priv->soft && SOFT_SWITCH)
-		goto soft;
-	else if (priv->soft && !SOFT_SWITCH)
-		return UADK_E_FAIL;
+	if (priv->soft) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
 
 	if (out == NULL) {
 		len = uadk_rsa_size(priv->rsa);
@@ -2379,22 +2404,27 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	}
 
 	ret = uadk_prov_rsa_public_encrypt(inlen, in, out, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
-		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
-			goto soft;
-		else
-			return UADK_E_FAIL;
-	}
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL)
+		goto exe_soft;
 
 	*outlen = ret;
 
 	return UADK_E_SUCCESS;
-soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_asym_cipher().encrypt)
+exe_soft:
+	if (ret == UADK_DO_SOFT)
+		return uadk_rsa_sw_encrypt(vprsactx, out, outlen, outsize, in, inlen);
+	return UADK_E_FAIL;
+}
+
+static int uadk_rsa_sw_decrypt(void *vprsactx, unsigned char *out,
+			       size_t *outlen, size_t outsize,
+			       const unsigned char *in, size_t inlen)
+{
+	if (!enable_sw_offload || !get_default_rsa_asym_cipher().decrypt)
 		return UADK_E_FAIL;
 
-	return get_default_rsa_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
+	fprintf(stderr, "switch to openssl software calculation in rsa decryption.\n");
+	return get_default_rsa_asym_cipher().decrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
 static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
@@ -2405,10 +2435,10 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 	size_t len = uadk_rsa_size(priv->rsa);
 	int ret;
 
-	if (priv->soft && SOFT_SWITCH)
-		goto soft;
-	else if (priv->soft && !SOFT_SWITCH)
-		return UADK_E_FAIL;
+	if (priv->soft) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
 
 	if (out == NULL) {
 		if (len == 0) {
@@ -2425,21 +2455,16 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 	}
 
 	ret = uadk_prov_rsa_private_decrypt(inlen, in, out, priv->rsa, priv->pad_mode);
-	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
-		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
-			goto soft;
-		else
-			return UADK_E_FAIL;
-	}
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL)
+		goto exe_soft;
+
 	*outlen = ret;
 
 	return UADK_E_SUCCESS;
-soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_asym_cipher().decrypt)
-		return UADK_E_FAIL;
-
-	return get_default_rsa_asym_cipher().decrypt(vprsactx, out, outlen, outsize, in, inlen);
+exe_soft:
+	if (ret == UADK_DO_SOFT)
+		return uadk_rsa_sw_decrypt(vprsactx, out, outlen, outsize, in, inlen);
+	return UADK_E_FAIL;
 }
 
 static int uadk_asym_cipher_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
@@ -2588,8 +2613,18 @@ static RSA *ossl_rsa_new_with_ctx(OSSL_LIB_CTX *libctx)
 	}
 
 	ret->libctx = libctx;
+	ret->meth = RSA_get_default_method();
 
 	return ret;
+}
+
+static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
+{
+	if (!enable_sw_offload || !get_default_rsa_keymgmt().gen)
+		return NULL;
+
+	fprintf(stderr, "switch to openssl software calculation in rsa key generation.\n");
+	return get_default_rsa_keymgmt().gen(genctx, osslcb, cbarg);
 }
 
 static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
@@ -2603,10 +2638,10 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 		return NULL;
 
 	ret = uadk_prov_rsa_init();
-	if (ret && SOFT_SWITCH)
+	if (ret) {
+		ret = UADK_DO_SOFT;
 		goto exe_soft;
-	else if (ret && !SOFT_SWITCH)
-		return NULL;
+	}
 
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
 	if (rsa == NULL)
@@ -2622,11 +2657,7 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL) {
 		BN_GENCB_free(gencb);
 		uadk_keymgmt_rsa_free(rsa);
-
-		if (ret == UADK_DO_SOFT && SOFT_SWITCH)
-			goto exe_soft;
-		else
-			return NULL;
+		goto exe_soft;
 	}
 
 	uadk_rsa_clear_flags(rsa, RSA_FLAG_TYPE_MASK);
@@ -2636,10 +2667,9 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	return rsa;
 
 exe_soft:
-	fprintf(stderr, "switch to execute openssl software calculation.\n");
-	if (!get_default_rsa_keymgmt().gen)
-		return NULL;
-	return get_default_rsa_keymgmt().gen(genctx, osslcb, cbarg);
+	if (ret == UADK_DO_SOFT)
+		return uadk_rsa_sw_gen(genctx, osslcb, cbarg);
+	return NULL;
 }
 
 static void uadk_keymgmt_rsa_gen_cleanup(void *genctx)
