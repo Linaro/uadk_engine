@@ -198,6 +198,9 @@ void uadk_prov_destroy_dh(void);
 void uadk_prov_ecc_uninit(void);
 void uadk_prov_dh_uninit(void);
 int uadk_prov_cipher_version(void);
+int uadk_prov_digest_version(void);
+int uadk_get_sw_offload_state(void);
+void uadk_set_sw_offload_state(int enable);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;
