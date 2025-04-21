@@ -70,18 +70,6 @@ struct digest_prov {
 static struct digest_prov dprov;
 static pthread_mutex_t digest_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-struct evp_md_ctx_st {
-	const EVP_MD *digest;
-	/* Functional reference if 'digest' is ENGINE-provided */
-	ENGINE *engine;
-	unsigned long flags;
-	void *md_data;
-	/* Public key context for sign/verify */
-	EVP_PKEY_CTX *pctx;
-	/* Update function: usually copied from EVP_MD */
-	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
-};
-
 struct digest_priv_ctx {
 	handle_t sess;
 	struct wd_digest_sess_setup setup;
@@ -131,6 +119,17 @@ static struct digest_info digest_info_table[] = {
 	32, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
 };
 
+static EVP_MD_CTX *EVP_MD_CTX_dup(const EVP_MD_CTX *in)
+{
+	EVP_MD_CTX *out = EVP_MD_CTX_new();
+
+	if (out != NULL && !EVP_MD_CTX_copy_ex(out, in)) {
+		EVP_MD_CTX_free(out);
+		out = NULL;
+	}
+	return out;
+}
+
 static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
 {
 	if (priv->soft_md)
@@ -147,53 +146,83 @@ static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
 		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA1, "provider=default");
 		break;
 	case NID_sha224:
-		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_224, "provider=default");
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_224, "provider=default");
 		break;
 	case NID_sha256:
-		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_256, "provider=default");
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_256, "provider=default");
 		break;
 	case NID_sha384:
-		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_384, "provider=default");
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_384, "provider=default");
 		break;
 	case NID_sha512:
-		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA3_512, "provider=default");
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_512, "provider=default");
+		break;
+	case NID_sha512_224:
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_512_224,
+					     "provider=default");
+		break;
+	case NID_sha512_256:
+		priv->soft_md = EVP_MD_fetch(NULL, OSSL_DIGEST_NAME_SHA2_512_256,
+					     "provider=default");
 		break;
 	default:
 		break;
 	}
 
-	if (unlikely(priv->soft_md == NULL))
+	if (unlikely(priv->soft_md == NULL)) {
+		fprintf(stderr, "digest failed to fetch\n");
 		return UADK_DIGEST_FAIL;
+	}
 
 	return UADK_DIGEST_SUCCESS;
 }
 
 static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 {
-	if (priv->soft_md)
-		return EVP_DigestInit_ex(priv->soft_ctx, priv->soft_md, NULL);
+	if (!priv->soft_md || !priv->soft_ctx)
+		return UADK_DIGEST_FAIL;
 
-	return UADK_DIGEST_FAIL;
+	if (!EVP_DigestInit_ex(priv->soft_ctx, priv->soft_md, NULL)) {
+		fprintf(stderr, "soft digest init failed.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	priv->switch_flag = UADK_DO_SOFT;
+
+	return UADK_DIGEST_SUCCESS;
 }
 
 static int uadk_digest_soft_update(struct digest_priv_ctx *priv,
 				   const void *data, size_t len)
 {
-	if (priv->soft_md)
-		return EVP_DigestUpdate(priv->soft_ctx, data, len);
+	if (priv->soft_md == NULL)
+		return UADK_DIGEST_FAIL;
 
-	return UADK_DIGEST_FAIL;
+	if (!EVP_DigestUpdate(priv->soft_ctx, data, len)) {
+		fprintf(stderr, "soft digest update failed.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	priv->switch_flag = UADK_DO_SOFT;
+
+	return UADK_DIGEST_SUCCESS;
 }
 
 static int uadk_digest_soft_final(struct digest_priv_ctx *priv, unsigned char *digest)
 {
-	if (priv->soft_md) {
-		unsigned int digest_length;
+	unsigned int digest_length;
 
-		return EVP_DigestFinal_ex(priv->soft_ctx, digest, &digest_length);
+	if (priv->soft_md == NULL)
+		return UADK_DIGEST_FAIL;
+
+	if (!EVP_DigestFinal_ex(priv->soft_ctx, digest, &digest_length)) {
+		fprintf(stderr, "soft digest final failed.\n");
+		return UADK_DIGEST_FAIL;
 	}
 
-	return UADK_DIGEST_FAIL;
+	priv->switch_flag = 0;
+
+	return UADK_DIGEST_SUCCESS;
 }
 
 static void digest_soft_cleanup(struct digest_priv_ctx *priv)
@@ -201,12 +230,8 @@ static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 	EVP_MD_CTX *ctx = priv->soft_ctx;
 
 	if (ctx != NULL) {
-		if (ctx->md_data) {
-			OPENSSL_free(ctx->md_data);
-			ctx->md_data  = NULL;
-		}
 		EVP_MD_CTX_free(ctx);
-		ctx = NULL;
+		priv->soft_ctx = NULL;
 	}
 
 	if (priv->soft_md) {
@@ -216,7 +241,7 @@ static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 }
 
 static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
-				   unsigned char *digest)
+				 unsigned char *digest)
 {
 	int ret;
 
@@ -341,7 +366,7 @@ static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
 
 	ret = uadk_prov_digest_dev_init(priv);
 	if (unlikely(ret <= 0))
-		goto soft_init;
+		return UADK_DIGEST_FAIL;
 
 	/* Use the default numa parameters */
 	params.numa_id = -1;
@@ -357,15 +382,7 @@ static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
 		}
 	}
 
-	if (enable_sw_offload)
-		uadk_digests_soft_md(priv);
-
 	return UADK_DIGEST_SUCCESS;
-
-soft_init:
-	pthread_mutex_unlock(&digest_mutex);
-	fprintf(stderr, "uadk failed to initialize digest.\n");
-	return uadk_digest_soft_init(priv);
 }
 
 static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv, bool is_end)
@@ -445,14 +462,15 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 			priv->state = SEC_DIGEST_DOING;
 
 		priv->req.out = priv->out;
-		remain_len -= processing_len;
-		input_data += processing_len;
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest update failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
+
+		remain_len -= processing_len;
+		input_data += processing_len;
 	} while (remain_len > DIGEST_BLOCK_SIZE);
 
 	priv->last_update_bufflen = remain_len;
@@ -462,7 +480,6 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 
 do_soft_digest:
 	if (priv->state == SEC_DIGEST_FIRST_UPDATING) {
-		priv->switch_flag = UADK_DO_SOFT;
 		ret = uadk_digest_soft_init(priv);
 		if (!ret)
 			return ret;
@@ -472,6 +489,9 @@ do_soft_digest:
 			ret = uadk_digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
 			if (!ret)
 				goto out;
+
+			remain_len -= processing_len;
+			input_data += processing_len;
 		}
 
 		ret = uadk_digest_soft_update(priv, input_data, remain_len);
@@ -548,6 +568,7 @@ static int uadk_do_digest_sync(struct digest_priv_ctx *priv)
 		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 		return UADK_DIGEST_FAIL;
 	}
+
 	return UADK_DIGEST_SUCCESS;
 }
 
@@ -558,7 +579,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	int cnt = 0;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "async cipher init failed.\n");
+		fprintf(stderr, "digest soft switching is not supported in asynchronous mode.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -608,9 +629,11 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 		return UADK_DIGEST_FAIL;
 	}
 
-	ret = uadk_digest_ctx_init(priv);
-	if (ret != UADK_DIGEST_SUCCESS)
-		return UADK_DIGEST_FAIL;
+	if (unlikely(priv->switch_flag != UADK_DO_SOFT)) {
+		ret = uadk_digest_ctx_init(priv);
+		if (ret != UADK_DIGEST_SUCCESS)
+			return UADK_DIGEST_FAIL;
+	}
 
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -657,8 +680,8 @@ clear:
 	return ret;
 }
 
-static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data, size_t data_len,
-			   unsigned char *digest)
+static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
+			      size_t data_len, unsigned char *digest)
 {
 	struct async_op op;
 	int ret;
@@ -706,8 +729,7 @@ static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 	if (priv->data)
 		OPENSSL_clear_free(priv->data, DIGEST_BLOCK_SIZE);
 
-	if (priv->soft_ctx)
-		OPENSSL_clear_free(priv->soft_ctx, sizeof(EVP_MD_CTX));
+	digest_soft_cleanup(priv);
 }
 
 static OSSL_FUNC_digest_freectx_fn	uadk_prov_freectx;
@@ -780,6 +802,7 @@ static void uadk_prov_freectx(void *dctx)
 static void *uadk_prov_dupctx(void *dctx)
 {
 	struct digest_priv_ctx *dst_ctx, *src_ctx;
+	int ret;
 
 	src_ctx = (struct digest_priv_ctx *)dctx;
 	if (!dctx)
@@ -809,15 +832,24 @@ static void *uadk_prov_dupctx(void *dctx)
 		goto free_ctx;
 
 	if (dst_ctx->soft_ctx) {
-		dst_ctx->soft_ctx = EVP_MD_CTX_new();
+		dst_ctx->soft_ctx = EVP_MD_CTX_dup(src_ctx->soft_ctx);
 		if (!dst_ctx->soft_ctx) {
 			fprintf(stderr, "EVP_MD_CTX_new failed in ctx copy.\n");
 			goto free_data;
 		}
 	}
 
+	if (dst_ctx->soft_md) {
+		ret = EVP_MD_up_ref(dst_ctx->soft_md);
+		if (!ret)
+			goto free_dup;
+	}
+
 	return dst_ctx;
 
+free_dup:
+	if (dst_ctx->soft_ctx)
+		EVP_MD_CTX_free(dst_ctx->soft_ctx);
 free_data:
 	OPENSSL_clear_free(dst_ctx->data, DIGEST_BLOCK_SIZE);
 free_ctx:
@@ -835,13 +867,20 @@ static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 		return UADK_DIGEST_FAIL;
 	}
 
+	if (uadk_get_sw_offload_state())
+		uadk_digests_soft_md(priv);
+
 	ret = uadk_get_digest_info(priv);
 	if (unlikely(!ret))
 		return UADK_DIGEST_FAIL;
 
+	priv->state = SEC_DIGEST_INIT;
+
 	ret = uadk_prov_digest_dev_init(priv);
-	if (unlikely(ret <= 0))
-		return UADK_DIGEST_FAIL;
+	if (unlikely(ret <= 0)) {
+		fprintf(stderr, "digest switch to soft init!\n");
+		return uadk_digest_soft_init(priv);
+	}
 
 	return UADK_DIGEST_SUCCESS;
 }
@@ -879,7 +918,7 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 			return ret;
 	}
 
-	if (unlikely(outl != NULL))
+	if (outl)
 		*outl = priv->md_size;
 
 	return UADK_DIGEST_SUCCESS;

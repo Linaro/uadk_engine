@@ -180,7 +180,7 @@ static struct cts_mode_name2id_st cts_modes[] = {
 	{ WD_CIPHER_CBC_CS3, OSSL_CIPHER_CTS_MODE_CS3, UADK_CIPHER_CTS_CS3_NAME },
 };
 
-const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
+static const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
 {
 	size_t i;
 
@@ -191,7 +191,7 @@ const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
 	return NULL;
 }
 
-int ossl_cipher_cbc_cts_mode_name2id(const char *name)
+static int ossl_cipher_cbc_cts_mode_name2id(const char *name)
 {
 	size_t i;
 
@@ -283,12 +283,20 @@ static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 	case ID_sm4_ctr:
 		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "SM4-CTR", "provider=default");
 		break;
+	case ID_aes_128_xts:
+		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-128-XTS", "provider=default");
+		break;
+	case ID_aes_256_xts:
+		priv->sw_cipher = EVP_CIPHER_fetch(NULL, "AES-256-XTS", "provider=default");
+		break;
 	default:
 		break;
 	}
 
-	if (unlikely(priv->sw_cipher == NULL))
+	if (unlikely(priv->sw_cipher == NULL)) {
+		fprintf(stderr, "cipher failed to fetch\n");
 		return UADK_P_FAIL;
+	}
 
 	return UADK_P_SUCCESS;
 }
@@ -297,28 +305,34 @@ static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
 				    const unsigned char *key,
 				    const unsigned char *iv)
 {
-	if (!uadk_fetch_sw_cipher(priv))
+	if (!priv->sw_cipher || !priv->sw_ctx)
 		return UADK_P_FAIL;
 
 	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, key, iv,
 				priv->enc, NULL)) {
-		fprintf(stderr, "SW cipher init error!\n");
+		fprintf(stderr, "cipher soft init failed!\n");
 		return UADK_P_FAIL;
 	}
 
-	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
+	priv->switch_flag = UADK_DO_SOFT;
 
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned char *out,
-				      int *outl, const unsigned char *in, size_t len)
+static int uadk_prov_cipher_soft_update(struct cipher_priv_ctx *priv, unsigned char *out,
+					int *outl, const unsigned char *in, size_t len)
 {
-	if (priv->sw_cipher == NULL)
+	if (!priv->sw_cipher || !priv->sw_ctx)
 		return UADK_P_FAIL;
 
+	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, priv->key, priv->iv,
+				priv->enc, NULL)) {
+		fprintf(stderr, "cipher soft init error!\n");
+		return UADK_P_FAIL;
+	}
+
 	if (!EVP_CipherUpdate(priv->sw_ctx, out, outl, in, len)) {
-		fprintf(stderr, "EVP_CipherUpdate sw_ctx failed.\n");
+		fprintf(stderr, "cipher soft update error!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -328,22 +342,25 @@ static int uadk_prov_cipher_soft_work(struct cipher_priv_ctx *priv, unsigned cha
 }
 
 static int uadk_prov_cipher_soft_final(struct cipher_priv_ctx *priv, unsigned char *out,
-					size_t *outl)
+				       size_t *outl)
 {
 	int sw_final_len = 0;
 
-	if (priv->sw_cipher == NULL)
+	if (!priv->sw_cipher || !priv->sw_ctx)
 		return UADK_P_FAIL;
 
 	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
-		fprintf(stderr, "EVP_CipherFinal_ex sw_ctx failed.\n");
+		fprintf(stderr, "cipher soft final failed.\n");
 		return UADK_P_FAIL;
 	}
+
 	*outl = sw_final_len;
+	priv->switch_flag = 0;
+
 	return UADK_P_SUCCESS;
 }
 
-static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv);
+static int uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv);
 
 static int uadk_cipher_poll(void *ctx)
 {
@@ -407,10 +424,17 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 		priv->key_set = 1;
 	}
 
-	if (enable_sw_offload)
-		return uadk_prov_cipher_sw_init(priv, key, iv);
+	priv->switch_flag = 0;
+	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
 
-	uadk_prov_cipher_dev_init(priv);
+	if (uadk_get_sw_offload_state())
+		uadk_fetch_sw_cipher(priv);
+
+	ret = uadk_prov_cipher_dev_init(priv);
+	if (unlikely(ret <= 0)) {
+		fprintf(stderr, "cipher switch to soft init!\n");
+		return uadk_prov_cipher_sw_init(priv, key, iv);
+	}
 
 	return UADK_P_SUCCESS;
 }
@@ -488,7 +512,7 @@ static void uadk_cipher_mutex_infork(void)
 	pthread_mutex_unlock(&cipher_mutex);
 }
 
-static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
+static int uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 {
 	int ret;
 
@@ -501,6 +525,7 @@ static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 		ctx_set_num = calloc(UADK_CIPHER_OP_NUM, sizeof(*ctx_set_num));
 		if (!ctx_set_num) {
 			fprintf(stderr, "failed to alloc ctx_set_size!\n");
+			ret = UADK_P_FAIL;
 			goto init_err;
 		}
 
@@ -510,6 +535,7 @@ static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 		if (!cparams.bmp) {
 			fprintf(stderr, "failed to create nodemask!\n");
 			free(ctx_set_num);
+			ret = UADK_P_FAIL;
 			goto init_err;
 		}
 
@@ -524,6 +550,7 @@ static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 
 		if (unlikely(ret)) {
 			fprintf(stderr, "failed to init cipher!\n");
+			ret = UADK_P_FAIL;
 			goto init_err;
 		}
 
@@ -531,8 +558,11 @@ static void uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 		async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
 	}
 
+	ret = UADK_P_SUCCESS;
+
 init_err:
 	pthread_mutex_unlock(&cipher_mutex);
+	return ret;
 }
 
 static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
@@ -551,7 +581,9 @@ static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 	if (priv->switch_flag == UADK_DO_SOFT)
 		return UADK_P_FAIL;
 
-	uadk_prov_cipher_dev_init(priv);
+	ret = uadk_prov_cipher_dev_init(priv);
+	if (ret <= 0)
+		return UADK_P_FAIL;
 
 	/* dec and enc use the same op */
 	params.type = 0;
@@ -799,13 +831,12 @@ do_soft:
 	 * 1. small packets
 	 * 2. already choose DO_SOFT, can be hw fail case or following sw case
 	 */
-	ret = uadk_prov_cipher_soft_work(priv, out, &outlint, in, inlen);
+	ret = uadk_prov_cipher_soft_update(priv, out, &outlint, in, inlen);
 	if (ret) {
 		*outl = outlint;
 		return UADK_P_SUCCESS;
 	}
 
-	fprintf(stderr, "do soft ciphers failed.\n");
 	return UADK_P_FAIL;
 }
 
@@ -856,8 +887,8 @@ static int uadk_prov_cipher_cipher(void *vctx, unsigned char *output, size_t *ou
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv,
-		unsigned char *out, size_t *outl, size_t outsize)
+static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv, unsigned char *out,
+					   size_t *outl, size_t outsize)
 {
 	size_t blksz = priv->blksize;
 	int ret;
@@ -888,8 +919,8 @@ static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv,
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv,
-		unsigned char *out, size_t *outl, size_t outsize)
+static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv, unsigned char *out,
+					   size_t *outl, size_t outsize)
 {
 	size_t blksz = priv->blksize;
 	int ret;
@@ -1009,7 +1040,7 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *output,
 
 do_soft:
 	/* have isseu if both using hw and soft partly */
-	ret = uadk_prov_cipher_soft_work(priv, output, &len, input, inl);
+	ret = uadk_prov_cipher_soft_update(priv, output, &len, input, inl);
 	if (ret) {
 		*outl = len;
 		return UADK_P_SUCCESS;
