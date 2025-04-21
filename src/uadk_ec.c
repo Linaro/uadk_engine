@@ -1192,7 +1192,7 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 
 	*out = OPENSSL_zalloc(*outlen);
 	if (!*out) {
-		fprintf(stderr, "failed to alloc output key, outlen = %lu\n",
+		fprintf(stderr, "failed to alloc output key, outlen = %zu\n",
 			*outlen);
 		return 0;
 	}
