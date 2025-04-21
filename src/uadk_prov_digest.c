@@ -218,18 +218,26 @@ static void digest_soft_cleanup(struct digest_priv_ctx *priv)
 static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
 				   unsigned char *digest)
 {
+	int ret;
+
 	if (!priv->soft_md)
 		return UADK_DIGEST_FAIL;
 
-	uadk_digest_soft_init(priv);
+	ret = uadk_digest_soft_init(priv);
+	if (unlikely(ret == UADK_DIGEST_FAIL))
+		return UADK_DIGEST_FAIL;
 
-	if (len != 0)
-		uadk_digest_soft_update(priv, priv->data, len);
+	if (len != 0) {
+		ret = uadk_digest_soft_update(priv, priv->data, len);
+		if (unlikely(ret == UADK_DIGEST_FAIL))
+			goto out;
+	}
 
-	uadk_digest_soft_final(priv, digest);
+	ret = uadk_digest_soft_final(priv, digest);
+
+out:
 	digest_soft_cleanup(priv);
-
-	return UADK_DIGEST_SUCCESS;
+	return ret;
 }
 
 static int uadk_digest_poll(void *ctx)
@@ -455,19 +463,31 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 do_soft_digest:
 	if (priv->state == SEC_DIGEST_FIRST_UPDATING) {
 		priv->switch_flag = UADK_DO_SOFT;
-		uadk_digest_soft_init(priv);
+		ret = uadk_digest_soft_init(priv);
+		if (!ret)
+			return ret;
+
 		/* filling buf has been executed */
 		if (processing_len < DIGEST_BLOCK_SIZE) {
 			ret = uadk_digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
-			if (ret != 1)
-				return ret;
+			if (!ret)
+				goto out;
 		}
 
-		return uadk_digest_soft_update(priv, input_data, remain_len);
+		ret = uadk_digest_soft_update(priv, input_data, remain_len);
+		if (!ret)
+			goto out;
+
+		/* the soft ctx will be free in the final stage. */
+		return ret;
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
 	return UADK_DIGEST_FAIL;
+
+out:
+	digest_soft_cleanup(priv);
+	return ret;
 }
 
 static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
