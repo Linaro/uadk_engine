@@ -72,6 +72,28 @@ struct ecdh_sess_ctx {
 };
 
 UADK_PKEY_KEYEXCH_DESCR(ecdh, ECDH);
+static pthread_mutex_t ecdh_mutex = PTHREAD_MUTEX_INITIALIZER;
+static UADK_PKEY_KEYEXCH get_default_ecdh_keyexch(void)
+{
+	static UADK_PKEY_KEYEXCH s_keyexch;
+	static int initilazed;
+
+	pthread_mutex_lock(&ecdh_mutex);
+	if (!initilazed) {
+		UADK_PKEY_KEYEXCH *keyexch =
+			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "ecdh", "provider=default");
+		if (keyexch) {
+			s_keyexch = *keyexch;
+			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+			initilazed = 1;
+		} else {
+			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X448 provider\n");
+		}
+	}
+	pthread_mutex_unlock(&ecdh_mutex);
+
+	return s_keyexch;
+}
 
 static size_t ecdh_get_ec_size(const EC_GROUP *group)
 {
@@ -114,12 +136,15 @@ static int ecdh_param_check(struct ecdh_ctx *pecdhctx, struct ecdh_sess_ctx *ses
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
 		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	sess_ctx->group = group;
 
-	return uadk_prov_ecc_bit_check(group);
+	if (uadk_prov_ecc_bit_check(group) != UADK_P_SUCCESS)
+		return UADK_DO_SOFT;
+
+	return UADK_P_SUCCESS;
 }
 
 static int ecdh_set_privk(struct ecdh_ctx *pecdhctx,
@@ -276,7 +301,7 @@ static int ecdh_compute_key(struct ecdh_sess_ctx *sess_ctx,
 	sess = ecdh_alloc_sess(sess_ctx->privk);
 	if (!sess) {
 		fprintf(stderr, "failed to alloc sess to compute key!\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = uadk_prov_ecc_set_private_key(sess, sess_ctx->privk);
@@ -292,8 +317,9 @@ static int ecdh_compute_key(struct ecdh_sess_ctx *sess_ctx,
 	}
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
-	if (!ret) {
+	if (ret != UADK_P_SUCCESS) {
 		fprintf(stderr, "failed to calculate shared key!\n");
+		ret = UADK_DO_SOFT;
 		goto uninit_req;
 	}
 
@@ -315,7 +341,7 @@ static int ecdh_plain_derive(struct ecdh_ctx *pecdhctx,
 	int ret;
 
 	ret = ecdh_param_check(pecdhctx, &sess_ctx);
-	if (!ret)
+	if (ret != UADK_P_SUCCESS)
 		return ret;
 
 	ec_size = ecdh_get_ec_size(sess_ctx.group);
@@ -389,13 +415,13 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 	}
 
 	if (outlen < pecdhctx->kdf_outlen) {
-		fprintf(stderr, "invalid: outlen %lu is less than kdf_outlen %lu!\n",
+		fprintf(stderr, "invalid: outlen %zu is less than kdf_outlen %zu!\n",
 			outlen, pecdhctx->kdf_outlen);
 		return UADK_P_FAIL;
 	}
 
 	ret = ecdh_plain_derive(pecdhctx, NULL, &stmplen, 0);
-	if (!ret)
+	if (ret != UADK_P_SUCCESS)
 		return ret;
 
 	stmp = OPENSSL_secure_malloc(stmplen);
@@ -419,10 +445,21 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 	return ret;
 }
 
+static int uadk_ecdh_sw_derive(void *vpecdhctx, unsigned char *secret,
+			  size_t *psecretlen, size_t outlen)
+{
+	if (!enable_sw_offload || !get_default_ecdh_keyexch().derive)
+		return UADK_P_FAIL;
+
+	fprintf(stderr, "switch to openssl software calculation in ecdh derivation.\n");
+	return get_default_ecdh_keyexch().derive(vpecdhctx, secret, psecretlen, outlen);
+}
+
 static int uadk_keyexch_ecdh_derive(void *vpecdhctx, unsigned char *secret,
 				    size_t *psecretlen, size_t outlen)
 {
 	struct ecdh_ctx *pecdhctx = vpecdhctx;
+	int ret;
 
 	if (!pecdhctx) {
 		fprintf(stderr, "invalid: vpecdhctx is NULL to derive!\n");
@@ -431,13 +468,19 @@ static int uadk_keyexch_ecdh_derive(void *vpecdhctx, unsigned char *secret,
 
 	switch (pecdhctx->kdf_type) {
 	case PROV_ECDH_KDF_NONE:
-		return ecdh_plain_derive(pecdhctx, secret, psecretlen, outlen);
+		ret = ecdh_plain_derive(pecdhctx, secret, psecretlen, outlen);
+		break;
 	case PROV_ECDH_KDF_X9_63:
-		return ecdh_X9_63_kdf_derive(pecdhctx, secret, psecretlen, outlen);
+		ret = ecdh_X9_63_kdf_derive(pecdhctx, secret, psecretlen, outlen);
+		break;
 	default:
 		break;
 	}
 
+	if (ret == UADK_P_SUCCESS)
+		return UADK_P_SUCCESS;
+	if (ret == UADK_DO_SOFT)
+		return uadk_ecdh_sw_derive(vpecdhctx, secret, psecretlen, outlen);
 	return UADK_P_FAIL;
 }
 
