@@ -705,14 +705,15 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 			priv->state = SEC_DIGEST_DOING;
 
 		priv->req.out = priv->out;
-		left_len -= processing_len;
-		tmpdata += processing_len;
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
 			fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
+
+		left_len -= processing_len;
+		tmpdata += processing_len;
 	} while (left_len > DIGEST_BLOCK_SIZE);
 
 	priv->last_update_bufflen = left_len;
@@ -730,6 +731,9 @@ do_soft_digest:
 			ret = digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
 			if (!ret)
 				goto out;
+
+			left_len -= processing_len;
+			tmpdata += processing_len;
 		}
 
 		ret = digest_soft_update(priv, tmpdata, left_len);
