@@ -390,7 +390,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 	cb_param.priv = req;
 	req->cb = uadk_prov_ecc_cb;
 	req->cb_param = &cb_param;
-	req->status = -1;
+	req->status = POLL_ERROR;
 
 	ret = async_get_free_task(&idx);
 	if (ret == 0)

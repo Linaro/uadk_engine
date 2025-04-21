@@ -28,6 +28,7 @@
 #define UADK_DEVICE_ERROR	3
 #define HW_SEC_V2		2
 #define HW_SEC_V3		3
+#define POLL_ERROR		(-1)
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"

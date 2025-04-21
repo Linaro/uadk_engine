@@ -360,7 +360,7 @@ static int uadk_do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
 static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 			 unsigned char *out, const unsigned char *in, size_t inlen)
 {
-	struct uadk_e_cb_info *cb_param;
+	struct uadk_e_cb_info cb_param;
 	int cnt = 0;
 	int ret;
 
@@ -376,22 +376,16 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 
 	uadk_do_aead_async_prepare(priv, out, in, inlen);
 
-	cb_param = malloc(sizeof(struct uadk_e_cb_info));
-	if (unlikely(!cb_param)) {
-		fprintf(stderr, "failed to alloc cb_param.\n");
-		return UADK_AEAD_FAIL;
-	}
-
-	cb_param->op = op;
-	cb_param->priv = &priv->req;
+	cb_param.op = op;
+	cb_param.priv = &priv->req;
 	priv->req.cb = uadk_prov_aead_cb;
-	priv->req.cb_param = cb_param;
+	priv->req.cb_param = &cb_param;
 	priv->req.msg_state = AEAD_MSG_BLOCK;
-	priv->req.state = UADK_AEAD_FAIL;
+	priv->req.state = POLL_ERROR;
 
 	ret = async_get_free_task(&op->idx);
 	if (unlikely(!ret))
-		goto free_cb_param;
+		return UADK_AEAD_FAIL;
 
 	do {
 		ret = wd_do_aead_async(priv->sess, &priv->req);
@@ -404,8 +398,7 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 				continue;
 
 			async_free_poll_task(op->idx, 0);
-			ret = UADK_AEAD_FAIL;
-			goto free_cb_param;
+			return UADK_AEAD_FAIL;
 		}
 	} while (ret == -EBUSY);
 
@@ -413,15 +406,12 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 	if (unlikely(!ret || priv->req.state)) {
 		fprintf(stderr, "do aead async job failed, ret: %d, state: %u!\n",
 			ret, priv->req.state);
-		ret = UADK_AEAD_FAIL;
-		goto free_cb_param;
+		return UADK_AEAD_FAIL;
 	}
 
 	if (priv->req.assoc_bytes)
 		memcpy(out, priv->req.dst + priv->req.assoc_bytes, inlen);
 
-free_cb_param:
-	free(cb_param);
 	return ret;
 }
 
