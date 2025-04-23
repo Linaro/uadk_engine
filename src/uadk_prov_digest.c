@@ -309,8 +309,8 @@ static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
 	ctx_set_num.async_ctx_num = UADK_DIGEST_DEF_CTXS;
 
 	ret = wd_digest_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
-	if (unlikely(ret)) {
-		fprintf(stderr, "uadk failed to initialize digest.\n");
+	if (unlikely(ret && ret != -WD_EEXIST)) {
+		fprintf(stderr, "uadk failed to initialize digest dev, ret = %d\n", ret);
 		goto free_nodemask;
 	}
 	ret = UADK_DIGEST_SUCCESS;
@@ -568,7 +568,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
-	if (!ret)
+	if (!ret || priv->req.state)
 		return UADK_DIGEST_FAIL;
 
 	return UADK_DIGEST_SUCCESS;
