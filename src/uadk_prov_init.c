@@ -69,6 +69,12 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ NULL, NULL, NULL }
 };
 
+const OSSL_ALGORITHM uadk_prov_hmac[] = {
+	{ "HMAC", UADK_DEFAULT_PROPERTIES,
+	  uadk_hmac_functions, "uadk_provider hmac" },
+	{ NULL, NULL, NULL }
+};
+
 const OSSL_ALGORITHM uadk_prov_ciphers_v2[] = {
 	{ "AES-128-CBC", UADK_DEFAULT_PROPERTIES,
 	  uadk_aes_128_cbc_functions, "uadk_provider aes-128-cbc" },
@@ -268,6 +274,8 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		return uadk_prov_digests;
+	case OSSL_OP_MAC:
+		return uadk_prov_hmac;
 	case OSSL_OP_CIPHER:
 		ver = uadk_prov_cipher_version();
 		if (!ver && uadk_get_sw_offload_state())
@@ -324,6 +332,7 @@ static void uadk_teardown(void *provctx)
 	}
 
 	uadk_prov_destroy_digest();
+	uadk_prov_destroy_hmac();
 	uadk_prov_destroy_cipher();
 	uadk_prov_destroy_aead();
 	uadk_prov_destroy_rsa();
