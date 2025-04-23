@@ -31,10 +31,15 @@
 #define POLL_ERROR		(-1)
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
+#define PROV_NAMES_MD5 "MD5:SSL3-MD5:1.2.840.113549.2.5"
+#define PROV_NAMES_SM3 "SM3:1.2.156.10197.1.401"
+#define PROV_NAMES_SHA1 "SHA1:SHA-1:SSL3-SHA1:1.3.14.3.2.26"
 #define PROV_NAMES_SHA2_224 "SHA2-224:SHA-224:SHA224:2.16.840.1.101.3.4.2.4"
 #define PROV_NAMES_SHA2_256 "SHA2-256:SHA-256:SHA256:2.16.840.1.101.3.4.2.1"
 #define PROV_NAMES_SHA2_384 "SHA2-384:SHA-384:SHA384:2.16.840.1.101.3.4.2.2"
 #define PROV_NAMES_SHA2_512 "SHA2-512:SHA-512:SHA512:2.16.840.1.101.3.4.2.3"
+#define PROV_NAMES_SHA2_512_224 "SHA2-512/224:SHA-512/224:SHA512-224:2.16.840.1.101.3.4.2.5"
+#define PROV_NAMES_SHA2_512_256 "SHA2-512/256:SHA-512/256:SHA512-256:2.16.840.1.101.3.4.2.6"
 
 typedef int CRYPTO_REF_COUNT;
 
@@ -137,6 +142,7 @@ extern const OSSL_DISPATCH uadk_sha384_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sha512_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sha512_224_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_sha512_256_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_hmac_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_aes_128_cbc_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_aes_192_cbc_functions[FUNC_MAX_NUM];
@@ -192,6 +198,7 @@ extern const OSSL_DISPATCH uadk_x25519_keyexch_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_ecdsa_signature_functions[FUNC_MAX_NUM];
 
 void uadk_prov_destroy_digest(void);
+void uadk_prov_destroy_hmac(void);
 void uadk_prov_destroy_cipher(void);
 void uadk_prov_destroy_aead(void);
 void uadk_prov_destroy_rsa(void);
