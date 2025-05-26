@@ -23,6 +23,7 @@
 #include <openssl/async.h>
 
 #define ASYNC_QUEUE_TASK_NUM	1024
+#define ASYNC_MAX_RETRY_CNT	1000
 #define UADK_E_SUCCESS		1
 #define UADK_E_FAIL		0
 #define DO_SYNC			1
@@ -32,6 +33,7 @@ struct async_op {
 	int done;
 	int idx;
 	int ret;
+	int retry;
 };
 
 struct uadk_e_cb_info {
