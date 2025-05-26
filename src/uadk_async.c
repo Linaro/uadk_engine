@@ -327,6 +327,16 @@ static void *async_poll_process_func(void *args)
 		idx = op->idx;
 		ret = async_recv_func[task->type](task->ctx);
 		if (!poll_queue.is_recv && op->job) {
+			/*
+			 * Wake up the op->job whose number of polling
+			 * failures exceeds the threshold.
+			 */
+			if (ret && ret != -ETIMEDOUT && op->retry++ < ASYNC_MAX_RETRY_CNT) {
+				(void)sem_post(&poll_queue.full_sem);
+				continue;
+			}
+
+			op->retry = 0;
 			op->done = 1;
 			op->ret = ret;
 			async_wake_job(op->job);
