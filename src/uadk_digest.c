@@ -100,6 +100,7 @@ struct evp_md_ctx_st {
 	int (*update)(EVP_MD_CTX *ctx, const void *data, size_t count);
 };
 # else
+/* EVP_MD_CTX */
 struct evp_md_ctx_st {
 	const EVP_MD *reqdigest;    /* The original requested digest */
 	const EVP_MD *digest;
@@ -119,7 +120,7 @@ struct evp_md_ctx_st {
 	 */
 	void *algctx;
 	EVP_MD *fetched_digest;
-} /* EVP_MD_CTX */;
+};
 #endif
 
 struct digest_priv_ctx {
