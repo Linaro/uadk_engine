@@ -153,7 +153,7 @@ static void uadk_aead_mutex_infork(void)
 	pthread_mutex_unlock(&aead_mutex);
 }
 
-static int uadk_fetch_sw_aead(struct aead_priv_ctx *priv)
+static int uadk_create_aead_soft_ctx(struct aead_priv_ctx *priv)
 {
 	if (priv->sw_aead)
 		return UADK_AEAD_SUCCESS;
@@ -172,12 +172,24 @@ static int uadk_fetch_sw_aead(struct aead_priv_ctx *priv)
 		break;
 	}
 
-	if (unlikely(priv->sw_aead == NULL)) {
+	if (unlikely(!priv->sw_aead)) {
 		fprintf(stderr, "aead failed to fetch\n");
 		return UADK_AEAD_FAIL;
 	}
 
+	priv->sw_ctx = EVP_CIPHER_CTX_new();
+	if (!priv->sw_ctx) {
+		fprintf(stderr, "EVP_AEAD_CTX_new failed.\n");
+		goto free;
+	}
+
 	return UADK_AEAD_SUCCESS;
+
+free:
+	EVP_CIPHER_free(priv->sw_aead);
+	priv->sw_aead = NULL;
+
+	return UADK_AEAD_FAIL;
 }
 
 static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned char *key,
@@ -185,7 +197,7 @@ static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned c
 {
 	int ret;
 
-	if (!priv->sw_aead || !priv->sw_ctx)
+	if (!priv->sw_aead)
 		return UADK_AEAD_FAIL;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
@@ -208,7 +220,7 @@ static int uadk_aead_soft_update(struct aead_priv_ctx *priv, unsigned char *out,
 {
 	int ret;
 
-	if (!priv->sw_aead || !priv->sw_ctx)
+	if (!priv->sw_aead)
 		return UADK_AEAD_FAIL;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
@@ -230,7 +242,7 @@ static int uadk_aead_soft_final(struct aead_priv_ctx *priv, unsigned char *diges
 {
 	int ret;
 
-	if (!priv->sw_aead || !priv->sw_ctx)
+	if (!priv->sw_aead)
 		goto error;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST) {
@@ -834,7 +846,7 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *
 	priv->stream_switch_flag = 0;
 
 	if (uadk_get_sw_offload_state())
-		uadk_fetch_sw_aead(priv);
+		uadk_create_aead_soft_ctx(priv);
 
 	ret = uadk_prov_aead_dev_init(priv);
 	if (unlikely(ret < 0)) {
@@ -1118,9 +1130,7 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 			fprintf(stderr, "EVP_CIPHER_CTX_dup failed in ctx copy.\n");
 			goto free_data;
 		}
-	}
 
-	if (dst_ctx->sw_aead) {
 		ret = EVP_CIPHER_up_ref(dst_ctx->sw_aead);
 		if (!ret)
 			goto free_dup;
@@ -1176,9 +1186,6 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
 	ctx->taglen = tag_len;							\
-	ctx->sw_ctx = EVP_CIPHER_CTX_new();					\
-	if (ctx->sw_ctx == NULL)						\
-		fprintf(stderr, "EVP_AEAD_CTX_new failed.\n");			\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
 										\
 	return ctx;								\

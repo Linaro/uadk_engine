@@ -130,7 +130,7 @@ static EVP_MD_CTX *EVP_MD_CTX_dup(const EVP_MD_CTX *in)
 	return out;
 }
 
-static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
+static int uadk_create_digest_soft_ctx(struct digest_priv_ctx *priv)
 {
 	if (priv->soft_md)
 		return UADK_DIGEST_SUCCESS;
@@ -169,17 +169,29 @@ static int uadk_digests_soft_md(struct digest_priv_ctx *priv)
 		break;
 	}
 
-	if (unlikely(priv->soft_md == NULL)) {
+	if (unlikely(!priv->soft_md)) {
 		fprintf(stderr, "digest failed to fetch\n");
 		return UADK_DIGEST_FAIL;
 	}
 
+	priv->soft_ctx = EVP_MD_CTX_new();
+	if (!priv->soft_ctx) {
+		fprintf(stderr, "EVP_MD_CTX_new failed.\n");
+		goto free;
+	}
+
 	return UADK_DIGEST_SUCCESS;
+
+free:
+	EVP_MD_free(priv->soft_md);
+	priv->soft_md = NULL;
+
+	return UADK_DIGEST_FAIL;
 }
 
 static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 {
-	if (!priv->soft_md || !priv->soft_ctx)
+	if (!priv->soft_md)
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestInit_ex(priv->soft_ctx, priv->soft_md, NULL)) {
@@ -195,7 +207,7 @@ static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 static int uadk_digest_soft_update(struct digest_priv_ctx *priv,
 				   const void *data, size_t len)
 {
-	if (priv->soft_md == NULL)
+	if (!priv->soft_md)
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestUpdate(priv->soft_ctx, data, len)) {
@@ -212,7 +224,7 @@ static int uadk_digest_soft_final(struct digest_priv_ctx *priv, unsigned char *d
 {
 	unsigned int digest_length;
 
-	if (priv->soft_md == NULL)
+	if (!priv->soft_md)
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestFinal_ex(priv->soft_ctx, digest, &digest_length)) {
@@ -837,9 +849,7 @@ static void *uadk_prov_dupctx(void *dctx)
 			fprintf(stderr, "EVP_MD_CTX_new failed in ctx copy.\n");
 			goto free_data;
 		}
-	}
 
-	if (dst_ctx->soft_md) {
 		ret = EVP_MD_up_ref(dst_ctx->soft_md);
 		if (!ret)
 			goto free_dup;
@@ -868,7 +878,7 @@ static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 	}
 
 	if (uadk_get_sw_offload_state())
-		uadk_digests_soft_md(priv);
+		uadk_create_digest_soft_ctx(priv);
 
 	ret = uadk_get_digest_info(priv);
 	if (unlikely(!ret))
@@ -981,9 +991,6 @@ static void *uadk_##name##_newctx(void *provctx)				\
 	ctx->blk_size = blksize;						\
 	ctx->md_size = mdsize;							\
 	ctx->e_nid = nid;							\
-	ctx->soft_ctx = EVP_MD_CTX_new();					\
-	if (ctx->soft_ctx == NULL)						\
-		fprintf(stderr, "EVP_MD_CTX_new failed.\n");			\
 	strncpy(ctx->alg_name, #name, ALG_NAME_SIZE - 1);			\
 	ptr = strchr(ctx->alg_name, '_');					\
 	if (ptr != NULL)							\
