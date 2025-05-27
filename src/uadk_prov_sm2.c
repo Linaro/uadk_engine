@@ -20,6 +20,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/bn.h>
+#include <openssl/engine.h>
 #include <uadk/wd_ecc.h>
 #include <uadk/wd_sched.h>
 #include "uadk_async.h"
@@ -131,6 +132,11 @@ typedef struct {
 	unsigned char aid_buf[OSSL_MAX_ALGORITHM_ID_SIZE];
 	unsigned char *aid;
 	size_t  aid_len;
+
+	/* main digest */
+	EVP_MD *md;
+	EVP_MD_CTX *mdctx;
+	size_t mdsize;
 
 	/*
 	 * SM2 ID used for calculating the Z value,
@@ -749,6 +755,7 @@ static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
 	 * can be set with set_ctx_params API.
 	 */
 	smctx->sm2_md->mdsize = SM3_DIGEST_LENGTH;
+	psm2ctx->mdsize = SM3_DIGEST_LENGTH;
 	smctx->sm2_md->md_nid = NID_sm3;
 	strcpy(psm2ctx->mdname, OSSL_DIGEST_NAME_SM3);
 	smctx->sm2_md->mdctx = EVP_MD_CTX_new();
@@ -791,18 +798,24 @@ static void uadk_signature_sm2_freectx(void *vpsm2ctx)
 		return;
 
 	smctx = psm2ctx->sm2_pctx;
-	if (smctx == NULL)
-		goto free_psm2ctx;
+	if (smctx) {
+		if (smctx->sess)
+			wd_ecc_free_sess(smctx->sess);
 
-	/*
-	 * Pkey and md related data in smctx->sm2_md and smctx->sm2_pd will
-	 * release by some openssl tools, such as dgst, after call freectx.
-	 * Free pkey and md related data in our provider will cause double-free
-	 * with openssl dgst tool, maybe it is an openssl bug, fix it later.
-	 */
-	OPENSSL_free(smctx);
+		if (smctx->sm2_md) {
+			EVP_MD_free(smctx->sm2_md->md);
+			EVP_MD_CTX_free(smctx->sm2_md->mdctx);
+			OPENSSL_free(smctx->sm2_md);
+		}
 
-free_psm2ctx:
+		if (smctx->sm2_pd) {
+			BN_free(smctx->sm2_pd->order);
+			OPENSSL_free(smctx->sm2_pd);
+		}
+
+		OPENSSL_free(smctx);
+	}
+
 	if (psm2ctx->propq)
 		OPENSSL_free(psm2ctx->propq);
 	if (psm2ctx->key)
@@ -811,7 +824,6 @@ free_psm2ctx:
 		OPENSSL_free(psm2ctx->id);
 
 	OPENSSL_free(psm2ctx);
-	return;
 }
 
 static int uadk_prov_sm2_check_md_params(SM2_PROV_CTX *smctx)
@@ -966,6 +978,9 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 
 	smctx->sm2_pd->prikey = NULL;
 	smctx->sm2_pd->pubkey = NULL;
+
+	if (smctx->sm2_pd->order)
+		BN_free(smctx->sm2_pd->order);
 	smctx->sm2_pd->order = order;
 
 	return UADK_P_SUCCESS;
@@ -1286,34 +1301,28 @@ static int uadk_prov_sm2_sign(PROV_SM2_SIGN_CTX *psm2ctx,
 
 	ret = uadk_prov_sm2_update_private_key(smctx, psm2ctx->key);
 	if (ret == UADK_P_FAIL)
-		return ret;
+		goto uninit_iot;
 
 	ret = uadk_prov_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret == UADK_P_FAIL) {
 		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
-		return ret;
+		goto uninit_iot;
 	}
 
 	wd_sm2_get_sign_out_params(req.dst, &r, &s);
 	if (r == NULL || s == NULL) {
 		fprintf(stderr, "failed to get sign result\n");
-		return UADK_P_FAIL;
+		ret = UADK_P_FAIL;
+		goto uninit_iot;
 	}
 
 	ret = uadk_prov_sm2_sign_bin_to_ber(r, s, sig, siglen);
-	if (ret == UADK_P_FAIL)
-		goto uninit_iot;
-
-	wd_ecc_del_in(smctx->sess, req.src);
-	wd_ecc_del_out(smctx->sess, req.dst);
-
-	return UADK_P_SUCCESS;
 
 uninit_iot:
 	wd_ecc_del_in(smctx->sess, req.src);
 	wd_ecc_del_out(smctx->sess, req.dst);
 
-	return UADK_P_FAIL;
+	return ret;
 }
 
 static int uadk_signature_sm2_sign_sw(void *vpsm2ctx, unsigned char *sig, size_t *siglen,
@@ -1363,7 +1372,7 @@ static int uadk_signature_sm2_sign(void *vpsm2ctx, unsigned char *sig, size_t *s
 
 	if (sigsize < (size_t)ecsize) {
 		fprintf(stderr, "sigsize(%zu) < ecsize(%d)\n", sigsize, ecsize);
-		goto do_soft;
+		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_sm2_check_tbs_params(psm2ctx, tbs, tbslen);
@@ -1980,136 +1989,123 @@ static int uadk_signature_sm2_digest_verify_final(void *vpsm2ctx, const unsigned
 	return uadk_signature_sm2_verify(vpsm2ctx, sig, siglen, digest, (size_t)dlen);
 }
 
-static int check_signature_src_ctx(PROV_SM2_SIGN_CTX *srcctx)
+static SM2_PROV_CTX *sm2_copy_src_smctx(SM2_PROV_CTX *src_smctx)
 {
-	SM2_PROV_CTX *src_smctx;
+	SM2_PROV_CTX *dst_smctx;
+	int ret;
 
-	if (srcctx == NULL) {
-		fprintf(stderr, "invalid: src ctx is NULL\n");
-		return UADK_P_FAIL;
+	if (src_smctx == NULL || src_smctx->sm2_md == NULL || src_smctx->sm2_pd == NULL) {
+		fprintf(stderr, "invalid: src_smctx is NULL to dupctx\n");
+		return NULL;
 	}
 
-	if (srcctx->key != NULL && !EC_KEY_up_ref(srcctx->key)) {
-		fprintf(stderr, "failed to check srcctx key reference\n");
-		return UADK_P_FAIL;
+	dst_smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
+	if (dst_smctx == NULL) {
+		fprintf(stderr, "failed to alloc dst_smctx\n");
+		return NULL;
 	}
+	dst_smctx->init_status = src_smctx->init_status;
 
-	src_smctx = srcctx->sm2_pctx;
-	if (src_smctx == NULL) {
-		fprintf(stderr, "invalid: src_smctx is NULL\n");
-		return UADK_P_FAIL;
-	}
-
-	if (src_smctx->sm2_md == NULL) {
-		fprintf(stderr, "invalid: sm2_md is NULL\n");
-		return UADK_P_FAIL;
+	dst_smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
+	if (dst_smctx->sm2_md == NULL) {
+		fprintf(stderr, "failed to alloc dst_smctx->sm2_md\n");
+		goto free_dst_smctx;
 	}
 
 	if (src_smctx->sm2_md->md != NULL && !EVP_MD_up_ref(src_smctx->sm2_md->md)) {
 		fprintf(stderr, "failed to check srcctx md reference\n");
-		return UADK_P_FAIL;
+		goto free_sm2_md;
 	}
+	dst_smctx->sm2_md->md = src_smctx->sm2_md->md;
+	dst_smctx->sm2_md->mdsize = src_smctx->sm2_md->mdsize;
+	dst_smctx->sm2_md->md_nid = src_smctx->sm2_md->md_nid;
 
-	return UADK_P_SUCCESS;
-}
-
-static int create_dst_ctx_data(SM2_PROV_CTX *dst_smctx)
-{
-	dst_smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
-	if (dst_smctx->sm2_md == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx->sm2_md\n");
-		return UADK_P_FAIL;
+	if (src_smctx->sm2_md->mdctx != NULL) {
+		dst_smctx->sm2_md->mdctx = EVP_MD_CTX_new();
+		if (dst_smctx->sm2_md->mdctx == NULL ||
+		    EVP_MD_CTX_copy_ex(dst_smctx->sm2_md->mdctx, src_smctx->sm2_md->mdctx) == 0) {
+			fprintf(stderr, "failed to new dst mdctx or copy src mdctx\n");
+			goto free_mdctx;
+		}
 	}
 
 	dst_smctx->sm2_pd = OPENSSL_zalloc(sizeof(SM2_PKEY_DATA));
 	if (dst_smctx->sm2_pd == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx->sm2_pd\n");
-		OPENSSL_free(dst_smctx->sm2_md);
-		return UADK_P_FAIL;
+		fprintf(stderr, "failed to alloc sm2_pd\n");
+		goto free_mdctx;
 	}
 
-	return UADK_P_SUCCESS;
-}
+	if (src_smctx->sess) {
+		ret = uadk_prov_sm2_update_sess(dst_smctx);
+		if (!ret)
+			goto free_sm2_pd;
+	}
 
-static void release_dst_ctx_data(SM2_PROV_CTX *dst_smctx)
-{
-	if (dst_smctx->sm2_md)
-		OPENSSL_free(dst_smctx->sm2_md);
+	return dst_smctx;
 
-	if (dst_smctx->sm2_pd)
-		OPENSSL_free(dst_smctx->sm2_pd);
-}
-
-static void copy_ctx_data(SM2_PROV_CTX *dst_smctx, SM2_PROV_CTX *src_smctx)
-{
-	dst_smctx->sm2_md->md = src_smctx->sm2_md->md;
-	dst_smctx->sm2_md->mdsize = src_smctx->sm2_md->mdsize;
-	dst_smctx->sm2_md->md_nid = src_smctx->sm2_md->md_nid;
-	dst_smctx->sm2_pd = src_smctx->sm2_pd;
-	dst_smctx->sess = src_smctx->sess;
-	dst_smctx->init_status = src_smctx->init_status;
+free_sm2_pd:
+	OPENSSL_free(dst_smctx->sm2_pd);
+free_mdctx:
+	if (dst_smctx->sm2_md->mdctx != NULL)
+		EVP_MD_CTX_free(dst_smctx->sm2_md->mdctx);
+	EVP_MD_free(dst_smctx->sm2_md->md);
+free_sm2_md:
+	OPENSSL_free(dst_smctx->sm2_md);
+free_dst_smctx:
+	OPENSSL_free(dst_smctx);
+	return NULL;
 }
 
 static void *uadk_signature_sm2_dupctx(void *vpsm2ctx)
 {
 	PROV_SM2_SIGN_CTX *srcctx = (PROV_SM2_SIGN_CTX *)vpsm2ctx;
-	SM2_PROV_CTX *dst_smctx, *src_smctx;
 	PROV_SM2_SIGN_CTX *dstctx;
 
-	if (check_signature_src_ctx(srcctx) == UADK_P_FAIL)
+	if (srcctx == NULL) {
+		fprintf(stderr, "invalid: src ctx is NULL to dupctx!\n");
 		return NULL;
-	src_smctx = srcctx->sm2_pctx;
+	}
 
 	dstctx = OPENSSL_zalloc(sizeof(PROV_SM2_SIGN_CTX));
 	if (dstctx == NULL) {
 		fprintf(stderr, "failed to alloc dst ctx\n");
 		return NULL;
 	}
+	*dstctx = *srcctx;
+	dstctx->key = NULL;
+	dstctx->id = NULL;
+	dstctx->sm2_pctx = NULL;
+	dstctx->propq = NULL;
 
-	memcpy(dstctx, srcctx, sizeof(PROV_SM2_SIGN_CTX));
+	if (srcctx->key != NULL && !EC_KEY_up_ref(srcctx->key)) {
+		fprintf(stderr, "failed to check srcctx key reference\n");
+		goto free_ctx;
+	}
 	dstctx->key = srcctx->key;
 
-	dst_smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
-	if (dst_smctx == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx\n");
-		goto free_dstctx;
-	}
-	dstctx->sm2_pctx = dst_smctx;
-
-	if (create_dst_ctx_data(dst_smctx) == UADK_P_FAIL)
-		goto free_dst_smctx;
-
-	if (src_smctx->sm2_md->mdctx != NULL) {
-		dst_smctx->sm2_md->mdctx = EVP_MD_CTX_new();
-		if (dst_smctx->sm2_md->mdctx == NULL ||
-		EVP_MD_CTX_copy_ex(dst_smctx->sm2_md->mdctx, src_smctx->sm2_md->mdctx) == 0) {
-			fprintf(stderr, "failed to new dst mdctx or copy src mdctx\n");
-			goto free_dst_ctx_data;
-		}
+	if (srcctx->propq) {
+		dstctx->propq = OPENSSL_strdup(srcctx->propq);
+		if (dstctx->propq == NULL)
+			goto free_ctx;
 	}
 
-	copy_ctx_data(dst_smctx, src_smctx);
+	dstctx->sm2_pctx = sm2_copy_src_smctx(srcctx->sm2_pctx);
+	if (dstctx->sm2_pctx == NULL)
+		goto free_ctx;
 
 	if (srcctx->id != NULL) {
 		dstctx->id = OPENSSL_malloc(srcctx->id_len);
 		if (dstctx->id == NULL) {
 			fprintf(stderr, "failed to alloc id\n");
-			goto free_dst_mdctx;
+			goto free_ctx;
 		}
-		dstctx->id_len = srcctx->id_len;
 		memcpy(dstctx->id, srcctx->id, srcctx->id_len);
 	}
 
 	return dstctx;
 
-free_dst_mdctx:
-	EVP_MD_CTX_free(dst_smctx->sm2_md->mdctx);
-free_dst_ctx_data:
-	release_dst_ctx_data(dst_smctx);
-free_dst_smctx:
-	OPENSSL_free(dst_smctx);
-free_dstctx:
-	OPENSSL_free(dstctx);
+free_ctx:
+	uadk_signature_sm2_freectx(dstctx);
 	return NULL;
 }
 
@@ -2428,6 +2424,15 @@ free_psm2ctx:
 	return NULL;
 }
 
+static void ossl_prov_digest_reset(struct PROV_DIGEST *pd)
+{
+	EVP_MD_free(pd->alloc_md);
+
+#if !defined(FIPS_MODULE) && !defined(OPENSSL_NO_ENGINE)
+	ENGINE_finish(pd->engine);
+#endif
+}
+
 static void uadk_asym_cipher_sm2_freectx(void *vpsm2ctx)
 {
 	PROV_SM2_ASYM_CTX *psm2ctx = (PROV_SM2_ASYM_CTX *)vpsm2ctx;
@@ -2438,16 +2443,23 @@ static void uadk_asym_cipher_sm2_freectx(void *vpsm2ctx)
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx) {
-		if (smctx->sm2_md)
+		if (smctx->sm2_md) {
+			EVP_MD_free(smctx->sm2_md->md);
 			OPENSSL_free(smctx->sm2_md);
-		if (smctx->sm2_pd)
+		}
+		if (smctx->sm2_pd) {
+			BN_free(smctx->sm2_pd->order);
 			OPENSSL_free(smctx->sm2_pd);
+		}
+		if (smctx->sess)
+			wd_ecc_free_sess(smctx->sess);
 		OPENSSL_free(smctx);
 	}
 
 	if (psm2ctx->key)
 		EC_KEY_free(psm2ctx->key);
 
+	ossl_prov_digest_reset(&psm2ctx->md);
 	OPENSSL_free(psm2ctx);
 }
 
@@ -3070,25 +3082,32 @@ static int uadk_asym_cipher_sm2_decrypt(void *vpsm2ctx, unsigned char *out, size
 	return uadk_prov_sm2_decrypt(psm2ctx, out, outlen, in, inlen);
 }
 
+static int ossl_prov_digest_copy(struct PROV_DIGEST *dst, const struct PROV_DIGEST *src)
+{
+	if (src->alloc_md != NULL && !EVP_MD_up_ref(src->alloc_md))
+		return UADK_P_FAIL;
+
+#if !defined(FIPS_MODULE) && !defined(OPENSSL_NO_ENGINE)
+	if (src->engine != NULL && !ENGINE_init(src->engine)) {
+		EVP_MD_free(src->alloc_md);
+		return UADK_P_FAIL;
+	}
+#endif
+	dst->engine = src->engine;
+	dst->md = src->md;
+	dst->alloc_md = src->alloc_md;
+
+	return UADK_P_SUCCESS;
+}
+
 static void *uadk_asym_cipher_sm2_dupctx(void *vpsm2ctx)
 {
 	PROV_SM2_ASYM_CTX *srcctx = (PROV_SM2_ASYM_CTX *)vpsm2ctx;
-	SM2_PROV_CTX *dst_smctx, *src_smctx;
 	PROV_SM2_ASYM_CTX *dstctx;
+	int ret;
 
 	if (srcctx == NULL) {
 		fprintf(stderr, "src ctx is NULL\n");
-		return NULL;
-	}
-
-	src_smctx = srcctx->sm2_pctx;
-	if (src_smctx == NULL) {
-		fprintf(stderr, "src_smctx is NULL\n");
-		return NULL;
-	}
-
-	if (src_smctx->sm2_md == NULL) {
-		fprintf(stderr, "src_smctx is NULL\n");
 		return NULL;
 	}
 
@@ -3098,37 +3117,27 @@ static void *uadk_asym_cipher_sm2_dupctx(void *vpsm2ctx)
 		return NULL;
 	}
 	*dstctx = *srcctx;
+	dstctx->key = NULL;
+	dstctx->sm2_pctx = NULL;
+	memset(&dstctx->md, 0, sizeof(dstctx->md));
 
-	dst_smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
-	if (dst_smctx == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx\n");
-		goto free;
-	}
+	ret = ossl_prov_digest_copy(&srcctx->md, &dstctx->md);
+	if (!ret)
+		goto free_ctx;
 
-	dst_smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
-	if (dst_smctx->sm2_md == NULL) {
-		fprintf(stderr, "failed to alloc dst_smd\n");
-		goto free;
-	}
-
-	if (dstctx->key != NULL && !EC_KEY_up_ref(dstctx->key)) {
+	if (srcctx->key != NULL && !EC_KEY_up_ref(srcctx->key)) {
 		fprintf(stderr, "failed to check dstctx key reference\n");
-		goto free;
+		goto free_ctx;
 	}
+	dstctx->key = srcctx->key;
 
-	if (dst_smctx->sm2_md->alloc_md && !EVP_MD_up_ref(dst_smctx->sm2_md->alloc_md)) {
-		fprintf(stderr, "failed to check alloc_md reference\n");
-		goto free;
-	}
-
-	dst_smctx->sm2_md->md = src_smctx->sm2_md->md;
-	dst_smctx->sm2_md->alloc_md = src_smctx->sm2_md->alloc_md;
-
-	dstctx->sm2_pctx = dst_smctx;
+	dstctx->sm2_pctx = sm2_copy_src_smctx(srcctx->sm2_pctx);
+	if (dstctx->sm2_pctx == NULL)
+		goto free_ctx;
 
 	return dstctx;
 
-free:
+free_ctx:
 	uadk_asym_cipher_sm2_freectx(dstctx);
 	return NULL;
 }
