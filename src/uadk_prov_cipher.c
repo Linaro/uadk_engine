@@ -579,6 +579,7 @@ init_err:
 
 static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 {
+	struct wd_cipher_sess_setup setup = {0};
 	struct sched_params params = {0};
 	int ret;
 
@@ -601,10 +602,12 @@ static int uadk_prov_cipher_ctx_init(struct cipher_priv_ctx *priv)
 	params.type = 0;
 	/* Use the default numa parameters */
 	params.numa_id = -1;
-	priv->setup.sched_param = &params;
+	setup.sched_param = &params;
+	setup.alg = priv->setup.alg;
+	setup.mode = priv->setup.mode;
 
 	if (!priv->sess) {
-		priv->sess = wd_cipher_alloc_sess(&priv->setup);
+		priv->sess = wd_cipher_alloc_sess(&setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk failed to alloc session!\n");
 			return UADK_P_FAIL;
