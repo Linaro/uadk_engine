@@ -1445,11 +1445,20 @@ error:
 
 static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 				  struct rsa_keygen_param_bn **keygen_bn_param,
-				  struct rsa_keypair **key_pair)
+				  struct rsa_keypair **key_pair, int free_bn_ctx_tag)
 {
-	BN_clear_free((*keygen_bn_param)->p);
-	BN_clear_free((*keygen_bn_param)->q);
-	BN_clear_free((*keygen_bn_param)->e);
+	/*
+	 * When an abnormal situation occurs, uadk engine needs to
+	 * switch to software keygen function, so we need to free
+	 * BN we alloced before. But in normal situation,
+	 * the BN should be freed by OpenSSL tools or users.
+	 * Therefore, we use a tag to distinguish these cases.
+	 */
+	if (free_bn_ctx_tag == UADK_DO_SOFT) {
+		BN_clear_free((*keygen_bn_param)->p);
+		BN_clear_free((*keygen_bn_param)->q);
+		BN_clear_free((*keygen_bn_param)->e);
+	}
 
 	OPENSSL_free(*key_pair);
 	OPENSSL_free(*keygen_param);
@@ -1565,18 +1574,18 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_primes_gen(bits, e, bn_param->p, bn_param->q, cb);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	if (!BN_copy(bn_param->e, e)) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
 	ret = rsa_fill_keygen_data(rsa_sess, key_pair, keygen_param, bn_param);
 	if (!ret) {
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 		goto free_sess;
 	}
 
@@ -1588,14 +1597,14 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa, bn_param);
 	if (!ret)
-		ret = UADK_DO_SOFT;
+		ret = UADK_E_FAIL;
 
 free_kg_in_out:
 	rsa_free_keygen_data(rsa_sess);
 free_sess:
 	rsa_free_eng_session(rsa_sess);
 free_keygen:
-	rsa_keygen_param_free(&keygen_param, &bn_param, &key_pair);
+	rsa_keygen_param_free(&keygen_param, &bn_param, &key_pair, ret);
 	return ret;
 }
 
