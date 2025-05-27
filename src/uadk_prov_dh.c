@@ -1204,9 +1204,10 @@ free_dh:
 }
 
 static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
-				      OSSL_CALLBACK *cb, void *cb_params, BN_GENCB *gencb)
+				      OSSL_CALLBACK *cb, void *cb_params)
 {
-	int ret;
+	int ret = UADK_P_SUCCESS;
+	BN_GENCB *gencb;
 
 	if (cb == NULL || cb_params == NULL) {
 		fprintf(stderr, "invalid: cb function or param is NULL\n");
@@ -1234,27 +1235,18 @@ static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
 						gctx->pbits, gctx->qbits, gencb);
 		if (ret <= 0) {
 			fprintf(stderr, "failed to generate ffc parameters\n");
-			goto free_cb;
+			ret = UADK_P_FAIL;
 		}
 	}
 
-	return UADK_P_SUCCESS;
-
-free_cb:
 	if (gencb)
 		BN_GENCB_free(gencb);
 
-	return UADK_P_FAIL;
-}
-
-static void uadk_prov_dh_free_params_cb(BN_GENCB *gencb)
-{
-	if (gencb)
-		BN_GENCB_free(gencb);
+	return ret;
 }
 
 static DH *uadk_prov_dh_gen_params(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc,
-				   OSSL_CALLBACK *cb, void *cb_params, BN_GENCB *gencb)
+				   OSSL_CALLBACK *cb, void *cb_params)
 {
 	DH *dh = NULL;
 	int ret;
@@ -1269,7 +1261,7 @@ static DH *uadk_prov_dh_gen_params(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc,
 		if (dh == NULL || *ffc == NULL)
 			return NULL;
 
-		ret = uadk_prov_dh_gen_params_cb(gctx, dh, cb, cb_params, gencb);
+		ret = uadk_prov_dh_gen_params_cb(gctx, dh, cb, cb_params);
 		if (ret == UADK_P_FAIL) {
 			ossl_dh_free_ex(dh);
 			return NULL;
@@ -1279,14 +1271,19 @@ static DH *uadk_prov_dh_gen_params(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc,
 	return dh;
 }
 
-static void uadk_prov_dh_free_params(DH *dh, BN_GENCB *gencb)
+static void uadk_prov_dh_free_params(DH *dh)
 {
+	FFC_PARAMS *ffc;
+
+	ffc = ossl_dh_get0_params(dh);
+	if (ffc)
+		ossl_ffc_params_cleanup(ffc);
+
 	/*
 	 * Release DH object that allocated by uadk_prov_dh_gen_params_ex() or
 	 * uadk_prov_dh_gen_params_with_group().
 	 */
 	ossl_dh_free_ex(dh);
-	uadk_prov_dh_free_params_cb(gencb);
 }
 
 static void *uadk_dh_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
@@ -1301,7 +1298,6 @@ static void *uadk_dh_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
 static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
 {
 	PROV_DH_KEYMGMT_CTX *gctx = (PROV_DH_KEYMGMT_CTX *)genctx;
-	BN_GENCB *gencb = NULL;
 	FFC_PARAMS *ffc = NULL;
 	DH *dh = NULL;
 	int ret;
@@ -1319,7 +1315,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 	if (gctx->group_nid != NID_undef)
 		gctx->gen_type = DH_PARAMGEN_TYPE_GROUP;
 
-	dh = uadk_prov_dh_gen_params(gctx, &ffc, cb, cb_params, gencb);
+	dh = uadk_prov_dh_gen_params(gctx, &ffc, cb, cb_params);
 	if (dh == NULL || ffc == NULL) {
 		ret = UADK_DO_SOFT;
 		goto free_gen_params;
@@ -1346,12 +1342,11 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 
 	uadk_DH_clear_flags(dh, DH_FLAG_TYPE_MASK);
 	uadk_DH_set_flags(dh, gctx->dh_type);
-	uadk_prov_dh_free_params_cb(gencb);
 
 	return dh;
 
 free_gen_params:
-	uadk_prov_dh_free_params(dh, gencb);
+	uadk_prov_dh_free_params(dh);
 
 	if (ret == UADK_DO_SOFT)
 		return uadk_dh_sw_gen(genctx, cb, cb_params);
