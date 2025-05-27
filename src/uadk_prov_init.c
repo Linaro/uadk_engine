@@ -280,41 +280,41 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_cipher_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_SEC_V3)
-			return uadk_prov_ciphers_v3;
-		return uadk_prov_ciphers_v2;
+		else if (ver == HW_SEC_V2)
+			return uadk_prov_ciphers_v2;
+		return uadk_prov_ciphers_v3;
 	case OSSL_OP_SIGNATURE:
 		uadk_prov_signature_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V3)
-			return uadk_prov_signature_v3;
-		return uadk_prov_signature_v2;
+		else if (ver == HW_PKEY_V2)
+			return uadk_prov_signature_v2;
+		return uadk_prov_signature_v3;
 	case OSSL_OP_KEYMGMT:
 		uadk_prov_keymgmt_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V3)
-			return uadk_prov_keymgmt_v3;
-		return uadk_prov_keymgmt_v2;
+		else if (ver == HW_PKEY_V2)
+			return uadk_prov_keymgmt_v2;
+		return uadk_prov_keymgmt_v3;
 	case OSSL_OP_ASYM_CIPHER:
 		uadk_prov_asym_cipher_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V3)
-			return uadk_prov_asym_cipher_v3;
-		return uadk_prov_asym_cipher_v2;
+		else if (ver == HW_PKEY_V2)
+			return uadk_prov_asym_cipher_v2;
+		return uadk_prov_asym_cipher_v3;
 	case OSSL_OP_KEYEXCH:
 		uadk_prov_keyexch_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V3)
-			return uadk_prov_keyexch_v3;
-		return uadk_prov_keyexch_v2;
+		else if (ver == HW_PKEY_V2)
+			return uadk_prov_keyexch_v2;
+		return uadk_prov_keyexch_v3;
 	default:
 		break;
 	}
