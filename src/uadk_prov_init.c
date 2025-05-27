@@ -470,8 +470,10 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	ctx->libctx = (OSSL_LIB_CTX *)c_get_libctx(handle);
 
 	ret = uadk_prov_ctx_set_core_bio_method(ctx);
-	if (!ret)
+	if (!ret) {
+		OPENSSL_free(ctx);
 		return UADK_P_FAIL;
+	}
 
 	ret = async_module_init();
 	if (!ret)

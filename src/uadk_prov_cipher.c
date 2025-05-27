@@ -395,7 +395,7 @@ static int uadk_get_cipher_info(struct cipher_priv_ctx *priv)
 		}
 	}
 
-	fprintf(stderr, "failed to setup the private ctx.\n");
+	fprintf(stderr, "failed to get cipher info.\n");
 	return UADK_P_FAIL;
 }
 
@@ -455,7 +455,7 @@ static void async_cb(struct wd_cipher_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 }
 
