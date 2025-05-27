@@ -106,6 +106,42 @@
 			0, BN_FLG_STATIC_DATA		\
 	}					\
 
+/* Define some constants, none exceed 32 bits */
+#define DH_LOG_2					0x02c5c8
+#define DH_LOG_E					0x05c551
+#define DH_C1_923					0x07b126
+#define DH_C4_690					0x12c28f
+#define DH_CBRT_SCALE				(1 << (2 * 18 / 3))
+#define DH_SCALE					(1 << 18)
+#define DH_MAX_EXPONENT				63
+#define DH_EXPONENT_SHIFT_3			3
+
+/* modulus size */
+#define DH_STANDARDS_P_2048BIT		2048
+#define DH_STANDARDS_P_3072BIT		3072
+#define DH_STANDARDS_P_4096BIT		4096
+#define DH_STANDARDS_P_6144BIT		6144
+#define DH_STANDARDS_P_7680BIT		7680
+#define DH_STANDARDS_P_8192BIT		8192
+#define DH_STANDARDS_P_15360BIT		15360
+#define DH_STANDARDS_P_MAX_BIT		687737
+#define DH_STANDARDS_P_MIN_BIT		8
+
+
+/* security bits */
+#define DH_P_SECURITY_112BITS		112
+#define DH_P_SECURITY_128BITS		128
+#define DH_P_SECURITY_152BITS		152
+#define DH_P_SECURITY_176BITS		176
+#define DH_P_SECURITY_192BITS		192
+#define DH_P_SECURITY_200BITS		200
+#define DH_P_SECURITY_256BITS		256
+#define DH_P_SECURITY_1200BITS		1200
+
+/* constant adjustment item */
+#define DH_CAI_NUM4		4
+#define DH_CAI_NUM7		7
+
 /*
  * Finite field cryptography (FFC) domain parameters are used by DH and DSA.
  * Refer to FIPS186_4 Appendix A & B.
@@ -325,5 +361,5 @@ int ossl_ffc_params_FIPS186_2_gen_verify(OSSL_LIB_CTX *libctx,
 int ossl_ffc_params_FIPS186_4_generate(OSSL_LIB_CTX *libctx, FFC_PARAMS *params,
 				       int type, size_t L, size_t N,
 				       int *res, BN_GENCB *cb);
-
+uint16_t ossl_ifc_ffc_compute_security_bits(int n);
 #endif

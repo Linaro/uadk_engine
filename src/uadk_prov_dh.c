@@ -421,14 +421,6 @@ static const BIGNUM *uadk_DH_get0_p(const DH *dh)
 	return dh->params.p;
 }
 
-static const BIGNUM *uadk_DH_get0_q(const DH *dh)
-{
-	if (dh == NULL)
-		return NULL;
-
-	return dh->params.q;
-}
-
 static long uadk_DH_get_length(const DH *dh)
 {
 	if (dh == NULL)
@@ -482,36 +474,74 @@ static void uadk_DH_set_flags(DH *dh, int flags)
 	dh->flags |= flags;
 }
 
+static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
+{
+	int bits;
+
+	bits = uadk_DH_get_length(dh) ?
+			uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
+	if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY)) {
+		fprintf(stderr, "failed to BN_priv_rand\n");
+		return UADK_P_FAIL;
+	}
+	return UADK_P_SUCCESS;
+}
+
 static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 {
-	const BIGNUM *q = uadk_DH_get0_q(dh);
-	int bits, cnt;
+	int qbits, max_strength, n, cnt = 0;
+	BIGNUM *m, *two_powN = NULL;
 
-	if (q) {
-		cnt = 0;
-		do {
-			if (!BN_priv_rand_range(new_prikey, q)) {
-				fprintf(stderr, "failed to BN_priv_rand_range\n");
-				return UADK_P_FAIL;
-			}
+	n = dh->length;
+	if (DH_get_nid(dh) == NID_undef || dh->params.q == NULL)
+		return uadk_dh_gen_prikey_undef(dh, new_prikey);
 
-			cnt++;
-			if (cnt > RAND_MAX_CNT) {
-				fprintf(stderr, "failed to get appropriate prikey, timeout\n");
-				return UADK_P_FAIL;
-			}
-		} while (BN_is_zero(new_prikey) || BN_is_one(new_prikey));
-	} else {
-		bits = uadk_DH_get_length(dh) ?
-		       uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
-		if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE,
-				  BN_RAND_BOTTOM_ANY)) {
-			fprintf(stderr, "failed to BN_priv_rand\n");
-			return UADK_P_FAIL;
-		}
+	max_strength = ossl_ifc_ffc_compute_security_bits(BN_num_bits(dh->params.p));
+	/* Deal with the edge cases where the value of n and/or s is not set */
+	if (dh->length > BN_num_bits(dh->params.q) || max_strength == 0)
+		return UADK_P_FAIL;
+
+	if (n == 0)
+		n = dh->params.keylength ? dh->params.keylength : (max_strength << 1);
+
+	qbits = BN_num_bits(dh->params.q);
+	/* Step (2) : check range of n */
+	if (n < (max_strength << 1) || n > qbits) {
+		fprintf(stderr, "n is invalid!\n");
+		return UADK_P_FAIL;
 	}
 
+	two_powN = BN_new();
+	/* 2^n */
+	if (two_powN == NULL || !BN_lshift(two_powN, BN_value_one(), n)) {
+		fprintf(stderr, "failed to BN_new or two_powN is zero\n");
+		goto err;
+	}
+
+	/* Step (5) : M = min(2 ^ n, q) */
+	m = (BN_cmp(two_powN, dh->params.q) > 0) ? dh->params.q : two_powN;
+
+	do {
+		if (!BN_priv_rand_range_ex(new_prikey, two_powN, 0, NULL)
+			|| !BN_add_word(new_prikey, 1)) {
+			fprintf(stderr, "failed to BN_priv_rand_range_ex\n");
+			goto err;
+		}
+		/* Step (6) : loop if c > M - 2 (i.e. c + 1 >= M) */
+		if (BN_cmp(new_prikey, m) < 0)
+			break;
+
+		if (cnt++ > RAND_MAX_CNT) {
+			fprintf(stderr, "failed to get appropriate prikey, timeout\n");
+			goto err;
+		}
+	} while (1);
+
+	BN_free(two_powN);
 	return UADK_P_SUCCESS;
+err:
+	BN_free(two_powN);
+	return UADK_P_FAIL;
 }
 
 static int uadk_prov_dh_prepare_prikey(struct uadk_dh_sess *dh_sess, const DH *dh, BIGNUM **prikey)
