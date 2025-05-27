@@ -202,7 +202,7 @@ static int ossl_cipher_cbc_cts_mode_name2id(const char *name)
 	return -1;
 }
 
-static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
+static int uadk_create_cipher_soft_ctx(struct cipher_priv_ctx *priv)
 {
 	if (priv->sw_cipher)
 		return UADK_P_SUCCESS;
@@ -293,19 +293,31 @@ static int uadk_fetch_sw_cipher(struct cipher_priv_ctx *priv)
 		break;
 	}
 
-	if (unlikely(priv->sw_cipher == NULL)) {
+	if (unlikely(!priv->sw_cipher)) {
 		fprintf(stderr, "cipher failed to fetch\n");
 		return UADK_P_FAIL;
 	}
 
+	priv->sw_ctx = EVP_CIPHER_CTX_new();
+	if (!priv->sw_ctx) {
+		fprintf(stderr, "EVP_CIPHER_CTX_new failed.\n");
+		goto free;
+	}
+
 	return UADK_P_SUCCESS;
+
+free:
+	EVP_CIPHER_free(priv->sw_cipher);
+	priv->sw_cipher = NULL;
+
+	return UADK_P_FAIL;
 }
 
 static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
 				    const unsigned char *key,
 				    const unsigned char *iv)
 {
-	if (!priv->sw_cipher || !priv->sw_ctx)
+	if (!priv->sw_cipher)
 		return UADK_P_FAIL;
 
 	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, key, iv,
@@ -322,7 +334,7 @@ static int uadk_prov_cipher_sw_init(struct cipher_priv_ctx *priv,
 static int uadk_prov_cipher_soft_update(struct cipher_priv_ctx *priv, unsigned char *out,
 					int *outl, const unsigned char *in, size_t len)
 {
-	if (!priv->sw_cipher || !priv->sw_ctx)
+	if (!priv->sw_cipher)
 		return UADK_P_FAIL;
 
 	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, priv->key, priv->iv,
@@ -346,7 +358,7 @@ static int uadk_prov_cipher_soft_final(struct cipher_priv_ctx *priv, unsigned ch
 {
 	int sw_final_len = 0;
 
-	if (!priv->sw_cipher || !priv->sw_ctx)
+	if (!priv->sw_cipher)
 		return UADK_P_FAIL;
 
 	if (!EVP_CipherFinal_ex(priv->sw_ctx, out, &sw_final_len)) {
@@ -428,7 +440,7 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
 
 	if (uadk_get_sw_offload_state())
-		uadk_fetch_sw_cipher(priv);
+		uadk_create_cipher_soft_ctx(priv);
 
 	ret = uadk_prov_cipher_dev_init(priv);
 	if (unlikely(ret <= 0)) {
@@ -1351,9 +1363,6 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
 	ctx->cts_mode = WD_CIPHER_CBC_CS1;					\
-	ctx->sw_ctx = EVP_CIPHER_CTX_new();					\
-	if (ctx->sw_ctx == NULL)						\
-		fprintf(stderr, "EVP_CIPHER_CTX_new failed.\n");		\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
 	if (strcmp(#typ, "block") == 0)						\
 		ctx->pad = 1;							\
