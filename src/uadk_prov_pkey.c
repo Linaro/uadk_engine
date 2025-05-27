@@ -362,7 +362,7 @@ void uadk_prov_ecc_cb(void *req_t)
 		ecc_async_op->done = 1;
 		ecc_async_op->ret = 0;
 		async_free_poll_task(ecc_async_op->idx, 1);
-		async_wake_job(ecc_async_op->job);
+		(void) async_wake_job(ecc_async_op->job);
 	}
 }
 

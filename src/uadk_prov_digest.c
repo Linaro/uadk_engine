@@ -303,7 +303,7 @@ static int uadk_get_digest_info(struct digest_priv_ctx *priv)
 	}
 
 	if (unlikely(i == digest_counts)) {
-		fprintf(stderr, "failed to setup the private ctx.\n");
+		fprintf(stderr, "failed to digest info.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -534,7 +534,7 @@ soft_update:
 	return uadk_digest_soft_update(priv, data, data_len);
 }
 
-static void uadk_async_cb(struct wd_digest_req *req, void *data)
+static void uadk_async_cb(struct wd_digest_req *req)
 {
 	struct uadk_e_cb_info *digest_cb_param;
 	struct wd_digest_req *req_origin;
@@ -550,7 +550,7 @@ static void uadk_async_cb(struct wd_digest_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 }
 

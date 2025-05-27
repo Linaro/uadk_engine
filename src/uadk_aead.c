@@ -469,7 +469,7 @@ static int do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
 	priv->req.state = 0;
 	ret = wd_do_aead_sync(priv->sess, &priv->req);
 	if (unlikely(ret < 0 || priv->req.state)) {
-		fprintf(stderr, "do aead task failed, msg state: %d, ret: %d, state: %u!\n",
+		fprintf(stderr, "do aead task failed, msg state: %u, ret: %d, state: %u!\n",
 			state, ret, priv->req.state);
 		return RET_FAIL;
 	}
@@ -547,7 +547,7 @@ static void *uadk_e_aead_cb(struct wd_aead_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void)async_wake_job(op->job);
 	}
 
 	return NULL;

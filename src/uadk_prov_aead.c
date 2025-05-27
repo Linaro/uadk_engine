@@ -390,7 +390,7 @@ static void *uadk_prov_aead_cb(struct wd_aead_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 
 	return NULL;
@@ -800,7 +800,7 @@ static int uadk_get_aead_info(struct aead_priv_ctx *priv)
 	}
 
 	if (unlikely(i == aead_counts)) {
-		fprintf(stderr, "failed to setup the private ctx.\n");
+		fprintf(stderr, "failed to get aead info.\n");
 		return UADK_AEAD_FAIL;
 	}
 

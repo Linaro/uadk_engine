@@ -801,7 +801,7 @@ static void *uadk_e_digest_cb(void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 
 	return NULL;
