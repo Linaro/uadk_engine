@@ -1364,10 +1364,6 @@ static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 	if (ret)
 		goto uninit_iot;
 
-	ret = uadk_ecc_set_public_key(sess, ecdh);
-	if (ret)
-		goto uninit_iot;
-
 	ret = uadk_ecc_crypto(sess, &req, (void *)sess);
 	if (!ret)
 		goto uninit_iot;
