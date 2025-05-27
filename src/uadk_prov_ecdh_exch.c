@@ -275,6 +275,7 @@ static int ecdh_get_shared_key(unsigned char *secret,
 			       struct wd_ecc_req *req)
 {
 	struct wd_ecc_point *shared_key = NULL;
+	size_t len;
 
 	wd_ecxdh_get_out_params(req->dst, &shared_key);
 	if (!shared_key) {
@@ -282,10 +283,12 @@ static int ecdh_get_shared_key(unsigned char *secret,
 		return UADK_P_FAIL;
 	}
 
-	size = size < shared_key->x.dsize ? size : shared_key->x.dsize;
-	*psecretlen = size;
+	len = size < shared_key->x.dsize ? size : shared_key->x.dsize;
 
-	memcpy(secret, (unsigned char *)shared_key->x.data, size);
+	memset(secret, 0, size - len);
+	memcpy(secret + size - len, (unsigned char *)shared_key->x.data, len);
+
+	*psecretlen = size;
 
 	return UADK_P_SUCCESS;
 }
