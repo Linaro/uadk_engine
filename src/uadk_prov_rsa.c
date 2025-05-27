@@ -1201,13 +1201,12 @@ static int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 }
 
 static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
-				struct rsa_keygen_param_bn *bn_param, BN_CTX **bn_ctx_in)
+				struct rsa_keygen_param_bn *bn_param)
 {
 	struct wd_rsa_kg_out *out = (struct wd_rsa_kg_out *)req->dst;
 	struct wd_dtb wd_d, wd_n, wd_qinv, wd_dq, wd_dp;
 	BIGNUM *dmp1, *dmq1, *iqmp, *d, *n;
 	unsigned int key_bits, key_size;
-	BN_CTX *bn_ctx = *bn_ctx_in;
 
 	key_bits = wd_rsa_get_key_bits(ctx);
 	if (!key_bits)
@@ -1217,25 +1216,25 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	wd_rsa_get_kg_out_params(out, &wd_d, &wd_n);
 	wd_rsa_get_kg_out_crt_params(out, &wd_qinv, &wd_dq, &wd_dp);
 
-	dmq1 = BN_CTX_get(bn_ctx);
+	dmq1 = BN_secure_new();
 	if (!dmq1)
 		return UADK_E_FAIL;
 
-	dmp1 = BN_CTX_get(bn_ctx);
+	dmp1 = BN_secure_new();
 	if (!dmp1)
-		return UADK_E_FAIL;
+		goto free_bn_dq;
 
-	iqmp = BN_CTX_get(bn_ctx);
+	iqmp = BN_new();
 	if (!iqmp)
-		return UADK_E_FAIL;
+		goto free_bn_dp;
 
-	n = BN_CTX_get(bn_ctx);
+	n = BN_new();
 	if (!n)
-		return UADK_E_FAIL;
+		goto free_bn_qinv;
 
-	d = BN_CTX_get(bn_ctx);
+	d = BN_secure_new();
 	if (!d)
-		return UADK_E_FAIL;
+		goto free_bn_n;
 
 	BN_bin2bn((unsigned char *)wd_n.data, key_size, n);
 	BN_bin2bn((unsigned char *)wd_d.data, key_size, d);
@@ -1246,9 +1245,22 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	if (!(uadk_rsa_set0_key(rsa, n, bn_param->e, d) &&
 	    uadk_rsa_set0_factors(rsa, bn_param->p, bn_param->q) &&
 	    uadk_rsa_set0_crt_params(rsa, dmp1, dmq1, iqmp)))
-		return UADK_E_FAIL;
+		goto free_bn_d;
 
 	return UADK_E_SUCCESS;
+
+free_bn_d:
+	BN_clear_free(d);
+free_bn_n:
+	BN_clear_free(n);
+free_bn_qinv:
+	BN_clear_free(iqmp);
+free_bn_dp:
+	BN_clear_free(dmp1);
+free_bn_dq:
+	BN_clear_free(dmq1);
+
+	return UADK_E_FAIL;
 }
 
 static void uadk_e_rsa_cb(void *req_t)
@@ -1388,10 +1400,8 @@ static void rsa_free_keygen_data(struct uadk_rsa_sess *rsa_sess)
 
 static int rsa_keygen_param_alloc(struct rsa_keygen_param **keygen_param,
 				  struct rsa_keygen_param_bn **keygen_bn_param,
-				  struct rsa_keypair **key_pair, BN_CTX **bn_ctx_in)
+				  struct rsa_keypair **key_pair)
 {
-	BN_CTX *bn_ctx;
-
 	*keygen_param = OPENSSL_malloc(sizeof(struct rsa_keygen_param));
 	if (!(*keygen_param))
 		goto error;
@@ -1405,30 +1415,24 @@ static int rsa_keygen_param_alloc(struct rsa_keygen_param **keygen_param,
 	if (!(*key_pair))
 		goto free_keygen_bn_param;
 
-	bn_ctx = BN_CTX_new();
-	if (!bn_ctx)
+	(*keygen_bn_param)->p = BN_secure_new();
+	if (!(*keygen_bn_param)->p)
 		goto free_key_pair;
 
-	BN_CTX_start(bn_ctx);
-	*bn_ctx_in = bn_ctx;
-
-	(*keygen_bn_param)->p = BN_CTX_get(bn_ctx);
-	if (!(*keygen_bn_param)->p)
-		goto free_bn_ctx;
-
-	(*keygen_bn_param)->q = BN_CTX_get(bn_ctx);
+	(*keygen_bn_param)->q = BN_secure_new();
 	if (!(*keygen_bn_param)->q)
-		goto free_bn_ctx;
+		goto free_p;
 
-	(*keygen_bn_param)->e = BN_CTX_get(bn_ctx);
+	(*keygen_bn_param)->e = BN_new();
 	if (!(*keygen_bn_param)->e)
-		goto free_bn_ctx;
+		goto free_q;
 
 	return UADK_E_SUCCESS;
 
-free_bn_ctx:
-	BN_CTX_end(bn_ctx);
-	BN_CTX_free(bn_ctx);
+free_q:
+	BN_clear_free((*keygen_bn_param)->q);
+free_p:
+	BN_clear_free((*keygen_bn_param)->p);
 free_key_pair:
 	OPENSSL_free(*key_pair);
 free_keygen_bn_param:
@@ -1441,20 +1445,11 @@ error:
 
 static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 				  struct rsa_keygen_param_bn **keygen_bn_param,
-				  struct rsa_keypair **key_pair, BN_CTX **bn_ctx,
-				  int free_bn_ctx_tag)
+				  struct rsa_keypair **key_pair)
 {
-	/*
-	 * When an abnormal situation occurs, uadk engine needs to
-	 * switch to software keygen function, so we need to free
-	 * BN ctx we alloced before. But in normal situation,
-	 * the BN ctx should be freed by OpenSSL tools or users.
-	 * Therefore, we use a tag to distinguish these cases.
-	 */
-	if (free_bn_ctx_tag == UADK_DO_SOFT) {
-		BN_CTX_end(*bn_ctx);
-		BN_CTX_free(*bn_ctx);
-	}
+	BN_clear_free((*keygen_bn_param)->p);
+	BN_clear_free((*keygen_bn_param)->q);
+	BN_clear_free((*keygen_bn_param)->e);
 
 	OPENSSL_free(*key_pair);
 	OPENSSL_free(*keygen_param);
@@ -1551,7 +1546,6 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	struct rsa_keygen_param_bn *bn_param = NULL;
 	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_keypair *key_pair = NULL;
-	BN_CTX *bn_ctx = NULL;
 	int is_crt = 1;
 	int ret;
 
@@ -1559,7 +1553,7 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	if (ret != UADK_E_SUCCESS)
 		return ret;
 
-	ret = rsa_keygen_param_alloc(&keygen_param, &bn_param, &key_pair, &bn_ctx);
+	ret = rsa_keygen_param_alloc(&keygen_param, &bn_param, &key_pair);
 	if (ret == -ENOMEM)
 		return UADK_E_FAIL;
 
@@ -1571,18 +1565,18 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_primes_gen(bits, e, bn_param->p, bn_param->q, cb);
 	if (!ret) {
-		ret = UADK_E_FAIL;
+		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
 
 	if (!BN_copy(bn_param->e, e)) {
-		ret = UADK_E_FAIL;
+		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
 
 	ret = rsa_fill_keygen_data(rsa_sess, key_pair, keygen_param, bn_param);
 	if (!ret) {
-		ret = UADK_E_FAIL;
+		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
 
@@ -1592,16 +1586,16 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 		goto free_kg_in_out;
 	}
 
-	ret = rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa, bn_param, &bn_ctx);
+	ret = rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa, bn_param);
 	if (!ret)
-		ret = UADK_E_FAIL;
+		ret = UADK_DO_SOFT;
 
 free_kg_in_out:
 	rsa_free_keygen_data(rsa_sess);
 free_sess:
 	rsa_free_eng_session(rsa_sess);
 free_keygen:
-	rsa_keygen_param_free(&keygen_param, &bn_param, &key_pair, &bn_ctx, ret);
+	rsa_keygen_param_free(&keygen_param, &bn_param, &key_pair);
 	return ret;
 }
 
@@ -1765,21 +1759,20 @@ static int sign_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_buf
 
 	to_bn = BN_bin2bn(from_buf, num_bytes, NULL);
 	if (!to_bn) {
-		BN_free(sign_bn);
-
-		return UADK_E_FAIL;
+		ret = UADK_E_FAIL;
+		goto free_sign_bn;
 	}
 
 	ret = rsa_get_sign_res(padding, to_bn, pri->n, sign_bn, &res);
-	if (!ret) {
-		BN_free(to_bn);
-		BN_free(sign_bn);
-
-		return UADK_E_FAIL;
-	}
+	if (!ret)
+		goto free_to_bn;
 
 	ret = BN_bn2binpad(res, to, num_bytes);
 
+free_to_bn:
+	BN_free(to_bn);
+free_sign_bn:
+	BN_free(sign_bn);
 	return ret;
 }
 
@@ -1855,17 +1848,15 @@ static int verify_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_b
 		return UADK_E_FAIL;
 
 	ret = rsa_get_verify_res(padding, pub->n, verify_bn);
-	if (!ret) {
-		BN_free(verify_bn);
-		return UADK_E_FAIL;
-	}
+	if (!ret)
+		goto verify_end;
 
 	*len = BN_bn2binpad(verify_bn, from_buf, num_bytes);
-	if (*len == 0) {
-		BN_free(verify_bn);
-		return UADK_E_FAIL;
-	}
+	if (*len == 0)
+		ret = UADK_E_FAIL;
 
+verify_end:
+	BN_free(verify_bn);
 	return ret;
 }
 
