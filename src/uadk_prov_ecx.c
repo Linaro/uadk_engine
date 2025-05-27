@@ -909,8 +909,10 @@ static void uadk_keyexch_x448_freectx(void *vecxctx)
 	if (ecxctx == NULL)
 		return;
 
+	uadk_prov_ecx_key_free(ecxctx->key);
+	uadk_prov_ecx_key_free(ecxctx->peerkey);
+
 	OPENSSL_free(ecxctx);
-	ecxctx = NULL;
 }
 
 static int uadk_keyexch_x448_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
@@ -947,6 +949,16 @@ static int uadk_keyexch_x448_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 	return get_default_x448_keyexch().get_ctx_params(ecxctx, params);
 }
 
+static int ossl_ecx_key_up_ref(ECX_KEY *key)
+{
+	int i = 0;
+
+	if (UADK_CRYPTO_UP_REF(&key->references, &i, key->lock) <= 0)
+		return UADK_P_FAIL;
+
+	return ((i > 1) ? UADK_P_SUCCESS : UADK_P_FAIL);
+}
+
 static int uadk_keyexch_ecx_init(void *vecxctx, void *vkey,
 				  ossl_unused const OSSL_PARAM params[])
 {
@@ -963,7 +975,7 @@ static int uadk_keyexch_ecx_init(void *vecxctx, void *vkey,
 		return UADK_P_FAIL;
 	}
 
-	if (key->keylen != ecxctx->keylen) {
+	if (key->keylen != ecxctx->keylen || !ossl_ecx_key_up_ref(key)) {
 		fprintf(stderr, "invalid: key->keylen(%zu) != ecxctx->keylen(%zu)\n",
 			key->keylen, ecxctx->keylen);
 		return UADK_P_FAIL;
@@ -979,16 +991,6 @@ static int uadk_keyexch_x448_init(void *vecxctx, void *vkey,
 				  ossl_unused const OSSL_PARAM params[])
 {
 	return uadk_keyexch_ecx_init(vecxctx, vkey, params);
-}
-
-static int ossl_ecx_key_up_ref(ECX_KEY *key)
-{
-	int i = 0;
-
-	if (UADK_CRYPTO_UP_REF(&key->references, &i, key->lock) <= 0)
-		return UADK_P_FAIL;
-
-	return ((i > 1) ? UADK_P_SUCCESS : UADK_P_FAIL);
 }
 
 static int uadk_keyexch_ecx_set_peer(void *vecxctx, void *vkey)
@@ -1555,6 +1557,9 @@ static void uadk_keyexch_x25519_freectx(void *vecxctx)
 
 	if (ecxctx == NULL)
 		return;
+
+	uadk_prov_ecx_key_free(ecxctx->key);
+	uadk_prov_ecx_key_free(ecxctx->peerkey);
 
 	OPENSSL_free(ecxctx);
 }
