@@ -339,7 +339,7 @@ static void *async_poll_process_func(void *args)
 			op->retry = 0;
 			op->done = 1;
 			op->ret = ret;
-			async_wake_job(op->job);
+			(void) async_wake_job(op->job);
 			async_free_poll_task(idx, 0);
 		}
 	}

@@ -242,10 +242,6 @@ static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	 */
 	if (!priv->update_iv) {
 		iv = EVP_CIPHER_CTX_iv_noconst(ctx);
-		if (unlikely(iv == NULL)) {
-			fprintf(stderr, "get openssl software iv failed.\n");
-			return 0;
-		}
 		memcpy(iv, priv->iv, EVP_CIPHER_CTX_iv_length(ctx));
 		priv->update_iv = true;
 	}
@@ -565,7 +561,7 @@ static void *uadk_e_cipher_cb(struct wd_cipher_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 
 	return NULL;

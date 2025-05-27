@@ -361,7 +361,7 @@ static int uadk_get_hmac_info(struct hmac_priv_ctx *priv)
 		}
 	}
 
-	fprintf(stderr, "failed to setup the private ctx, algname = %s.\n", priv->alg_name);
+	fprintf(stderr, "failed to get hmac info, algname = %s.\n", priv->alg_name);
 	return UADK_HMAC_FAIL;
 }
 
@@ -529,7 +529,7 @@ soft_init:
 	return uadk_hmac_soft_init(priv);
 }
 
-static void uadk_hmac_async_cb(struct wd_digest_req *req, void *data)
+static void uadk_hmac_async_cb(struct wd_digest_req *req)
 {
 	struct uadk_e_cb_info *hmac_cb_param;
 	struct wd_digest_req *req_origin;
@@ -545,7 +545,7 @@ static void uadk_hmac_async_cb(struct wd_digest_req *req, void *data)
 	if (op && op->job && !op->done) {
 		op->done = 1;
 		async_free_poll_task(op->idx, 1);
-		async_wake_job(op->job);
+		(void) async_wake_job(op->job);
 	}
 }
 
