@@ -432,40 +432,41 @@ static ECDSA_SIG *create_ecdsa_sig(struct wd_ecc_req *req)
 	ECDSA_SIG *sig;
 	int ret;
 
-	sig = ECDSA_SIG_new();
-	if (!sig) {
-		fprintf(stderr, "failed to ECDSA_SIG_new\n");
-		return NULL;
-	}
-
 	br = BN_new();
 	bs = BN_new();
 	if (!br || !bs) {
 		fprintf(stderr, "failed to BN_new r or s\n");
-		goto err;
-	}
-
-	ret = ECDSA_SIG_set0(sig, br, bs);
-	if (!ret) {
-		fprintf(stderr, "failed to ECDSA_SIG_set0\n");
-		goto err;
+		goto free_bn;
 	}
 
 	wd_ecdsa_get_sign_out_params(req->dst, &r, &s);
 	if (!r || !s) {
 		fprintf(stderr, "failed to get r or s\n");
-		goto err;
+		goto free_bn;
 	}
 
 	if (!BN_bin2bn((void *)r->data, r->dsize, br) ||
 	    !BN_bin2bn((void *)s->data, s->dsize, bs)) {
 		fprintf(stderr, "failed to BN_bin2bn r or s\n");
-		goto err;
+		goto free_bn;
+	}
+
+	sig = ECDSA_SIG_new();
+	if (!sig) {
+		fprintf(stderr, "failed to ECDSA_SIG_new\n");
+		goto free_bn;
+	}
+
+	ret = ECDSA_SIG_set0(sig, br, bs);
+	if (!ret) {
+		fprintf(stderr, "failed to ECDSA_SIG_set0\n");
+		goto free_sig;
 	}
 
 	return sig;
-err:
+free_sig:
 	ECDSA_SIG_free(sig);
+free_bn:
 	BN_free(br);
 	BN_free(bs);
 	return NULL;
