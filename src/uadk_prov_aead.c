@@ -572,7 +572,7 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 
 	if (inlen > MAX_AAD_LEN) {
 		if (priv->mode != ASYNC_MODE)
-			return SWITCH_TO_SOFT;
+			goto soft;
 
 		fprintf(stderr, "the aad len is out of range, aad len = %zu.\n", inlen);
 		return UADK_AEAD_FAIL;
@@ -587,13 +587,17 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 	}
 
 	if (!priv->req.assoc_bytes)
-		return SWITCH_TO_SOFT;
+		goto soft;
 
 	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
 	if (unlikely(ret < 0))
-		return SWITCH_TO_SOFT;
+		goto soft;
 
 	return UADK_AEAD_SUCCESS;
+
+soft:
+	fprintf(stderr, "aead failed to update aad, switch to soft.\n");
+	return SWITCH_TO_SOFT;
 }
 
 static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,

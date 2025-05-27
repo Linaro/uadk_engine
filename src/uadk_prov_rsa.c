@@ -1464,6 +1464,12 @@ static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 static int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
 				struct rsa_prikey_param **pri)
 {
+	if (pub) {
+		*pub = OPENSSL_malloc(sizeof(struct rsa_pubkey_param));
+		if (!(*pub))
+			return -ENOMEM;
+	}
+
 	if (pri) {
 		*pri = OPENSSL_malloc(sizeof(struct rsa_prikey_param));
 		if (!(*pri)) {
@@ -1471,12 +1477,6 @@ static int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
 				OPENSSL_free(*pub);
 			return -ENOMEM;
 		}
-	}
-
-	if (pub) {
-		*pub = OPENSSL_malloc(sizeof(struct rsa_pubkey_param));
-		if (!(*pub))
-			return -ENOMEM;
 	}
 
 	return UADK_E_SUCCESS;
@@ -2479,7 +2479,7 @@ static const OSSL_PARAM *uadk_asym_cipher_rsa_gettable_ctx_params(void *vprsactx
 							   void *provctx)
 {
 	if (!get_default_rsa_asym_cipher().gettable_ctx_params)
-		return UADK_E_FAIL;
+		return NULL;
 
 	return get_default_rsa_asym_cipher().gettable_ctx_params(vprsactx, provctx);
 }
@@ -2496,7 +2496,7 @@ static const OSSL_PARAM *uadk_asym_cipher_rsa_settable_ctx_params(void *vprsactx
 							   void *provctx)
 {
 	if (!get_default_rsa_asym_cipher().settable_ctx_params)
-		return UADK_E_FAIL;
+		return NULL;
 
 	return get_default_rsa_asym_cipher().settable_ctx_params(vprsactx, provctx);
 }
@@ -2768,7 +2768,7 @@ static void *uadk_keymgmt_rsa_dup(const void *keydata_from, int selection)
 static void *uadk_asym_cipher_rsa_dupctx(void *vprsactx)
 {
 	if (!get_default_rsa_asym_cipher().dupctx)
-		return UADK_E_FAIL;
+		return NULL;
 	return get_default_rsa_asym_cipher().dupctx(vprsactx);
 }
 
