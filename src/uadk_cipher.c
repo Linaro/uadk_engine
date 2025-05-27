@@ -506,6 +506,8 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 
 	if (iv)
 		memcpy(priv->iv, iv, EVP_CIPHER_CTX_iv_length(ctx));
+	else
+		memcpy(priv->iv, EVP_CIPHER_CTX_iv_noconst(ctx), EVP_CIPHER_CTX_iv_length(ctx));
 
 	for (i = 0; i < cipher_counts; i++) {
 		if (nid == cipher_info_table[i].nid) {
