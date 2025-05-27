@@ -870,7 +870,7 @@ static int uadk_e_dh_generate_key(DH *dh)
 
 free_data:
 	if (dh_sess->key_flag == KEY_GEN_BY_ENGINE)
-		BN_free(priv_key);
+		BN_clear_free(priv_key);
 	dh_free_eng_session(dh_sess);
 soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");

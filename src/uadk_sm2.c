@@ -413,10 +413,11 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 	return 0;
 
 free_s:
-	BN_free(bs);
+	BN_clear_free(bs);
 free_r:
-	BN_free(br);
+	BN_clear_free(br);
 free_sig:
+	ECDSA_SIG_set0(e_sig, NULL, NULL);
 	ECDSA_SIG_free(e_sig);
 
 	return ret;
@@ -678,6 +679,11 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	const int sig_sz = ECDSA_size(ec);
+
+	if (!siglen) {
+		fprintf(stderr, "siglen is NULL\n");
+		return -EINVAL;
+	}
 
 	/*
 	 * If 'sig' is NULL, users can use sm2_decrypt API to obtain the valid 'siglen' first,
