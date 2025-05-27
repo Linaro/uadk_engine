@@ -45,7 +45,7 @@ struct uadk_provider_params {
 } uadk_params;
 
 /* offload small packets to sw */
-int enable_sw_offload;
+int enable_sw_offload = 1;
 
 const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ PROV_NAMES_MD5, UADK_DEFAULT_PROPERTIES,
