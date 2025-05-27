@@ -1182,6 +1182,9 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 			       struct wd_ecc_req *req)
 {
 	struct wd_ecc_point *shared_key = NULL;
+	const EC_GROUP *group;
+	size_t key_size_std;
+	size_t len;
 
 	wd_ecxdh_get_out_params(req->dst, &shared_key);
 	if (!shared_key) {
@@ -1189,8 +1192,15 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 		return 0;
 	}
 
-	*outlen = shared_key->x.dsize;
+	group = EC_KEY_get0_group(ecdh);
+	key_size_std = (size_t)(EC_GROUP_get_degree(group) +
+			UADK_ECC_PADDING) >> TRANS_BITS_BYTES_SHIFT;
+	if (unlikely(key_size_std > UADK_ECC_MAX_KEY_BYTES || key_size_std == 0)) {
+		fprintf(stderr, "failed to get the proper filed size %zu\n", key_size_std);
+		return 0;
+	}
 
+	*outlen = key_size_std;
 	*out = OPENSSL_zalloc(*outlen);
 	if (!*out) {
 		fprintf(stderr, "failed to alloc output key, outlen = %zu\n",
@@ -1198,7 +1208,8 @@ static int ecdh_get_shared_key(const EC_KEY *ecdh,
 		return 0;
 	}
 
-	memcpy(*out, (unsigned char *)shared_key->x.data, *outlen);
+	len = key_size_std  < shared_key->x.dsize ? key_size_std : shared_key->x.dsize;
+	memcpy(*out + *outlen - len, shared_key->x.data, len);
 
 	return 1;
 }
