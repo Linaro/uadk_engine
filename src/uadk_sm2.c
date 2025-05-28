@@ -407,9 +407,12 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 	if (sltmp < 0) {
 		fprintf(stderr, "failed to i2d_ECDSA_SIG\n");
 		ret = -EINVAL;
-		goto free_s;
+		/* bs and br set to e_sig, use unified interface to prevent double release. */
+		goto free_sig;
 	}
+
 	*siglen = (size_t)sltmp;
+	ECDSA_SIG_free(e_sig);
 	return 0;
 
 free_s:
@@ -417,7 +420,6 @@ free_s:
 free_r:
 	BN_clear_free(br);
 free_sig:
-	ECDSA_SIG_set0(e_sig, NULL, NULL);
 	ECDSA_SIG_free(e_sig);
 
 	return ret;
