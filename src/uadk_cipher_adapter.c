@@ -20,6 +20,7 @@
 #define HW_SEC_V3	3
 
 static int g_platform;
+static pthread_mutex_t create_cipher_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int cipher_hw_v2_nids[] = {
 	NID_aes_128_cbc,
@@ -164,9 +165,10 @@ int uadk_e_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int n
 
 	for (i = 0; i < num_cc; i++) {
 		if (nid == c_info[i].nid) {
+			pthread_mutex_lock(&create_cipher_mutex);
 			if (c_info[i].cipher == NULL)
 				uadk_e_create_ciphers(i);
-
+			(void)pthread_mutex_unlock(&create_cipher_mutex);
 			*cipher = c_info[i].cipher;
 			return 1;
 		}
