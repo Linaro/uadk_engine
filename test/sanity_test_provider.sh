@@ -80,7 +80,13 @@ if [[ $signature_algs =~ "uadk_provider" ]]; then
 
 	openssl genrsa -out prikey.pem -provider $engine_id 1024
 	openssl rsa -in prikey.pem -pubout -out pubkey.pem -provider $engine_id
+
 	echo "Content to be encrypted" > plain.txt
+
+	#sign
+	openssl dgst -provider $engine_id -sha256 -sign prikey.pem -out rsa.sig plain.txt
+	#verify
+	openssl dgst -provider $engine_id -sha256 -verify pubkey.pem -signature rsa.sig plain.txt
 
 	openssl pkeyutl -encrypt -in plain.txt -inkey pubkey.pem -pubin -out enc.txt \
 	-pkeyopt rsa_padding_mode:pkcs1 -provider $engine_id
