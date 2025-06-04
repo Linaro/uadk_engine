@@ -23,6 +23,7 @@
 #include <openssl/err.h>
 #include <openssl/proverr.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <openssl/types.h>
 #include <uadk/wd_rsa.h>
 #include <uadk/wd_sched.h>
@@ -62,6 +63,8 @@
 #define GENCB_NEXT			2
 #define GENCB_RETRY			3
 #define PRIME_CHECK_BIT_NUM		4
+
+#define rsa_pss_restricted(prsactx) (prsactx->min_saltlen != -1)
 
 UADK_PKEY_KEYMGMT_DESCR(rsa, RSA);
 UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
@@ -2141,6 +2144,7 @@ static void uadk_signature_rsa_freectx(void *vprsactx)
 
 	free_tbuf(priv);
 	OPENSSL_clear_free(priv, sizeof(*priv));
+	uadk_prov_destroy_rsa();
 }
 
 static void *uadk_asym_cipher_rsa_newctx(void *provctx)
@@ -2163,6 +2167,7 @@ static void uadk_asym_cipher_rsa_freectx(void *vprsactx)
 		return;
 
 	OPENSSL_free(priv);
+	uadk_prov_destroy_rsa();
 }
 
 static int uadk_signature_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
@@ -2208,18 +2213,168 @@ static const OSSL_PARAM *uadk_signature_rsa_settable_ctx_params(void *vprsactx,
 	return settable_ctx_params;
 }
 
+static int uadk_rsa_check_padding(const PROV_RSA_SIG_CTX *prsactx,
+				  const char *mdname, const char *mgf1_mdname,
+				  int mdnid)
+{
+	switch (prsactx->pad_mode) {
+	case RSA_NO_PADDING:
+		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_PADDING_MODE);
+		return 0;
+	case RSA_X931_PADDING:
+		if (RSA_X931_hash_id(mdnid) == -1) {
+			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_X931_DIGEST);
+			return 0;
+		}
+		break;
+	case RSA_PKCS1_PSS_PADDING:
+		if (rsa_pss_restricted(prsactx))
+			if ((mdname != NULL && !EVP_MD_is_a(prsactx->md, mdname)) ||
+			    (mgf1_mdname != NULL &&
+			    !EVP_MD_is_a(prsactx->mgf1_md, mgf1_mdname))) {
+				ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
+				return 0;
+			}
+		break;
+	default:
+		break;
+	}
+
+	return 1;
+}
+
+int uadk_digest_md_to_nid(const EVP_MD *md, const OSSL_ITEM *it, size_t it_len)
+{
+	size_t i;
+
+	if (md == NULL)
+		return NID_undef;
+
+	for (i = 0; i < it_len; i++)
+		if (EVP_MD_is_a(md, it[i].ptr))
+			return (int)it[i].id;
+	return NID_undef;
+}
+
+int uadk_digest_get_approved_nid(const EVP_MD *md)
+{
+	static const OSSL_ITEM name_to_nid[] = {
+		{ NID_sha1,      OSSL_DIGEST_NAME_SHA1      },
+		{ NID_sha224,    OSSL_DIGEST_NAME_SHA2_224  },
+		{ NID_sha256,    OSSL_DIGEST_NAME_SHA2_256  },
+		{ NID_sha384,    OSSL_DIGEST_NAME_SHA2_384  },
+		{ NID_sha512,    OSSL_DIGEST_NAME_SHA2_512  },
+		{ NID_sha512_224, OSSL_DIGEST_NAME_SHA2_512_224 },
+		{ NID_sha512_256, OSSL_DIGEST_NAME_SHA2_512_256 },
+		{ NID_sha3_224,  OSSL_DIGEST_NAME_SHA3_224  },
+		{ NID_sha3_256,  OSSL_DIGEST_NAME_SHA3_256  },
+		{ NID_sha3_384,  OSSL_DIGEST_NAME_SHA3_384  },
+		{ NID_sha3_512,  OSSL_DIGEST_NAME_SHA3_512  },
+	};
+
+	return uadk_digest_md_to_nid(md, name_to_nid, OSSL_NELEM(name_to_nid));
+}
+
+int uadk_digest_rsa_sign_get_md_nid(OSSL_LIB_CTX *ctx, const EVP_MD *md,
+				    int sha1_allowed)
+{
+	return uadk_digest_get_approved_nid(md);
+}
+
+static int uadk_rsa_setup_md(PROV_RSA_SIG_CTX *ctx, const char *mdname,
+			     const char *mdprops)
+{
+	if (mdprops == NULL)
+		mdprops = ctx->propq;
+
+	if (mdname != NULL) {
+		EVP_MD *md = EVP_MD_fetch(ctx->libctx, mdname, mdprops);
+		int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN);
+		int md_nid = uadk_digest_rsa_sign_get_md_nid(ctx->libctx, md,
+				sha1_allowed);
+		size_t mdname_len = strlen(mdname);
+
+		if (md == NULL || md_nid <= 0 ||
+		    !uadk_rsa_check_padding(ctx, mdname, NULL, md_nid) ||
+		    mdname_len >= sizeof(ctx->mdname)) {
+			if (md == NULL)
+				ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+						"%s could not be fetched", mdname);
+			if (md_nid <= 0)
+				ERR_raise_data(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED,
+						"digest=%s", mdname);
+			if (mdname_len >= sizeof(ctx->mdname))
+				ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+						"%s exceeds name buffer length", mdname);
+			EVP_MD_free(md);
+			return 0;
+		}
+
+		if (!ctx->mgf1_md_set) {
+			if (!EVP_MD_up_ref(md)) {
+				EVP_MD_free(md);
+				return 0;
+			}
+			EVP_MD_free(ctx->mgf1_md);
+			ctx->mgf1_md = md;
+			ctx->mgf1_mdnid = md_nid;
+			OPENSSL_strlcpy(ctx->mgf1_mdname, mdname, sizeof(ctx->mgf1_mdname));
+		}
+
+		EVP_MD_CTX_free(ctx->mdctx);
+		EVP_MD_free(ctx->md);
+		ctx->mdctx = NULL;
+		ctx->md = md;
+		ctx->mdnid = md_nid;
+		OPENSSL_strlcpy(ctx->mdname, mdname, sizeof(ctx->mdname));
+	}
+
+	return 1;
+}
+
+static int uadk_signature_rsa_digest_signverify_init(void *vprsactx, const char *mdname,
+						     void *vrsa, const OSSL_PARAM params[],
+						     int operation)
+{
+	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
+
+	if (!uadk_rsa_init(vprsactx, vrsa, params, operation))
+		return 0;
+
+	if (mdname != NULL &&
+	    (mdname[0] == '\0' || OPENSSL_strcasecmp(priv->mdname, mdname) != 0) &&
+	    !uadk_rsa_setup_md(priv, mdname, priv->propq))
+		return 0;
+
+	priv->flag_allow_md = 0;
+
+	if (priv->mdctx == NULL) {
+		priv->mdctx = EVP_MD_CTX_new();
+		if (priv->mdctx == NULL)
+			goto error;
+	}
+
+	if (!EVP_DigestInit_ex2(priv->mdctx, priv->md, params))
+		goto error;
+
+	return 1;
+
+error:
+	EVP_MD_CTX_free(priv->mdctx);
+	priv->mdctx = NULL;
+	return 0;
+}
+
 static int uadk_signature_rsa_digest_sign_init(void *vprsactx, const char *mdname,
 					      void *vrsa, const OSSL_PARAM params[])
 {
-	if (!get_default_rsa_signature().digest_sign_init)
-		return UADK_E_FAIL;
-
-	return get_default_rsa_signature().digest_sign_init(vprsactx, mdname, vrsa, params);
+	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
+							 params, EVP_PKEY_OP_SIGN);
 }
 
 static int uadk_signature_rsa_digest_sign_update(void *vprsactx,
-					     const unsigned char *data,
-					     size_t datalen)
+						 const unsigned char *data,
+						 size_t datalen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
@@ -2229,19 +2384,130 @@ static int uadk_signature_rsa_digest_sign_update(void *vprsactx,
 	return EVP_DigestUpdate(priv->mdctx, data, datalen);
 }
 
+#define ASN1_SEQUENCE_RSA 0x30
+#define ASN1_OCTET_STRING_ 0x04
+#define ASN1_NULL 0x05
+#define ASN1_OID 0x06
+
+/* SHA OIDs are of the form: (2 16 840 1 101 3 4 2 |n|) */
+#define ENCODE_DIGESTINFO_SHA(name, n, sz)				\
+static const unsigned char digestinfo_##name##_der[] = {		\
+	ASN1_SEQUENCE_RSA, 0x11 + sz,					\
+	ASN1_SEQUENCE_RSA, 0x0d,					\
+	ASN1_OID, 0x09, 2 * 40 + 16, 0x86, 0x48, 1, 101, 3, 4, 2, n,	\
+	ASN1_NULL, 0x00,						\
+	ASN1_OCTET_STRING_, sz						\
+}
+
+/* SHA-1 (1 3 14 3 2 26) */
+static const unsigned char digestinfo_sha1_der[] = {
+	ASN1_SEQUENCE_RSA, 0x0d + SHA_DIGEST_LENGTH,
+	ASN1_SEQUENCE_RSA, 0x09,
+	ASN1_OID, 0x05, 1 * 40 + 3, 14, 3, 2, 26,
+	ASN1_NULL, 0x00,
+	ASN1_OCTET_STRING_, SHA_DIGEST_LENGTH
+};
+
+ENCODE_DIGESTINFO_SHA(sha256, 0x01, SHA256_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha384, 0x02, SHA384_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha512, 0x03, SHA512_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha224, 0x04, SHA224_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha512_224, 0x05, SHA224_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha512_256, 0x06, SHA256_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha3_224, 0x07, SHA224_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha3_256, 0x08, SHA256_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha3_384, 0x09, SHA384_DIGEST_LENGTH);
+ENCODE_DIGESTINFO_SHA(sha3_512, 0x0a, SHA512_DIGEST_LENGTH);
+
+#define MD_CASE(name)					\
+	case NID_##name:				\
+		*len = sizeof(digestinfo_##name##_der);	\
+		return digestinfo_##name##_der
+
+
+const unsigned char *uadk_rsa_digestinfo_encoding(int md_nid, size_t *len)
+{
+	switch (md_nid) {
+	MD_CASE(sha1);
+	MD_CASE(sha224);
+	MD_CASE(sha256);
+	MD_CASE(sha384);
+	MD_CASE(sha512);
+	MD_CASE(sha512_224);
+	MD_CASE(sha512_256);
+	MD_CASE(sha3_224);
+	MD_CASE(sha3_256);
+	MD_CASE(sha3_384);
+	MD_CASE(sha3_512);
+	default:
+		return NULL;
+	}
+}
+
+/* Size of an SSL signature: MD5+SHA1 */
+#define SSL_SIG_LENGTH  36
+
+/*
+ * Encodes a DigestInfo prefix of hash |type| and digest |m|, as
+ * described in EMSA-PKCS1-v1_5-ENCODE, RFC 3447 section 9.2 step 2. This
+ * encodes the DigestInfo (T and tLen) but does not add the padding.
+ *
+ * On success, it returns one and sets |*out| to a newly allocated buffer
+ * containing the result and |*out_len| to its length. The caller must free
+ * |*out| with OPENSSL_free(). Otherwise, it returns zero.
+ */
+static int encode_pkcs1(unsigned char **out, size_t *out_len, int type,
+			const unsigned char *m, size_t m_len)
+{
+	size_t di_prefix_len, dig_info_len;
+	const unsigned char *di_prefix;
+	unsigned char *dig_info;
+
+	if (type == NID_undef) {
+		ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_ALGORITHM_TYPE);
+		return 0;
+	}
+	di_prefix = uadk_rsa_digestinfo_encoding(type, &di_prefix_len);
+	if (di_prefix == NULL) {
+		ERR_raise(ERR_LIB_RSA,
+			  RSA_R_THE_ASN1_OBJECT_IDENTIFIER_IS_NOT_KNOWN_FOR_THIS_MD);
+		return 0;
+	}
+	dig_info_len = di_prefix_len + m_len;
+	dig_info = OPENSSL_malloc(dig_info_len);
+	if (dig_info == NULL) {
+		ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+		return 0;
+	}
+	memcpy(dig_info, di_prefix, di_prefix_len);
+	memcpy(dig_info + di_prefix_len, m, m_len);
+
+	*out = dig_info;
+	*out_len = dig_info_len;
+	return 1;
+}
+
 static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
-					       size_t *siglen, size_t sigsize)
+						size_t *siglen, size_t sigsize)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
+	const unsigned char *encoded = NULL;
+	unsigned char *tmps = NULL;
 	unsigned int dlen = 0;
+	size_t encoded_len = 0;
+	size_t rsasize;
+	int ret;
 
 	if (priv == NULL)
 		return UADK_E_FAIL;
-	priv->flag_allow_md = 1;
 
 	if (priv->mdctx == NULL)
 		return UADK_E_FAIL;
+
+	priv->flag_allow_md = 1;
+	rsasize = uadk_rsa_size(priv->rsa);
+
 	/*
 	 * If sig is NULL then we're just finding out the sig size. Other fields
 	 * are ignored. Defer to rsa_sign.
@@ -2253,36 +2519,72 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 		 */
 		if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 			return UADK_E_FAIL;
+	} else {
+		*siglen = rsasize;
+		return 1;
 	}
 
-	return uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize,
-				       digest, (size_t)dlen);
+	if (priv->pad_mode == RSA_PKCS1_PADDING) {
+		/* Compute the encoded digest. */
+		if (priv->mdnid == NID_md5_sha1) {
+			/*
+			 * NID_md5_sha1 corresponds to the MD5/SHA1 combination in TLS 1.1 and
+			 * earlier. It has no DigestInfo wrapper but otherwise is
+			 * RSASSA-PKCS1-v1_5.
+			 */
+			if (dlen != SSL_SIG_LENGTH) {
+				ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+				return 0;
+			}
+			encoded_len = SSL_SIG_LENGTH;
+			encoded = digest;
+		} else {
+			if (!encode_pkcs1(&tmps, &encoded_len, priv->mdnid, digest, dlen))
+				goto err;
+			encoded = tmps;
+		}
+	}
+
+	ret = uadk_prov_rsa_private_sign(encoded_len, encoded, sig, priv->rsa, priv->pad_mode);
+	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL)
+		goto exe_soft;
+
+	return ret;
+err:
+	OPENSSL_clear_free(tmps, encoded_len);
+exe_soft:
+	if (ret == UADK_DO_SOFT)
+		uadk_rsa_sw_sign(vprsactx, sig, siglen, sigsize, digest, dlen);
+	return UADK_E_FAIL;
 }
 
 static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
 				       void *vrsa, const OSSL_PARAM params[])
 {
-	if (!get_default_rsa_signature().digest_verify_init)
-		return UADK_E_FAIL;
-
-	return get_default_rsa_signature().digest_verify_init(vprsactx, mdname, vrsa, params);
+	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
+							 params, EVP_PKEY_OP_VERIFY);
 }
 
 static int uadk_signature_rsa_digest_verify_update(void *vprsactx, const unsigned char *data,
 						   size_t datalen)
 {
-	if (!get_default_rsa_signature().digest_verify_update)
-		return UADK_E_FAIL;
+	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
-	return get_default_rsa_signature().digest_verify_update(vprsactx, data, datalen);
+	if (priv == NULL || priv->mdctx == NULL)
+		return 0;
+
+	return EVP_DigestUpdate(priv->mdctx, data, datalen);
 }
 
 static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
 					size_t siglen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
+	unsigned char *decrypt_buf = NULL, *encoded = NULL;
+	size_t decrypt_len, encoded_len = 0;
 	unsigned char digest[EVP_MAX_MD_SIZE];
-	unsigned int dlen = 0;
+	unsigned int dlen = 0, len;
+	int ret = UADK_E_FAIL;
 
 	if (priv == NULL)
 		return UADK_E_FAIL;
@@ -2297,7 +2599,63 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 		return UADK_E_FAIL;
 
-	return uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+
+	if (priv->pad_mode == RSA_PKCS1_PADDING) {
+		if (siglen != (size_t)uadk_rsa_size(priv->rsa)) {
+			ERR_raise(ERR_LIB_RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
+			return 0;
+		}
+
+		/* Recover the encoded digest. */
+		decrypt_buf = OPENSSL_malloc(siglen);
+		if (decrypt_buf == NULL) {
+			ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+			goto err;
+		}
+
+		len = uadk_prov_rsa_public_verify(siglen, sig, decrypt_buf,
+						 priv->rsa, priv->pad_mode);
+		if (len <= 0)
+			goto err;
+		decrypt_len = len;
+
+		if (priv->mdnid == NID_md5_sha1) {
+			/*
+			 * NID_md5_sha1 corresponds to the MD5/SHA1 combination in TLS 1.1 and
+			 * earlier. It has no DigestInfo wrapper but otherwise is
+			 * RSASSA-PKCS1-v1_5.
+			 */
+			if (decrypt_len != SSL_SIG_LENGTH) {
+				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				goto err;
+			}
+
+			if (siglen != SSL_SIG_LENGTH) {
+				ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+				goto err;
+			}
+
+			if (memcmp(decrypt_buf, sig, SSL_SIG_LENGTH) != 0) {
+				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				goto err;
+			}
+		} else {
+			/* Construct the encoded digest and ensure it matches. */
+			if (!encode_pkcs1(&encoded, &encoded_len, priv->mdnid, digest, dlen))
+				goto err;
+
+			if (encoded_len != decrypt_len
+					|| memcmp(encoded, decrypt_buf, encoded_len) != 0) {
+				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				goto err;
+			}
+		}
+		ret = 1;
+	}
+err:
+	OPENSSL_clear_free(encoded, encoded_len);
+	OPENSSL_clear_free(decrypt_buf, siglen);
+	return ret;
 }
 
 static void *uadk_signature_rsa_dupctx(void *vprsactx)
