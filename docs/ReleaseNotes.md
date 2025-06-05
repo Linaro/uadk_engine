@@ -1,4 +1,22 @@
 
+# UADK engine Release v1.6 June 2025
+
+## New Features
+- Provider: Support rsa digest interface.
+- Provider: Add switching software computation function
+- Provider: Support aead, x448, x25519 and ecdsa algorithms
+- Provider: Support HMAC mode for digest
+
+## Fixes
+- Fix async issue when hardware error occurs
+- Fix async packet reception timeout error
+
+## Working combination
+
+- UADK v2.9
+- OpenSSL 1.1.1f & OpenSSL 3.0+
+
+
 # UADK engine Release v1.5 Dec 2024
 
 ## New Features
