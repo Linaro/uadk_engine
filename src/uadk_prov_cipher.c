@@ -1330,10 +1330,9 @@ static void uadk_prov_cipher_freectx(void *ctx)
 	if (priv->sw_ctx)
 		EVP_CIPHER_CTX_free(priv->sw_ctx);
 
-	if (priv->sess) {
+	if (priv->sess)
 		wd_cipher_free_sess(priv->sess);
-		priv->sess = 0;
-	}
+
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 

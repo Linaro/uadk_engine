@@ -1126,24 +1126,31 @@ int ossl_ffc_params_FIPS186_2_gen_verify(OSSL_LIB_CTX *libctx,
 					 size_t L, size_t N, int *res,
 					 BN_GENCB *cb)
 {
-	BIGNUM *r0, *test, *tmp, *g = NULL, *q = NULL, *p = NULL;
-	int counter = 0, pcounter = 0, use_random_seed;
-	int ok = FFC_PARAM_RET_STATUS_FAILED;
 	unsigned char seed[SHA256_DIGEST_LENGTH];
 	unsigned char buf[SHA256_DIGEST_LENGTH];
 	unsigned char *seed_in = params->seed;
+	int ok = FFC_PARAM_RET_STATUS_FAILED;
 	size_t seed_len = params->seedlen;
-	int verify = (mode == FFC_PARAM_MODE_VERIFY);
-	unsigned int flags = verify ? params->flags : 0;
-	const char *def_name;
+	int use_random_seed, rv, verify;
 	BN_MONT_CTX *mont = NULL;
+	BIGNUM *r0, *test, *tmp;
+	const char *def_name;
+	unsigned int flags;
 	BN_CTX *ctx = NULL;
 	EVP_MD *md = NULL;
+	BIGNUM *g = NULL;
+	BIGNUM *q = NULL;
+	BIGNUM *p = NULL;
+	int pcounter = 0;
+	int counter = 0;
 	int hret = -1;
 	size_t qsize;
-	int n = 0, m = 0;
-	int rv;
+	int done = 0;
+	int m = 0;
+	int n = 0;
 
+	verify = (mode == FFC_PARAM_MODE_VERIFY);
+	flags = verify ? params->flags : 0;
 	*res = 0;
 
 	if (params->mdname != NULL) {
@@ -1251,7 +1258,7 @@ int ossl_ffc_params_FIPS186_2_gen_verify(OSSL_LIB_CTX *libctx,
 	}
 
 	use_random_seed = (seed_in == NULL);
-	for (;;) {
+	do {
 		if (!generate_q_fips186_2(ctx, q, md, buf, seed, qsize,
 					use_random_seed, &m, res, cb))
 			goto err;
@@ -1276,12 +1283,13 @@ int ossl_ffc_params_FIPS186_2_gen_verify(OSSL_LIB_CTX *libctx,
 		rv = generate_p(ctx, md, counter, n, buf, qsize, q, p, L, cb,
 				&pcounter, res);
 		if (rv > 0)
-			break; /* found it */
-		if (rv == -1)
+			done = 1; /* found it */
+		else if (rv == -1)
 			goto err;
-		/* This is what the old code did - probably not a good idea! */
-		use_random_seed = 1;
-	}
+		else
+			/* This is what the old code did - probably not a good idea! */
+			use_random_seed = 1;
+	} while (!done);
 
 	if (!BN_GENCB_call(cb, GENCB_NEXT, 1))
 		goto err;
