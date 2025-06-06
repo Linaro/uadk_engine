@@ -428,7 +428,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 			       ECX_KEY_TYPE type)
 {
 	OSSL_LIB_CTX *libctx = prov_libctx_of(provctx);
-	PROV_ECX_KEYMGMT_CTX *gctx = NULL;
+	PROV_ECX_KEYMGMT_CTX *gctx;
 	int ret;
 
 	gctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYMGMT_CTX));
@@ -544,8 +544,8 @@ static void uadk_prov_ecx_key_free(ECX_KEY *ecx_key)
 
 static ECX_KEY *uadk_prov_ecx_create_prikey(PROV_ECX_KEYMGMT_CTX *gctx)
 {
-	unsigned char *prikey = NULL;
-	ECX_KEY *ecx_key = NULL;
+	unsigned char *prikey;
+	ECX_KEY *ecx_key;
 	int ret;
 
 	ecx_key = uadk_prov_ecx_key_new(gctx->libctx, gctx->type, 0, gctx->propq);
@@ -621,7 +621,7 @@ static void uadk_prov_ecx_keygen_uninit_iot(handle_t sess, struct wd_ecc_req *re
 
 static int uadk_prov_reverse_bytes(unsigned char *to_buf, __u32 size)
 {
-	unsigned char *tmp_buf = NULL;
+	unsigned char *tmp_buf;
 	unsigned char tmp;
 
 	if (size == 0) {
@@ -730,7 +730,7 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 
 static int uadk_prov_ecx_keygen_set_prikey(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY *ecx_key)
 {
-	struct wd_ecc_key *ecc_key = NULL;
+	struct wd_ecc_key *ecc_key;
 	struct wd_dtb prikey = {0};
 	handle_t sess = gctx->sess;
 	int ret;
@@ -890,7 +890,7 @@ exe_soft:
 
 static void *uadk_keyexch_x448_newctx(void *provctx)
 {
-	PROV_ECX_KEYEXCH_CTX *ecxctx = NULL;
+	PROV_ECX_KEYEXCH_CTX *ecxctx;
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
@@ -1149,9 +1149,9 @@ static void uadk_prov_ecx_pad_out_key(unsigned char *dst, unsigned char *src,
 static int uadk_prov_ecx_derive(PROV_ECX_KEYEXCH_CTX *ecxctx, unsigned char *key, size_t *keylen)
 {
 	struct wd_ecc_point *s_key = NULL;
-	ECX_KEY *peer_ecx_key = NULL;
 	struct wd_ecc_req req = {0};
-	ECX_KEY *ecx_key = NULL;
+	ECX_KEY *peer_ecx_key;
+	ECX_KEY *ecx_key;
 	int ret;
 
 	if (ecxctx == NULL) {

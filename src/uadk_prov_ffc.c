@@ -1464,7 +1464,7 @@ static int generate_canonical_g(BN_CTX *ctx, BN_MONT_CTX *mont,
 				int gindex, unsigned char *seed, size_t seedlen)
 {
 	unsigned char md[EVP_MAX_MD_SIZE];
-	EVP_MD_CTX *mctx = NULL;
+	EVP_MD_CTX *mctx;
 	int counter = 1;
 	int ret = 0;
 	int mdsize;

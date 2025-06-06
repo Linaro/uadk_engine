@@ -771,7 +771,7 @@ static const OSSL_PARAM *uadk_prov_gettable_params(void *provctx)
 static int uadk_digest_default_get_params(OSSL_PARAM params[], size_t blksz,
 					  size_t paramsz)
 {
-	OSSL_PARAM *p = NULL;
+	OSSL_PARAM *p;
 
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_BLOCK_SIZE);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, blksz)) {

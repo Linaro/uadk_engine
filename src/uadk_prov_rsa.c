@@ -788,8 +788,8 @@ error:
 static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 			  BIGNUM *q, BN_GENCB *cb)
 {
-	struct rsa_prime_param *param = NULL;
 	int bitsr[RSA_MAX_PRIME_NUM] = {0};
+	struct rsa_prime_param *param;
 	int flag, quot, rmd, i;
 	BN_CTX *bnctx;
 	int bitse = 0;
@@ -1556,8 +1556,8 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	struct rsa_keygen_param *keygen_param = NULL;
 	struct rsa_keygen_param_bn *bn_param = NULL;
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_keypair *key_pair = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	int is_crt = 1;
 	int ret;
 
@@ -1613,7 +1613,7 @@ free_keygen:
 
 static int crypt_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *buf, int num_bytes)
 {
-	BIGNUM *bn = NULL;
+	BIGNUM *bn;
 	int ret;
 
 	bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
@@ -1634,7 +1634,7 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 					unsigned char *to, RSA *rsa, int padding)
 {
 	struct rsa_pubkey_param *pub_enc = NULL;
-	struct uadk_rsa_sess *rsa_sess = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	unsigned char *from_buf = NULL;
 	int num_bytes, is_crt, ret;
 
@@ -1759,9 +1759,9 @@ static int sign_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_buf
 			 struct rsa_prikey_param *pri, int padding,
 			 unsigned char *to, int num_bytes)
 {
-	BIGNUM *sign_bn = NULL;
-	BIGNUM *to_bn = NULL;
 	BIGNUM *res = NULL;
+	BIGNUM *sign_bn;
+	BIGNUM *to_bn;
 	int ret;
 
 	sign_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
@@ -1791,8 +1791,8 @@ free_sign_bn:
 static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 				      unsigned char *to, RSA *rsa, int padding)
 {
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_prikey_param *prik = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	unsigned char *from_buf = NULL;
 	int ret, num_bytes;
 
@@ -1851,7 +1851,7 @@ static int verify_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_b
 			   int num_bytes, struct rsa_pubkey_param *pub,
 			   int padding, int *len)
 {
-	BIGNUM *verify_bn = NULL;
+	BIGNUM *verify_bn;
 	int ret;
 
 	verify_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
@@ -1875,9 +1875,9 @@ verify_end:
 static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 				       unsigned char *to, RSA *rsa, int padding)
 {
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_pubkey_param *pub = NULL;
 	int num_bytes, is_crt, len, ret;
+	struct uadk_rsa_sess *rsa_sess;
 	unsigned char *from_buf = NULL;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
@@ -2990,8 +2990,8 @@ static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
 	struct rsa_gen_ctx *gctx = genctx;
-	RSA *rsa = NULL;
-	BN_GENCB *gencb = NULL;
+	BN_GENCB *gencb;
+	RSA *rsa;
 	int ret;
 
 	if (gctx == NULL)
