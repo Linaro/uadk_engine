@@ -345,7 +345,7 @@ static int uadk_signature_ecdsa_verify_init(void *vctx, void *ec, const OSSL_PAR
 }
 
 static int ecdsa_soft_sign(struct ecdsa_ctx *ctx, unsigned char *sig, size_t *siglen,
-			   size_t sigsize, const unsigned char *tbs, size_t tbslen)
+			   const unsigned char *tbs, size_t tbslen)
 {
 	unsigned int tmplen;
 	int ret;
@@ -693,7 +693,7 @@ err:
 		*siglen = 0;
 
 	if (ret == UADK_DO_SOFT)
-		return ecdsa_soft_sign(ctx, sig, siglen, sigsize, tbs, tbslen);
+		return ecdsa_soft_sign(ctx, sig, siglen, tbs, tbslen);
 
 	return UADK_P_FAIL;
 }
