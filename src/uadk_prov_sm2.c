@@ -626,12 +626,16 @@ error:
 
 static void *uadk_keymgmt_sm2_gen_sw(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
-	if (uadk_get_sw_offload_state()) {
-		fprintf(stderr, "switch to software sm2 keygen.\n");
-		return get_default_sm2_keymgmt().gen(genctx, osslcb, cbarg);
+	if (!uadk_get_sw_offload_state())
+		return NULL;
+
+	if (!get_default_sm2_keymgmt().gen) {
+		fprintf(stderr, "failed to get keymgmt gen function\n");
+		return NULL;
 	}
 
-	return NULL;
+	fprintf(stderr, "switch to software sm2 keygen.\n");
+	return get_default_sm2_keymgmt().gen(genctx, osslcb, cbarg);
 }
 
 /**

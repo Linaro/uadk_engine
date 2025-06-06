@@ -31,7 +31,6 @@
 
 #define UADK_DO_SOFT		(-0xE0)
 #define UADK_DO_HW		(-0xF0)
-#define OSSL_NELEM(x)		(sizeof(x)/sizeof((x)[0]))
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
 #define CTX_ASYNC_ENC		2
@@ -182,9 +181,10 @@ static struct cts_mode_name2id_st cts_modes[] = {
 
 static const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
 {
+	size_t len = ARRAY_SIZE(cts_modes);
 	size_t i;
 
-	for (i = 0; i < OSSL_NELEM(cts_modes); ++i) {
+	for (i = 0; i < len; ++i) {
 		if (cts_modes[i].id == id)
 			return cts_modes[i].ossl_mode_name;
 	}
@@ -194,9 +194,10 @@ static const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
 
 static int ossl_cipher_cbc_cts_mode_name2id(const char *name)
 {
+	size_t len = ARRAY_SIZE(cts_modes);
 	size_t i;
 
-	for (i = 0; i < OSSL_NELEM(cts_modes); ++i) {
+	for (i = 0; i < len; ++i) {
 		if (OPENSSL_strcasecmp(name, cts_modes[i].ossl_mode_name) == 0)
 			return (int)cts_modes[i].id;
 	}
