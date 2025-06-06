@@ -39,6 +39,7 @@
 #define GET_LS_BYTE(n)			((n) & 0xFF)
 #define DGST_SHIFT_NUM(n)		(8 - ((n) & 0x7))
 #define ECC_TYPE			5
+#define UADK_E_INVAL			(-1)
 
 enum {
 	SM2_SUPPORT,

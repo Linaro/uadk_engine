@@ -144,7 +144,7 @@ static int get_hash_type(int nid_hash)
 	case NID_sm3:
 		return WD_HASH_SM3;
 	default:
-		return -1;
+		return UADK_E_INVAL;
 	}
 }
 
@@ -157,13 +157,13 @@ static int compute_hash(const char *in, size_t in_len,
 
 	hash = EVP_MD_CTX_new();
 	if (!hash)
-		return -1;
+		return UADK_E_INVAL;
 
 	if (EVP_DigestInit(hash, digest) == 0 ||
 	    EVP_DigestUpdate(hash, in, in_len) == 0 ||
 	    EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
 		fprintf(stderr, "compute hash failed\n");
-		ret = -1;
+		ret = UADK_E_INVAL;
 	}
 
 	EVP_MD_CTX_free(hash);
@@ -289,13 +289,13 @@ static int openssl_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	EVP_PKEY_meth_get_sign(openssl_meth, NULL, &sign_pfunc);
 	if (!sign_pfunc) {
 		fprintf(stderr, "sign_pfunc is NULL\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	return (*sign_pfunc)(ctx, sig, siglen, tbs, tbslen);
@@ -311,13 +311,13 @@ static int openssl_verify(EVP_PKEY_CTX *ctx,
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	EVP_PKEY_meth_get_verify(openssl_meth, NULL, &verify_pfunc);
 	if (!verify_pfunc) {
 		fprintf(stderr, "verify_pfunc is NULL\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	return (*verify_pfunc)(ctx, sig, siglen, tbs, tbslen);
@@ -333,13 +333,13 @@ static int openssl_encrypt(EVP_PKEY_CTX *ctx,
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	EVP_PKEY_meth_get_encrypt(openssl_meth, NULL, &enc_pfunc);
 	if (!enc_pfunc) {
 		fprintf(stderr, "enc_pfunc is NULL\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	return (*enc_pfunc)(ctx, out, outlen, in, inlen);
@@ -355,13 +355,13 @@ static int openssl_decrypt(EVP_PKEY_CTX *ctx,
 	openssl_meth = get_openssl_pkey_meth(EVP_PKEY_SM2);
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	EVP_PKEY_meth_get_decrypt(openssl_meth, NULL, &dec_pfunc);
 	if (!dec_pfunc) {
 		fprintf(stderr, "dec_pfunc is NULL\n");
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	return (*dec_pfunc)(ctx, out, outlen, in, inlen);
@@ -434,8 +434,9 @@ static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 	const unsigned char *p = sig;
 	unsigned char *der = NULL;
 	ECDSA_SIG *e_sig = NULL;
-	int ret, len1, len2;
 	BIGNUM *b_r, *b_s;
+	int len1, len2;
+	int ret = 0;
 
 	e_sig = ECDSA_SIG_new();
 	if (!e_sig) {
@@ -481,7 +482,7 @@ static int sig_ber_to_bin(EC_KEY *ec, unsigned char *sig, size_t sig_len,
 	}
 	r->dsize = BN_bn2bin(b_r, (void *)r->data);
 	s->dsize = BN_bn2bin(b_s, (void *)s->data);
-	ret = 0;
+
 free_der:
 	OPENSSL_free(der);
 free_sig:
@@ -944,7 +945,7 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 
 	if (!out) {
 		if (!sm2_ciphertext_size(ec, md, inlen, outlen))
-			return -1;
+			return UADK_E_INVAL;
 		else
 			return 1;
 	}
@@ -1055,7 +1056,7 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 
 	if (!out) {
 		if (!sm2_plaintext_size(in, inlen, outlen))
-			return -1;
+			return UADK_E_INVAL;
 		else
 			return 1;
 	}
@@ -1676,7 +1677,7 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	if (!openssl_meth) {
 		fprintf(stderr, "failed to get sm2 pkey methods\n");
 		EVP_PKEY_meth_free(meth);
-		return -1;
+		return UADK_E_INVAL;
 	}
 
 	EVP_PKEY_meth_copy(meth, openssl_meth);
