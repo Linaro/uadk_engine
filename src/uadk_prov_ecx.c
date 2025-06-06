@@ -43,7 +43,7 @@
 #define UADK_CRYPTO_UP_REF(val, ret, lock) CRYPTO_atomic_add(val, 1, ret, lock)
 
 static inline int UADK_CRYPTO_DOWN_REF(int *val, int *ret,
-				  ossl_unused void *lock)
+				       ossl_unused void *lock)
 {
 	*ret = __atomic_fetch_sub(val, 1, __ATOMIC_RELAXED) - 1;
 	if (*ret == 0)
@@ -256,7 +256,7 @@ static const OSSL_PARAM *uadk_keymgmt_x448_settable_params(void *provctx)
 }
 
 static int uadk_keymgmt_x448_gen_set_params(void *genctx,
-					  const OSSL_PARAM params[])
+					    const OSSL_PARAM params[])
 {
 	if (get_default_x448_keymgmt().gen_set_params == NULL)
 		return UADK_P_FAIL;
@@ -265,7 +265,7 @@ static int uadk_keymgmt_x448_gen_set_params(void *genctx,
 }
 
 static const OSSL_PARAM *uadk_keymgmt_x448_gen_settable_params(ossl_unused void *genctx,
-						ossl_unused void *provctx)
+							       ossl_unused void *provctx)
 {
 	if (get_default_x448_keymgmt().gen_settable_params == NULL)
 		return NULL;
@@ -425,7 +425,7 @@ static void uadk_prov_ecx_free_sess(handle_t sess)
 }
 
 static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM params[],
-				    ECX_KEY_TYPE type)
+			       ECX_KEY_TYPE type)
 {
 	OSSL_LIB_CTX *libctx = prov_libctx_of(provctx);
 	PROV_ECX_KEYMGMT_CTX *gctx = NULL;
@@ -813,7 +813,7 @@ static void *uadk_ecx_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params,
 }
 
 static int uadk_ecx_sw_derive(void *vecxctx, unsigned char *secret, size_t *secretlen,
-			 size_t outlen, ECX_KEY_TYPE alg_type)
+			      size_t outlen, ECX_KEY_TYPE alg_type)
 {
 	if (!enable_sw_offload)
 		return UADK_P_FAIL;
@@ -924,7 +924,7 @@ static int uadk_keyexch_x448_set_ctx_params(void *ecxctx, const OSSL_PARAM param
 }
 
 static const OSSL_PARAM *uadk_keyexch_x448_settable_ctx_params(ossl_unused void *ecxctx,
-						ossl_unused void *provctx)
+							       ossl_unused void *provctx)
 {
 	if (get_default_x448_keyexch().settable_ctx_params == NULL)
 		return NULL;
@@ -933,7 +933,7 @@ static const OSSL_PARAM *uadk_keyexch_x448_settable_ctx_params(ossl_unused void 
 }
 
 static const OSSL_PARAM *uadk_keyexch_x448_gettable_ctx_params(ossl_unused void *ecxctx,
-						ossl_unused void *provctx)
+							       ossl_unused void *provctx)
 {
 	if (get_default_x448_keyexch().gettable_ctx_params == NULL)
 		return NULL;
@@ -960,7 +960,7 @@ static int ossl_ecx_key_up_ref(ECX_KEY *key)
 }
 
 static int uadk_keyexch_ecx_init(void *vecxctx, void *vkey,
-				  ossl_unused const OSSL_PARAM params[])
+				 ossl_unused const OSSL_PARAM params[])
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
 	ECX_KEY *key = vkey;
@@ -1350,7 +1350,7 @@ static int uadk_keymgmt_x25519_import(void *keydata, int selection, const OSSL_P
 }
 
 static int uadk_keymgmt_x25519_export(void *keydata, int selection,
-				    OSSL_CALLBACK *cb, void *cb_params)
+				      OSSL_CALLBACK *cb, void *cb_params)
 {
 	if (get_default_x25519_keymgmt().export_fun == NULL)
 		return UADK_P_FAIL;
@@ -1423,7 +1423,7 @@ static const OSSL_PARAM *uadk_keymgmt_x25519_settable_params(void *provctx)
 }
 
 static int uadk_keymgmt_x25519_gen_set_params(void *genctx,
-					  const OSSL_PARAM params[])
+					      const OSSL_PARAM params[])
 {
 	if (get_default_x25519_keymgmt().gen_set_params == NULL)
 		return UADK_P_FAIL;
@@ -1432,7 +1432,7 @@ static int uadk_keymgmt_x25519_gen_set_params(void *genctx,
 }
 
 static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused void *genctx,
-						ossl_unused void *provctx)
+								 ossl_unused void *provctx)
 {
 	if (get_default_x25519_keymgmt().gen_settable_params == NULL)
 		return NULL;
@@ -1472,7 +1472,7 @@ static void uadk_keymgmt_x25519_gen_cleanup(void *genctx)
 }
 
 static void *uadk_keymgmt_x25519_gen_init(void *provctx, int selection,
-					const OSSL_PARAM params[])
+					  const OSSL_PARAM params[])
 {
 	if (provctx == NULL) {
 		fprintf(stderr, "invalid: provctx is NULL\n");
@@ -1573,7 +1573,7 @@ static int uadk_keyexch_x25519_set_ctx_params(void *ecxctx, const OSSL_PARAM par
 }
 
 static const OSSL_PARAM *uadk_keyexch_x25519_settable_ctx_params(ossl_unused void *ecxctx,
-						ossl_unused void *provctx)
+								 ossl_unused void *provctx)
 {
 	if (get_default_x25519_keyexch().settable_ctx_params == NULL)
 		return NULL;
@@ -1582,7 +1582,7 @@ static const OSSL_PARAM *uadk_keyexch_x25519_settable_ctx_params(ossl_unused voi
 }
 
 static const OSSL_PARAM *uadk_keyexch_x25519_gettable_ctx_params(ossl_unused void *ecxctx,
-						ossl_unused void *provctx)
+								 ossl_unused void *provctx)
 {
 	if (get_default_x25519_keyexch().gettable_ctx_params == NULL)
 		return NULL;
@@ -1599,7 +1599,7 @@ static int uadk_keyexch_x25519_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 }
 
 static int uadk_keyexch_x25519_init(void *vecxctx, void *vkey,
-				  ossl_unused const OSSL_PARAM params[])
+				    ossl_unused const OSSL_PARAM params[])
 {
 	return uadk_keyexch_ecx_init(vecxctx, vkey, params);
 }
@@ -1610,7 +1610,7 @@ static int uadk_keyexch_x25519_set_peer(void *vecxctx, void *vkey)
 }
 
 static int uadk_keyexch_x25519_derive(void *vecxctx, unsigned char *secret, size_t *secretlen,
-				    size_t outlen)
+				      size_t outlen)
 {
 	PROV_ECX_KEYEXCH_CTX *ecxctx = (PROV_ECX_KEYEXCH_CTX *)vecxctx;
 	int ret;

@@ -334,10 +334,10 @@ static const DH_NAMED_GROUP dh_named_groups[] = {
 };
 
 int ossl_ffc_params_set_seed(FFC_PARAMS *params,
-				    const unsigned char *seed, size_t seedlen);
+			     const unsigned char *seed, size_t seedlen);
 int ossl_ffc_params_copy(FFC_PARAMS *dst, const FFC_PARAMS *src);
 void ossl_ffc_params_get0_pqg(const FFC_PARAMS *d, const BIGNUM **p,
-				     const BIGNUM **q, const BIGNUM **g);
+			      const BIGNUM **q, const BIGNUM **g);
 const DH_NAMED_GROUP *ossl_ffc_uid_to_dh_named_group(int uid);
 void ossl_ffc_params_set0_pqg(FFC_PARAMS *d, BIGNUM *p, BIGNUM *q, BIGNUM *g);
 int ossl_ffc_named_group_set(FFC_PARAMS *ffc, const DH_NAMED_GROUP *group);

@@ -245,7 +245,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 	int ver;
 
 	if (__atomic_compare_exchange_n(&prov_init, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
-		__ATOMIC_SEQ_CST)) {
+					__ATOMIC_SEQ_CST)) {
 		libctx = prov_libctx_of(provctx);
 		default_prov = OSSL_PROVIDER_load(libctx, "default");
 		if (!default_prov) {

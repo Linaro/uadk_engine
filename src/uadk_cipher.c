@@ -27,7 +27,7 @@
 #include "uadk_async.h"
 #include "uadk_cipher_adapter.h"
 
-#define UADK_DO_SOFT         (-0xE0)
+#define UADK_DO_SOFT		(-0xE0)
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
 #define CTX_ASYNC_ENC		2
@@ -292,7 +292,7 @@ static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 }
 
 static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
-		void *sched_key, const int sched_mode)
+					void *sched_key, const int sched_mode)
 {
 	struct sched_params *key = (struct sched_params *)sched_key;
 

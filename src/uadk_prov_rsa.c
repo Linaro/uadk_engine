@@ -1631,7 +1631,7 @@ static int crypt_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *buf, in
 }
 
 static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
-				     unsigned char *to, RSA *rsa, int padding)
+					unsigned char *to, RSA *rsa, int padding)
 {
 	struct rsa_pubkey_param *pub_enc = NULL;
 	struct uadk_rsa_sess *rsa_sess = NULL;
@@ -1690,7 +1690,7 @@ free_pkey:
 }
 
 static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
-				      unsigned char *to, RSA *rsa, int padding)
+					 unsigned char *to, RSA *rsa, int padding)
 {
 	struct rsa_prikey_param *pri = NULL;
 	unsigned char *from_buf = NULL;
@@ -1765,7 +1765,7 @@ static int sign_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_buf
 	int ret;
 
 	sign_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			   rsa_sess->req.dst_bytes, NULL);
+			    rsa_sess->req.dst_bytes, NULL);
 	if (!sign_bn)
 		return UADK_E_FAIL;
 
@@ -1789,7 +1789,7 @@ free_sign_bn:
 }
 
 static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
-				   unsigned char *to, RSA *rsa, int padding)
+				      unsigned char *to, RSA *rsa, int padding)
 {
 	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_prikey_param *prik = NULL;
@@ -1855,7 +1855,7 @@ static int verify_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_b
 	int ret;
 
 	verify_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			    rsa_sess->req.dst_bytes, NULL);
+			      rsa_sess->req.dst_bytes, NULL);
 	if (!verify_bn)
 		return UADK_E_FAIL;
 
@@ -1873,7 +1873,7 @@ verify_end:
 }
 
 static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
-				    unsigned char *to, RSA *rsa, int padding)
+				       unsigned char *to, RSA *rsa, int padding)
 {
 	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_pubkey_param *pub = NULL;
@@ -2003,7 +2003,7 @@ static int uadk_signature_rsa_verify_recover(void *vprsactx, unsigned char *rout
 }
 
 static int uadk_signature_rsa_verify_init(void *vprsactx, void *vrsa,
-				const OSSL_PARAM params[])
+					  const OSSL_PARAM params[])
 {
 	return uadk_rsa_init(vprsactx, vrsa, params, EVP_PKEY_OP_VERIFY);
 }
@@ -2020,8 +2020,8 @@ static int uadk_rsa_sw_verify(void *vprsactx, const unsigned char *sig,
 }
 
 static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
-			   size_t siglen, const unsigned char *tbs,
-			   size_t tbslen)
+				     size_t siglen, const unsigned char *tbs,
+				     size_t tbslen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	size_t rslen = 0;
@@ -2038,7 +2038,7 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 		if (!setup_tbuf(priv))
 			return UADK_E_FAIL;
 		rslen = uadk_prov_rsa_public_verify(siglen, sig, priv->tbuf,
-						 priv->rsa, priv->pad_mode);
+						    priv->rsa, priv->pad_mode);
 		if (rslen == UADK_DO_SOFT || rslen == UADK_E_FAIL)
 			goto exe_soft;
 	}
@@ -2066,8 +2066,8 @@ static int uadk_rsa_sw_sign(void *vprsactx, unsigned char *sig,
 }
 
 static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
-			 size_t *siglen, size_t sigsize,
-			 const unsigned char *tbs, size_t tbslen)
+				   size_t *siglen, size_t sigsize,
+				   const unsigned char *tbs, size_t tbslen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	size_t rsasize = uadk_rsa_size(priv->rsa);
@@ -2203,7 +2203,7 @@ static const OSSL_PARAM settable_ctx_params_no_digest[] = {
 };
 
 static const OSSL_PARAM *uadk_signature_rsa_settable_ctx_params(void *vprsactx,
-							       void *provctx)
+								void *provctx)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 
@@ -2559,7 +2559,7 @@ exe_soft:
 }
 
 static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
-				       void *vrsa, const OSSL_PARAM params[])
+						 void *vrsa, const OSSL_PARAM params[])
 {
 	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
 							 params, EVP_PKEY_OP_VERIFY);
@@ -2577,7 +2577,7 @@ static int uadk_signature_rsa_digest_verify_update(void *vprsactx, const unsigne
 }
 
 static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
-					size_t siglen)
+						 size_t siglen)
 {
 	PROV_RSA_SIG_CTX *priv = (PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char *decrypt_buf = NULL, *encoded = NULL;
@@ -2699,7 +2699,7 @@ static const OSSL_PARAM *uadk_signature_rsa_settable_ctx_md_params(void *vprsact
 }
 
 static const OSSL_PARAM *uadk_signature_rsa_gettable_ctx_params(ossl_unused void *vprsactx,
-						      ossl_unused void *provctx)
+								ossl_unused void *provctx)
 {
 	if (!get_default_rsa_signature().gettable_ctx_params)
 		return NULL;
@@ -2716,13 +2716,13 @@ static int uadk_signature_rsa_get_ctx_md_params(void *vprsactx, OSSL_PARAM *para
 }
 
 static int uadk_asym_cipher_rsa_encrypt_init(void *vprsactx, void *vrsa,
-				      const OSSL_PARAM params[])
+					     const OSSL_PARAM params[])
 {
 	return uadk_rsa_asym_init(vprsactx, vrsa, params, EVP_PKEY_OP_ENCRYPT);
 }
 
 static int uadk_asym_cipher_rsa_decrypt_init(void *vprsactx, void *vrsa,
-				      const OSSL_PARAM params[])
+					     const OSSL_PARAM params[])
 {
 	return uadk_rsa_asym_init(vprsactx, vrsa, params, EVP_PKEY_OP_DECRYPT);
 }
@@ -2739,8 +2739,8 @@ static int uadk_rsa_sw_encrypt(void *vprsactx, unsigned char *out,
 }
 
 static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
-				 size_t *outlen, size_t outsize,
-				 const unsigned char *in, size_t inlen)
+					size_t *outlen, size_t outsize,
+					const unsigned char *in, size_t inlen)
 {
 	PROV_RSA_ASYM_CTX *priv = (PROV_RSA_ASYM_CTX *)vprsactx;
 	size_t len;
@@ -2786,8 +2786,8 @@ static int uadk_rsa_sw_decrypt(void *vprsactx, unsigned char *out,
 }
 
 static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
-				 size_t *outlen, size_t outsize,
-				 const unsigned char *in, size_t inlen)
+					size_t *outlen, size_t outsize,
+					const unsigned char *in, size_t inlen)
 {
 	PROV_RSA_ASYM_CTX *priv = (PROV_RSA_ASYM_CTX *)vprsactx;
 	size_t len = uadk_rsa_size(priv->rsa);
@@ -2834,7 +2834,7 @@ static int uadk_asym_cipher_rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *param
 }
 
 static const OSSL_PARAM *uadk_asym_cipher_rsa_gettable_ctx_params(void *vprsactx,
-							   void *provctx)
+								  void *provctx)
 {
 	if (!get_default_rsa_asym_cipher().gettable_ctx_params)
 		return NULL;
@@ -2851,7 +2851,7 @@ static int uadk_asym_cipher_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM 
 }
 
 static const OSSL_PARAM *uadk_asym_cipher_rsa_settable_ctx_params(void *vprsactx,
-							   void *provctx)
+								  void *provctx)
 {
 	if (!get_default_rsa_asym_cipher().settable_ctx_params)
 		return NULL;

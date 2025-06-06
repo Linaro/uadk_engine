@@ -56,13 +56,13 @@
 #define UADK_CIPHER_OP_NUM	1
 
 /* OSSL_CIPHER_PARAM_CTS_MODE Values */
-# define OSSL_CIPHER_CTS_MODE_CS1 "CS1"
-# define OSSL_CIPHER_CTS_MODE_CS2 "CS2"
-# define OSSL_CIPHER_CTS_MODE_CS3 "CS3"
+# define OSSL_CIPHER_CTS_MODE_CS1	"CS1"
+# define OSSL_CIPHER_CTS_MODE_CS2	"CS2"
+# define OSSL_CIPHER_CTS_MODE_CS3	"CS3"
 
-# define UADK_CIPHER_CTS_CS1_NAME "cbc-cs1(aes)"
-# define UADK_CIPHER_CTS_CS2_NAME "cbc-cs2(aes)"
-# define UADK_CIPHER_CTS_CS3_NAME "cbc-cs3(aes)"
+# define UADK_CIPHER_CTS_CS1_NAME	"cbc-cs1(aes)"
+# define UADK_CIPHER_CTS_CS2_NAME	"cbc-cs2(aes)"
+# define UADK_CIPHER_CTS_CS3_NAME	"cbc-cs3(aes)"
 
 enum uadk_cipher_alg_id {
 	ID_aes_128_ecb,
@@ -95,10 +95,10 @@ enum uadk_cipher_alg_id {
 };
 
 /* Internal flags that are only used within the provider */
-#define PROV_CIPHER_FLAG_VARIABLE_LENGTH  0x0100
-#define PROV_CIPHER_FLAG_INVERSE_CIPHER   0x0200
+#define PROV_CIPHER_FLAG_VARIABLE_LENGTH	0x0100
+#define PROV_CIPHER_FLAG_INVERSE_CIPHER		0x0200
 
-#define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
+#define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	192
 
 struct cipher_prov {
 	int pid;
@@ -667,7 +667,7 @@ static size_t ossl_cipher_fillblock(unsigned char *buf, size_t *buflen,
  * fit into a full block.
  */
 static int ossl_cipher_trailingdata(unsigned char *buf, size_t *buflen, size_t blocksize,
-			     const unsigned char **in, size_t *inlen)
+				    const unsigned char **in, size_t *inlen)
 {
 	if (*inlen == 0)
 		return UADK_P_SUCCESS;
@@ -1220,14 +1220,14 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 		return UADK_P_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
-	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
-	    && !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
+	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen) &&
+	    !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return UADK_P_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_UPDATED_IV);
-	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
-	    && !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
+	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen) &&
+	    !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return UADK_P_FAIL;
 	}

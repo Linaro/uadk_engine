@@ -43,7 +43,7 @@
 #define MAX_KEY_LEN		144
 #define HMAC_BLOCK_SIZE		(512 * 1024)
 #define ALG_NAME_SIZE		128
-#define PARAMS_SIZE            2
+#define PARAMS_SIZE		2
 
 #define KEY_4BYTE_ALIGN(keylen)		((keylen + 3) & ~3)
 #define SW_SWITCH_PRINT_ENABLE(SW)	(SW ? ", switch to soft hmac" : "")
@@ -465,9 +465,9 @@ static int uadk_prov_compute_key_hash(struct hmac_priv_ctx *priv,
 	if (!ctx)
 		goto free_md;
 
-	if (!EVP_DigestInit_ex2(ctx, key_md, NULL)
-		|| !EVP_DigestUpdate(ctx, key, keylen)
-		|| !EVP_DigestFinal_ex(ctx, priv->key, &outlen))
+	if (!EVP_DigestInit_ex2(ctx, key_md, NULL) ||
+	    !EVP_DigestUpdate(ctx, key, keylen) ||
+	    !EVP_DigestFinal_ex(ctx, priv->key, &outlen))
 		goto free_ctx;
 
 	priv->keylen = outlen;
@@ -636,7 +636,7 @@ static int uadk_hmac_update_inner(struct hmac_priv_ctx *priv, const void *data, 
 		if (priv->last_update_bufflen != 0) {
 			processing_len = HMAC_BLOCK_SIZE - priv->last_update_bufflen;
 			uadk_memcpy(priv->data + priv->last_update_bufflen, input_data,
-				processing_len);
+				    processing_len);
 
 			priv->req.in_bytes = HMAC_BLOCK_SIZE;
 			priv->req.in = priv->data;

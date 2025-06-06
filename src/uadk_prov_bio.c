@@ -230,14 +230,14 @@ BIO_METHOD *ossl_bio_prov_init_bio_method(void)
 	BIO_METHOD *corebiometh = NULL;
 
 	corebiometh = BIO_meth_new(BIO_TYPE_CORE_TO_PROV, "BIO to Core filter");
-	if (corebiometh == NULL
-		|| !BIO_meth_set_write_ex(corebiometh, bio_core_write_ex)
-		|| !BIO_meth_set_read_ex(corebiometh, bio_core_read_ex)
-		|| !BIO_meth_set_puts(corebiometh, bio_core_puts)
-		|| !BIO_meth_set_gets(corebiometh, bio_core_gets)
-		|| !BIO_meth_set_ctrl(corebiometh, bio_core_ctrl)
-		|| !BIO_meth_set_create(corebiometh, bio_core_new)
-		|| !BIO_meth_set_destroy(corebiometh, bio_core_free)) {
+	if (corebiometh == NULL ||
+	    !BIO_meth_set_write_ex(corebiometh, bio_core_write_ex) ||
+	    !BIO_meth_set_read_ex(corebiometh, bio_core_read_ex) ||
+	    !BIO_meth_set_puts(corebiometh, bio_core_puts) ||
+	    !BIO_meth_set_gets(corebiometh, bio_core_gets) ||
+	    !BIO_meth_set_ctrl(corebiometh, bio_core_ctrl) ||
+	    !BIO_meth_set_create(corebiometh, bio_core_new) ||
+	    !BIO_meth_set_destroy(corebiometh, bio_core_free)) {
 		BIO_meth_free(corebiometh);
 		return NULL;
 	}

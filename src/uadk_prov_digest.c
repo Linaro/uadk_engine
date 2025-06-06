@@ -51,7 +51,7 @@
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	(512)
 #define MAX_DIGEST_LENGTH	64
 #define DIGEST_BLOCK_SIZE	(512 * 1024)
-#define ALG_NAME_SIZE           128
+#define ALG_NAME_SIZE		128
 
 #define UADK_DIGEST_DEF_CTXS	1
 #define UADK_DIGEST_OP_NUM	1
@@ -409,11 +409,11 @@ static void uadk_fill_mac_buffer_len(struct digest_priv_ctx *priv, bool is_end)
 		break;
 	case NID_sha512_224:
 		priv->req.out_bytes = !is_end ?
-					WD_DIGEST_SHA512_224_FULL_LEN : WD_DIGEST_SHA512_224_LEN;
+				      WD_DIGEST_SHA512_224_FULL_LEN : WD_DIGEST_SHA512_224_LEN;
 		break;
 	case NID_sha512_256:
 		priv->req.out_bytes = !is_end ?
-					WD_DIGEST_SHA512_256_FULL_LEN : WD_DIGEST_SHA512_256_LEN;
+				      WD_DIGEST_SHA512_256_FULL_LEN : WD_DIGEST_SHA512_256_LEN;
 		break;
 	default:
 		break;
@@ -453,7 +453,7 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 		if (priv->last_update_bufflen != 0) {
 			processing_len = DIGEST_BLOCK_SIZE - priv->last_update_bufflen;
 			uadk_memcpy(priv->data + priv->last_update_bufflen, input_data,
-				processing_len);
+				    processing_len);
 
 			priv->req.in_bytes = DIGEST_BLOCK_SIZE;
 			priv->req.in = priv->data;
@@ -783,14 +783,12 @@ static int uadk_digest_default_get_params(OSSL_PARAM params[], size_t blksz,
 		return UADK_DIGEST_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_XOF);
-	if (p != NULL
-		&& !OSSL_PARAM_set_int(p, 0)) {
+	if (p != NULL && !OSSL_PARAM_set_int(p, 0)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return UADK_DIGEST_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_ALGID_ABSENT);
-	if (p != NULL
-		&& !OSSL_PARAM_set_int(p, 0)) {
+	if (p != NULL && !OSSL_PARAM_set_int(p, 0)) {
 		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
 		return UADK_DIGEST_FAIL;
 	}
@@ -834,8 +832,8 @@ static void *uadk_prov_dupctx(void *dctx)
 		 * Length that the hardware has processed should be equal to
 		 * total input data length minus software cache data length.
 		 */
-		dst_ctx->req.long_data_len = dst_ctx->total_data_len
-						- dst_ctx->last_update_bufflen;
+		dst_ctx->req.long_data_len = dst_ctx->total_data_len -
+					     dst_ctx->last_update_bufflen;
 	}
 
 	dst_ctx->sess = 0;
@@ -935,7 +933,7 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 }
 
 static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
-			   unsigned char *out, size_t *outl, size_t outsz)
+			    unsigned char *out, size_t *outl, size_t outsz)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
 	int ret;
