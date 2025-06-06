@@ -342,7 +342,7 @@ static int uadk_keymgmt_dh_gen_set_template(void *genctx, void *templ)
 }
 
 static const OSSL_PARAM *uadk_keymgmt_dh_gen_settable_params(ossl_unused void *genctx,
-						ossl_unused void *provctx)
+							     ossl_unused void *provctx)
 {
 	if (get_default_dh_keymgmt().gen_settable_params == NULL)
 		return NULL;
@@ -479,7 +479,7 @@ static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
 	int bits;
 
 	bits = uadk_DH_get_length(dh) ?
-			uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
+	       uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
 	if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY)) {
 		fprintf(stderr, "failed to BN_priv_rand\n");
 		return UADK_P_FAIL;
@@ -522,8 +522,8 @@ static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 	m = (BN_cmp(two_powN, dh->params.q) > 0) ? dh->params.q : two_powN;
 
 	do {
-		if (!BN_priv_rand_range_ex(new_prikey, two_powN, 0, NULL)
-			|| !BN_add_word(new_prikey, 1)) {
+		if (!BN_priv_rand_range_ex(new_prikey, two_powN, 0, NULL) ||
+		    !BN_add_word(new_prikey, 1)) {
 			fprintf(stderr, "failed to BN_priv_rand_range_ex\n");
 			goto err;
 		}
@@ -1067,16 +1067,18 @@ static int ossl_dh_get_named_group_uid_from_size(int pbits)
 }
 
 static int ossl_dh_generate_ffc_parameters(DH *dh, int type, int pbits, int qbits,
-					BN_GENCB *cb)
+					   BN_GENCB *cb)
 {
 	int ret, res;
 
 	if (type == DH_PARAMGEN_TYPE_FIPS_186_2)
 		ret = ossl_ffc_params_FIPS186_2_generate(dh->libctx, &dh->params,
-						FFC_PARAM_TYPE_DH, pbits, qbits, &res, cb);
+							 FFC_PARAM_TYPE_DH, pbits,
+							 qbits, &res, cb);
 	else
 		ret = ossl_ffc_params_FIPS186_4_generate(dh->libctx, &dh->params,
-						FFC_PARAM_TYPE_DH, pbits, qbits, &res, cb);
+							 FFC_PARAM_TYPE_DH, pbits,
+							 qbits, &res, cb);
 	if (ret > 0)
 		dh->dirty_cnt++;
 
@@ -1232,7 +1234,8 @@ static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
 							gctx->generator, gencb);
 		else
 			ret = ossl_dh_generate_ffc_parameters(dh, gctx->gen_type,
-						gctx->pbits, gctx->qbits, gencb);
+							      gctx->pbits,
+							      gctx->qbits, gencb);
 		if (ret <= 0) {
 			fprintf(stderr, "failed to generate ffc parameters\n");
 			ret = UADK_P_FAIL;
@@ -1331,7 +1334,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 			(void)DH_set_length(dh, (long)gctx->priv_len);
 
 		ossl_ffc_params_enable_flags(ffc, FFC_PARAM_FLAG_VALIDATE_LEGACY,
-					gctx->gen_type == DH_PARAMGEN_TYPE_FIPS_186_2);
+					     gctx->gen_type == DH_PARAMGEN_TYPE_FIPS_186_2);
 
 		ret = uadk_prov_dh_generate_key(dh);
 		if (ret != UADK_P_SUCCESS) {
@@ -1487,7 +1490,7 @@ static int uadk_keyexch_dh_set_peer(void *dhctx, void *dh)
 	}
 
 	if (uadk_keyexch_dh_match_params(dh, pdhctx->dh) == UADK_P_FAIL ||
-		DH_up_ref(dh) == UADK_P_FAIL) {
+	    DH_up_ref(dh) == UADK_P_FAIL) {
 		fprintf(stderr, "failed to match dh params\n");
 		return UADK_P_FAIL;
 	}
@@ -1653,7 +1656,7 @@ static int uadk_dh_compute_key_padded(unsigned char *key, const BIGNUM *pub_key,
 }
 
 static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char *secret,
-				size_t *secretlen, size_t outlen, unsigned int pad)
+				     size_t *secretlen, size_t outlen, unsigned int pad)
 {
 	const BIGNUM *pubkey = NULL;
 	size_t dhsize;
@@ -1732,10 +1735,10 @@ static int ossl_dh_kdf_X9_42_asn1(unsigned char *out, PROV_DH_KEYEXCH_CTX *pdhct
 	*p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST,
 						(char *)mdname, 0);
 	*p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY,
-						(unsigned char *)z, z_len);
+						 (unsigned char *)z, z_len);
 	if (ukm != NULL)
 		*p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_UKM,
-							(unsigned char *)ukm, ukmlen);
+							 (unsigned char *)ukm, ukmlen);
 
 	*p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_CEK_ALG,
 						(char *)cek_alg, 0);
@@ -1750,7 +1753,7 @@ end:
 }
 
 static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char *secret,
-					size_t *secretlen, size_t outlen)
+					 size_t *secretlen, size_t outlen)
 {
 	unsigned char *stmp = NULL;
 	size_t stmplen;
@@ -1799,7 +1802,7 @@ end:
 }
 
 static int uadk_dh_sw_derive(void *dhctx, unsigned char *secret,
-			  size_t *psecretlen, size_t outlen)
+			     size_t *psecretlen, size_t outlen)
 {
 	if (!enable_sw_offload || !get_default_dh_keyexch().derive)
 		return UADK_P_FAIL;
@@ -2122,8 +2125,9 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_EXCHANGE_PARAM_KDF_DIGEST);
-	if (p != NULL && !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_md == NULL
-				? "" : EVP_MD_get0_name(pdhctx->kdf_md))) {
+	if (p != NULL &&
+	    !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_md == NULL ?
+					   "" : EVP_MD_get0_name(pdhctx->kdf_md))) {
 		fprintf(stderr, "failed to set kdf_md\n");
 		return UADK_P_FAIL;
 	}
@@ -2141,8 +2145,9 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_KDF_PARAM_CEK_ALG);
-	if (p != NULL && !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_cekalg == NULL
-				? "" : pdhctx->kdf_cekalg)) {
+	if (p != NULL &&
+	    !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_cekalg == NULL ?
+					   "" : pdhctx->kdf_cekalg)) {
 		fprintf(stderr, "failed to set kdf_cekalg\n");
 		return UADK_P_FAIL;
 	}
