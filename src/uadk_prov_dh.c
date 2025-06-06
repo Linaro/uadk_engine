@@ -484,6 +484,7 @@ static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
 		fprintf(stderr, "failed to BN_priv_rand\n");
 		return UADK_P_FAIL;
 	}
+
 	return UADK_P_SUCCESS;
 }
 
@@ -538,6 +539,7 @@ static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 	} while (1);
 
 	BN_free(two_powN);
+
 	return UADK_P_SUCCESS;
 err:
 	BN_free(two_powN);

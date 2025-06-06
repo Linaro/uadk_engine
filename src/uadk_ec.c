@@ -313,6 +313,7 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 		fprintf(stderr, "priv_key is NULL\n");
 		return -1;
 	}
+
 	return 0;
 }
 
@@ -394,6 +395,7 @@ static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 	}
 
 	uadk_ecc_fill_req(req, WD_ECDSA_SIGN, ecc_in, ecc_out);
+
 	return 0;
 err:
 	wd_ecc_del_out(sess, ecc_out);
@@ -898,6 +900,7 @@ static int eckey_create_key(EC_KEY *eckey)
 		fprintf(stderr, "failed to set private key\n");
 
 	BN_free(priv_key);
+
 	return ret;
 }
 
@@ -1466,6 +1469,7 @@ int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	EVP_PKEY_meth_copy(meth, openssl_meth);
 
 	pkey_meth->ec = meth;
+
 	return 1;
 }
 

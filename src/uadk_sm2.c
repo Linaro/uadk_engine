@@ -250,6 +250,7 @@ static int update_public_key(EVP_PKEY_CTX *ctx)
 		return ret;
 
 	smctx->pubkey = point;
+
 	return 0;
 }
 
@@ -275,6 +276,7 @@ static int update_private_key(EVP_PKEY_CTX *ctx)
 		return ret;
 
 	smctx->prikey = d;
+
 	return 0;
 }
 
@@ -413,6 +415,7 @@ static int sign_bin_to_ber(EC_KEY *ec, struct wd_dtb *r, struct wd_dtb *s,
 
 	*siglen = (size_t)sltmp;
 	ECDSA_SIG_free(e_sig);
+
 	return 0;
 
 free_s:
@@ -776,6 +779,7 @@ do_soft:
 	if (ret != UADK_DO_SOFT)
 		return ret;
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+
 	return openssl_sign(ctx, sig, siglen, tbs, tbslen);
 }
 
@@ -907,6 +911,7 @@ static int sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	}
 
 	uadk_ecc_fill_req(req, WD_SM2_ENCRYPT, ecc_in, ecc_out);
+
 	return 0;
 }
 
@@ -1176,6 +1181,7 @@ do_soft:
 		return ret;
 
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
+
 	return openssl_decrypt(ctx, out, outlen, in_soft, inlen);
 }
 
@@ -1324,6 +1330,7 @@ set_data:
 			return 0;
 
 	EVP_PKEY_CTX_set_data(ctx, smctx);
+
 	return 1;
 }
 
