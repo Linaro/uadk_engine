@@ -227,7 +227,7 @@ static int bio_core_free(BIO *bio)
 
 BIO_METHOD *ossl_bio_prov_init_bio_method(void)
 {
-	BIO_METHOD *corebiometh = NULL;
+	BIO_METHOD *corebiometh;
 
 	corebiometh = BIO_meth_new(BIO_TYPE_CORE_TO_PROV, "BIO to Core filter");
 	if (corebiometh == NULL ||

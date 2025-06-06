@@ -572,7 +572,7 @@ bool uadk_support_algorithm(const char *alg)
 
 int uadk_init_ecc(void)
 {
-	struct uacce_dev *dev = NULL;
+	struct uacce_dev *dev;
 	int ret;
 
 	if (ecc_res.status != UADK_UNINIT)
@@ -604,10 +604,11 @@ int uadk_init_ecc(void)
 
 err_init:
 	ecc_res.status = UADK_INIT_FAIL;
-unlock:
-	pthread_spin_unlock(&ecc_res.lock);
 	if (dev)
 		free(dev);
+unlock:
+	pthread_spin_unlock(&ecc_res.lock);
+
 	return ecc_res.status;
 }
 

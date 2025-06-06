@@ -406,9 +406,9 @@ static int openssl_do_ecx_genkey(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 
 static int ecx_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 {
-	struct ecx_ctx *keygen_ctx = NULL;
 	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
+	struct ecx_ctx *keygen_ctx;
 	int ret;
 
 	ret = ecx_genkey_check(ctx, pkey);
@@ -636,9 +636,9 @@ static int ecx_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen)
 {
 	struct ecx_key *peer_ecx_key = NULL;
 	struct wd_ecc_point *s_key = NULL;
-	struct ecx_ctx *derive_ctx = NULL;
 	struct ecx_key *ecx_key = NULL;
 	struct wd_ecc_req req = {0};
+	struct ecx_ctx *derive_ctx;
 	int ret;
 
 	if (!ctx) {

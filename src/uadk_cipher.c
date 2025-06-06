@@ -170,8 +170,8 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 				 const unsigned char *iv, int enc)
 {
 	/* Real implementation: Openssl soft arithmetic key initialization function */
-	struct cipher_priv_ctx *priv = NULL;
-	const EVP_CIPHER *sw_cipher = NULL;
+	struct cipher_priv_ctx *priv;
+	const EVP_CIPHER *sw_cipher;
 	int ret, nid, sw_size;
 
 	if (unlikely(key == NULL)) {
@@ -224,8 +224,8 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 				   const unsigned char *in, size_t inl)
 {
-	struct cipher_priv_ctx *priv = NULL;
-	const EVP_CIPHER *sw_cipher = NULL;
+	struct cipher_priv_ctx *priv;
+	const EVP_CIPHER *sw_cipher;
 	unsigned char *iv;
 	int ret, nid;
 

@@ -646,7 +646,7 @@ static void *uadk_keymgmt_sm2_gen_sw(void *genctx, OSSL_CALLBACK *osslcb, void *
 static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
 	struct ec_gen_ctx *gctx = genctx;
-	EC_KEY *ec = NULL;
+	EC_KEY *ec;
 	int ret;
 
 	if (gctx == NULL) {
@@ -1232,9 +1232,9 @@ static int uadk_prov_sm2_sign_ber_to_bin(unsigned char *sig, size_t sig_len,
 {
 	const unsigned char *p = sig;
 	unsigned char *der = NULL;
-	ECDSA_SIG *e_sig = NULL;
-	int len1, len2;
 	BIGNUM *bn_r, *bn_s;
+	ECDSA_SIG *e_sig;
+	int len1, len2;
 
 	e_sig = ECDSA_SIG_new();
 	if (e_sig == NULL) {
@@ -1757,11 +1757,11 @@ static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
 					  const EC_KEY *key)
 {
 	const EC_GROUP *group = EC_KEY_get0_group(key);
-	struct sm2_param *params = NULL;
+	struct sm2_param *params;
 	int ret = UADK_P_FAIL;
-	uint8_t *buf = NULL;
-	BN_CTX *ctx = NULL;
 	EVP_MD_CTX *hash;
+	uint8_t *buf;
+	BN_CTX *ctx;
 	int p_bytes;
 
 	hash = EVP_MD_CTX_new();
@@ -1819,7 +1819,7 @@ free_hash:
 static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 {
 	SM2_PROV_CTX *smctx = psm2ctx->sm2_pctx;
-	uint8_t *z = NULL;
+	uint8_t *z;
 	int ret;
 
 	if (psm2ctx->flag_compute_z_digest) {

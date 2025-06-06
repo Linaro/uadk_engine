@@ -763,7 +763,7 @@ do {\
 
 EVP_CIPHER *uadk_create_gcm_cipher_meth(int nid)
 {
-	EVP_CIPHER *aead = NULL;
+	EVP_CIPHER *aead;
 
 	switch (nid) {
 	case NID_aes_128_gcm:

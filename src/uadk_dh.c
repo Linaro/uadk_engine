@@ -376,7 +376,7 @@ free_cfg:
 
 static int uadk_e_dh_init(void)
 {
-	struct uacce_dev *dev = NULL;
+	struct uacce_dev *dev;
 	int ret;
 
 	if (g_dh_res.status != UADK_UNINIT)
@@ -407,10 +407,11 @@ static int uadk_e_dh_init(void)
 
 err_init:
 	g_dh_res.status = UADK_INIT_FAIL;
-unlock:
-	pthread_spin_unlock(&g_dh_res.lock);
 	if (dev)
 		free(dev);
+unlock:
+	pthread_spin_unlock(&g_dh_res.lock);
+
 	return g_dh_res.status;
 }
 

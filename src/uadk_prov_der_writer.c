@@ -274,8 +274,8 @@ int ossl_DER_w_end_sequence(WPACKET *pkt, int tag)
 int ossl_DER_w_algorithmIdentifier_SM2_with_MD(WPACKET *pkt, int cont,
 					       EC_KEY *ec, int mdnid)
 {
-	const unsigned char *precompiled = NULL;
-	size_t precompiled_sz = 0;
+	const unsigned char *precompiled;
+	size_t precompiled_sz;
 
 	switch (mdnid) {
 	case NID_sm3:

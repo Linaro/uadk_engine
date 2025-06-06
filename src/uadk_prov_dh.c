@@ -1119,7 +1119,7 @@ static void ossl_dh_free_ex(DH *dh)
 
 static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc)
 {
-	const DH_NAMED_GROUP *group = NULL;
+	const DH_NAMED_GROUP *group;
 	DH *dh = NULL;
 
 	/* Select a named group if there is not one already */
@@ -1160,7 +1160,7 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 
 static DH *uadk_prov_dh_gen_params_ex(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc)
 {
-	DH *dh = NULL;
+	DH *dh;
 
 	/* Use existing params */
 	dh = ossl_dh_new_ex(gctx->libctx);
@@ -1255,7 +1255,7 @@ static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
 static DH *uadk_prov_dh_gen_params(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc,
 				   OSSL_CALLBACK *cb, void *cb_params)
 {
-	DH *dh = NULL;
+	DH *dh;
 	int ret;
 
 	/* For parameter generation - If there is a group name just create it */
@@ -1722,9 +1722,9 @@ static int ossl_dh_kdf_X9_42_asn1(unsigned char *out, PROV_DH_KEYEXCH_CTX *pdhct
 	size_t ukmlen = pdhctx->kdf_ukmlen;
 	const EVP_MD *md = pdhctx->kdf_md;
 	OSSL_PARAM *p = params;
-	EVP_KDF_CTX *kctx = NULL;
-	EVP_KDF *kdf = NULL;
 	const char *mdname;
+	EVP_KDF_CTX *kctx;
+	EVP_KDF *kdf;
 	int ret = 0;
 
 	kdf = EVP_KDF_fetch(libctx, OSSL_KDF_NAME_X942KDF_ASN1, propq);
@@ -1759,7 +1759,7 @@ end:
 static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char *secret,
 					 size_t *secretlen, size_t outlen)
 {
-	unsigned char *stmp = NULL;
+	unsigned char *stmp;
 	size_t stmplen;
 	int ret = 0;
 
@@ -1910,7 +1910,7 @@ static int uadk_prov_dh_locate_kdf_type(PROV_DH_KEYEXCH_CTX *pdhctx, const OSSL_
 {
 	char name[DH_MAX_PARAM_LEN + 1] = {'\0'};
 	const OSSL_PARAM *p;
-	char *str = NULL;
+	char *str;
 
 	p = OSSL_PARAM_locate_const(params, OSSL_EXCHANGE_PARAM_KDF_TYPE);
 	if (p != NULL) {
@@ -1935,7 +1935,7 @@ static int uadk_prov_dh_locate_kdf_digest(PROV_DH_KEYEXCH_CTX *pdhctx,
 	char mdprops[DH_MAX_PARAM_LEN + 1] = {'\0'};
 	char name[DH_MAX_PARAM_LEN + 1] = {'\0'};
 	const OSSL_PARAM *p;
-	char *str = NULL;
+	char *str;
 
 	p = OSSL_PARAM_locate_const(params, OSSL_EXCHANGE_PARAM_KDF_DIGEST);
 	if (p != NULL) {
@@ -2100,7 +2100,7 @@ static const OSSL_PARAM *uadk_keyexch_dh_gettable_ctx_params(ossl_unused void *d
 static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 {
 	PROV_DH_KEYEXCH_CTX *pdhctx = (PROV_DH_KEYEXCH_CTX *)dhctx;
-	const char *kdf_type = NULL;
+	const char *kdf_type;
 	OSSL_PARAM *p;
 
 	if (pdhctx == NULL) {
