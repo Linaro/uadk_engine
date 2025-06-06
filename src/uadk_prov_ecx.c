@@ -787,6 +787,7 @@ uninit_iot:
 	uadk_prov_ecx_keygen_uninit_iot(gctx->sess, &req);
 free_prikey:
 	uadk_prov_ecx_free_prikey(*ecx_key);
+	*ecx_key = NULL;
 
 	return ret;
 }
@@ -1125,7 +1126,7 @@ static void uadk_prov_ecx_pad_out_key(unsigned char *dst, unsigned char *src,
 
 	switch (type) {
 	case ECX_KEY_TYPE_X448:
-		if (len != X448_KEYLEN) {
+		if (len <= X448_KEYLEN) {
 			memcpy(x448_pad_key, src, len);
 			memcpy(dst, x448_pad_key, X448_KEYLEN);
 		} else {
@@ -1133,7 +1134,7 @@ static void uadk_prov_ecx_pad_out_key(unsigned char *dst, unsigned char *src,
 		}
 		break;
 	case ECX_KEY_TYPE_X25519:
-		if (len != X25519_KEYLEN) {
+		if (len <= X25519_KEYLEN) {
 			memcpy(x25519_pad_key, src, len);
 			memcpy(dst, x25519_pad_key, X25519_KEYLEN);
 		} else {
