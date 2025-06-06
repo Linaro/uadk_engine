@@ -41,7 +41,7 @@ static OSSL_FUNC_core_get_params_fn *c_get_params;
 static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
 
 struct uadk_provider_params {
-	char *enable_sw_offload;
+	char *enable_sw_flag;
 } uadk_params;
 
 /* offload small packets to sw */
@@ -379,7 +379,7 @@ int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 
 	*p++ = OSSL_PARAM_construct_utf8_ptr(
 			"enable_sw_offload",
-			(char **)&uadk_params.enable_sw_offload,
+			(char **)&uadk_params.enable_sw_flag,
 			0);
 	*p = OSSL_PARAM_construct_end();
 
@@ -388,8 +388,8 @@ int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 		return UADK_P_FAIL;
 	}
 
-	if (uadk_params.enable_sw_offload)
-		uadk_set_sw_offload_state(atoi(uadk_params.enable_sw_offload));
+	if (uadk_params.enable_sw_flag)
+		uadk_set_sw_offload_state(atoi(uadk_params.enable_sw_flag));
 
 	return UADK_P_SUCCESS;
 }

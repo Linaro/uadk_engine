@@ -1450,6 +1450,7 @@ static int check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash,
 static int check_equation_param(struct sm2_param *param, EVP_MD_CTX *hash,
 				uint8_t *buf, int p_bytes)
 {
+	/* Update param a and b separately */
 	if (BN_bn2binpad(param->a, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
 	    BN_bn2binpad(param->b, buf, p_bytes) < 0 ||

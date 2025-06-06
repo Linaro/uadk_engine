@@ -371,17 +371,19 @@ static int ecdh_plain_derive(struct ecdh_ctx *pecdhctx,
 static int ecdh_kdf_X9_63(unsigned char *out, struct ecdh_ctx *pecdhctx,
 			  unsigned char *stmp, size_t stmplen)
 {
-	EVP_KDF *kdf = EVP_KDF_fetch(pecdhctx->libctx, OSSL_KDF_NAME_X963KDF, NULL);
-	const char *mdname = EVP_MD_get0_name(pecdhctx->kdf_md);
 	OSSL_PARAM params[4], *p = params;
 	int ret = UADK_P_FAIL;
+	const char *mdname;
 	EVP_KDF_CTX *kctx;
+	EVP_KDF *kdf;
 
+	kdf = EVP_KDF_fetch(pecdhctx->libctx, OSSL_KDF_NAME_X963KDF, NULL);
 	if (!kdf) {
 		fprintf(stderr, "failed to fetch kdf!\n");
 		return ret;
 	}
 
+	mdname = EVP_MD_get0_name(pecdhctx->kdf_md);
 	kctx = EVP_KDF_CTX_new(kdf);
 	if (!kctx) {
 		fprintf(stderr, "failed to new kctx!\n");
@@ -395,7 +397,10 @@ static int ecdh_kdf_X9_63(unsigned char *out, struct ecdh_ctx *pecdhctx,
 	*p = OSSL_PARAM_construct_end();
 
 	ret = EVP_KDF_derive(kctx, out, pecdhctx->kdf_outlen, params);
-	ret = ret <= 0 ? UADK_P_FAIL : UADK_P_SUCCESS;
+	if (ret <= 0)
+		ret = UADK_P_FAIL;
+	else
+		ret = UADK_P_SUCCESS;
 
 	EVP_KDF_CTX_free(kctx);
 
