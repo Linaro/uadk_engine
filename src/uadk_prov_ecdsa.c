@@ -871,7 +871,7 @@ static int ecdsa_digest_singverify_init(void *vctx, const char *mdname, void *ec
 	if (!ctx->mdctx) {
 		ctx->mdctx = EVP_MD_CTX_new();
 		if (!ctx->mdctx)
-			goto err;
+			return UADK_P_FAIL;
 	}
 
 	ret = EVP_DigestInit_ex2(ctx->mdctx, ctx->md, params);

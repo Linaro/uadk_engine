@@ -951,6 +951,7 @@ static int ecdh_create_key(EC_KEY *eckey)
 		return 0;
 	}
 
+	BN_CTX_start(ctx);
 	order = BN_CTX_get(ctx);
 	if (!order) {
 		fprintf(stderr, "failed to allocate order\n");
@@ -971,6 +972,7 @@ static int ecdh_create_key(EC_KEY *eckey)
 free_order:
 	BN_clear(order);
 free_ctx:
+	BN_CTX_end(ctx);
 	BN_CTX_free(ctx);
 	return ret;
 }
