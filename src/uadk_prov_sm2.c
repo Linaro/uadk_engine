@@ -720,6 +720,7 @@ static UADK_PKEY_SIGNATURE get_default_sm2_signature(void)
 		}
 	}
 	pthread_mutex_unlock(&sign_mutex);
+
 	return s_signature;
 }
 

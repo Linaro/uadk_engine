@@ -254,6 +254,7 @@ static int uadk_e_digests_soft_md(struct digest_priv_ctx *priv)
 		priv->soft_ctx = ctx;
 		priv->app_datasize = app_datasize;
 	}
+
 	return 1;
 }
 
@@ -268,6 +269,7 @@ static uint32_t sec_digest_get_sw_threshold(int n_id)
 	} while (++i < threshold_table_size);
 
 	fprintf(stderr, "nid %d not found in digest threshold table.\n", n_id);
+
 	return 0;
 }
 
@@ -568,6 +570,7 @@ static int uadk_e_digest_ctrl(EVP_MD_CTX *ctx, int cmd, int numa_node, void *p2)
 	}
 	priv->sched_param.numa_id = numa_node;
 	priv->setup.sched_param = (void *)&(priv->sched_param);
+
 	return 1;
 }
 
@@ -821,6 +824,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 		return 0;
 	}
+
 	return 1;
 }
 

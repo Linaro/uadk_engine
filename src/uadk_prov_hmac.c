@@ -362,6 +362,7 @@ static int uadk_get_hmac_info(struct hmac_priv_ctx *priv)
 	}
 
 	fprintf(stderr, "failed to get hmac info, algname = %s.\n", priv->alg_name);
+
 	return UADK_HMAC_FAIL;
 }
 
@@ -391,6 +392,7 @@ static const char *get_uadk_alg_name(__u32 alg_id)
 	}
 
 	fprintf(stderr, "failed to find alg, nid = %u.\n", alg_id);
+
 	return NULL;
 }
 

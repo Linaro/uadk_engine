@@ -328,6 +328,7 @@ static void *uadk_ec_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 		return NULL;
 
 	fprintf(stderr, "switch to openssl software calculation in ecx generation.\n");
+
 	return get_default_ec_keymgmt().gen(genctx, osslcb, cbarg);
 }
 

@@ -455,6 +455,7 @@ static int uadk_ecdh_sw_derive(void *vpecdhctx, unsigned char *secret,
 		return UADK_P_FAIL;
 
 	fprintf(stderr, "switch to openssl software calculation in ecdh derivation.\n");
+
 	return get_default_ecdh_keyexch().derive(vpecdhctx, secret, psecretlen, outlen);
 }
 
@@ -484,6 +485,7 @@ static int uadk_keyexch_ecdh_derive(void *vpecdhctx, unsigned char *secret,
 		return UADK_P_SUCCESS;
 	if (ret == UADK_DO_SOFT)
 		return uadk_ecdh_sw_derive(vpecdhctx, secret, psecretlen, outlen);
+
 	return UADK_P_FAIL;
 }
 
