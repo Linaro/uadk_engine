@@ -45,8 +45,8 @@
 #define ALG_NAME_SIZE		128
 #define PARAMS_SIZE		2
 
-#define KEY_4BYTE_ALIGN(keylen)		((keylen + 3) & ~3)
-#define SW_SWITCH_PRINT_ENABLE(SW)	(SW ? ", switch to soft hmac" : "")
+#define KEY_4BYTE_ALIGN(keylen)		(((keylen) + 3) & ~3)
+#define SW_SWITCH_PRINT_ENABLE(SW)	((SW) ? ", switch to soft hmac" : "")
 
 #define SM3_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	(512)
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	(8 * 1024)
