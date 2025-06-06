@@ -2016,6 +2016,7 @@ static int uadk_rsa_sw_verify(void *vprsactx, const unsigned char *sig,
 		return UADK_E_FAIL;
 
 	fprintf(stderr, "switch to openssl software calculation in verifaction.\n");
+
 	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
 }
 
@@ -2735,6 +2736,7 @@ static int uadk_rsa_sw_encrypt(void *vprsactx, unsigned char *out,
 		return UADK_E_FAIL;
 
 	fprintf(stderr, "switch to openssl software calculation	in rsa encryption.\n");
+
 	return get_default_rsa_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 

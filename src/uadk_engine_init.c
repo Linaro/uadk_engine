@@ -167,6 +167,7 @@ int uadk_e_set_env(const char *var_name, int numa_id)
 		if (ret < 0)
 			return ret;
 	}
+
 	return 0;
 }
 

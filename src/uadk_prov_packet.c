@@ -24,6 +24,7 @@ int WPACKET_allocate_bytes(WPACKET *pkt, size_t len, unsigned char **allocbytes)
 
 	pkt->written += len;
 	pkt->curr += len;
+
 	return 1;
 }
 

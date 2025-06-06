@@ -809,6 +809,7 @@ static int generate_unverifiable_g(BN_CTX *ctx, BN_MONT_CTX *mont, BIGNUM *g,
 		++h;
 	}
 	*hret = h;
+
 	return 1;
 }
 
@@ -941,6 +942,7 @@ static OSSL_LIB_CTX *ossl_bn_get_libctx(BN_CTX *ctx)
 {
 	if (ctx == NULL)
 		return NULL;
+
 	return ctx->libctx;
 }
 
@@ -1071,6 +1073,7 @@ static int ossl_ffc_params_set_validate_params(FFC_PARAMS *params,
 	if (!ossl_ffc_params_set_seed(params, seed, seedlen))
 		return 0;
 	params->pcounter = counter;
+
 	return 1;
 }
 
@@ -1082,6 +1085,7 @@ static const char *default_mdname(size_t N)
 		return "SHA-224";
 	else if (N == N_Q_256BITS)
 		return "SHA-256";
+
 	return NULL;
 }
 
@@ -1112,6 +1116,7 @@ static int ossl_ffc_params_validate_unverifiable_g(BN_CTX *ctx, BN_MONT_CTX *mon
 		*ret |= FFC_ERROR_NOT_SUITABLE_GENERATOR;
 		return 0;
 	}
+
 	return 1;
 }
 
@@ -1514,6 +1519,7 @@ static int generate_canonical_g(BN_CTX *ctx, BN_MONT_CTX *mont,
 	}
 
 	EVP_MD_CTX_free(mctx);
+
 	return ret;
 }
 
@@ -1924,6 +1930,7 @@ static uint32_t ilog_e(uint64_t v)
 		}
 	}
 	r = (r * (uint64_t)DH_C1_923) / DH_LOG_E;
+
 	return r;
 }
 
@@ -1948,6 +1955,7 @@ static uint64_t icbrt64(uint64_t x)
 			r++;
 		}
 	}
+
 	return r * DH_CBRT_SCALE;
 }
 
@@ -2009,5 +2017,6 @@ uint16_t ossl_ifc_ffc_compute_security_bits(int n)
 	y = (y + DH_CAI_NUM4) & ~DH_CAI_NUM7;
 	if (y > cap)
 		y = cap;
+
 	return y;
 }

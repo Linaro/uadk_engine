@@ -576,6 +576,7 @@ static int do_cipher_sync(struct cipher_priv_ctx *priv)
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
 	if (ret)
 		return 0;
+
 	return 1;
 }
 

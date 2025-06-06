@@ -188,6 +188,7 @@ static const char *ossl_cipher_cbc_cts_mode_id2name(unsigned int id)
 		if (cts_modes[i].id == id)
 			return cts_modes[i].ossl_mode_name;
 	}
+
 	return NULL;
 }
 
@@ -199,6 +200,7 @@ static int ossl_cipher_cbc_cts_mode_name2id(const char *name)
 		if (OPENSSL_strcasecmp(name, cts_modes[i].ossl_mode_name) == 0)
 			return (int)cts_modes[i].id;
 	}
+
 	return -1;
 }
 
@@ -408,6 +410,7 @@ static int uadk_get_cipher_info(struct cipher_priv_ctx *priv)
 	}
 
 	fprintf(stderr, "failed to get cipher info.\n");
+
 	return UADK_P_FAIL;
 }
 
@@ -720,6 +723,7 @@ static int ossl_cipher_unpadblock(unsigned char *buf, size_t *buflen, size_t blo
 		}
 	}
 	*buflen = len;
+
 	return UADK_P_SUCCESS;
 }
 
@@ -1062,6 +1066,7 @@ do_soft:
 	}
 
 	fprintf(stderr, "do soft ciphers failed.\n");
+
 	return UADK_P_FAIL;
 }
 
@@ -1077,6 +1082,7 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 		return uadk_prov_cipher_soft_final(priv, out, outl);
 
 	*outl = 0;
+
 	return UADK_P_SUCCESS;
 }
 

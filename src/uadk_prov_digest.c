@@ -515,6 +515,7 @@ do_soft_digest:
 	}
 
 	fprintf(stderr, "do soft digest failed during updating!\n");
+
 	return UADK_DIGEST_FAIL;
 
 out:

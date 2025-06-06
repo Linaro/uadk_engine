@@ -1052,6 +1052,7 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 			return UADK_OSSL_FAIL;
 		}
 	}
+
 	return UADK_AEAD_SUCCESS;
 }
 

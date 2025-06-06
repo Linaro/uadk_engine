@@ -94,6 +94,7 @@ __owur static ossl_inline int PACKET_buf_init(PACKET *pkt,
 
 	pkt->curr = buf;
 	pkt->remaining = len;
+
 	return 1;
 }
 
@@ -114,6 +115,7 @@ __owur static ossl_inline int PACKET_equal(const PACKET *pkt, const void *ptr,
 {
 	if (PACKET_remaining(pkt) != num)
 		return 0;
+
 	return CRYPTO_memcmp(pkt->curr, ptr, num) == 0;
 }
 
@@ -485,6 +487,7 @@ __owur static ossl_inline int PACKET_memdup(const PACKET *pkt,
 		return 0;
 
 	*len = length;
+
 	return 1;
 }
 
@@ -504,6 +507,7 @@ __owur static ossl_inline int PACKET_strndup(const PACKET *pkt, char **data)
 
 	/* This will succeed on an empty packet, unless pkt->curr == NULL. */
 	*data = OPENSSL_strndup((const char *)pkt->curr, PACKET_remaining(pkt));
+
 	return (*data != NULL);
 }
 
