@@ -114,7 +114,7 @@ static int uadk_prov_ecc_get_hw_keybits(int key_bits)
 }
 
 void uadk_prov_ecc_fill_req(struct wd_ecc_req *req, unsigned int op,
-		       void *in, void *out)
+			    void *in, void *out)
 {
 	req->op_type = op;
 	req->src = in;
@@ -162,7 +162,7 @@ err:
 }
 
 static void uadk_prov_init_dtb_param(void *dtb, char *start,
-			   __u32 dsz, __u32 bsz, __u32 num)
+				     __u32 dsz, __u32 bsz, __u32 num)
 {
 	struct wd_dtb *tmp = dtb;
 	char *buff = start;
@@ -178,7 +178,7 @@ static void uadk_prov_init_dtb_param(void *dtb, char *start,
 }
 
 int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
-					    BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
+				     BIGNUM *x, BIGNUM *y, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_POINT_get_affine_coordinates(group, p, x, y, ctx))
@@ -191,7 +191,7 @@ int uadk_prov_get_affine_coordinates(const EC_GROUP *group, const EC_POINT *p,
 }
 
 static int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
-		     BIGNUM *b, BN_CTX *ctx)
+			       BIGNUM *b, BN_CTX *ctx)
 {
 # if OPENSSL_VERSION_NUMBER > 0x10101000L
 	if (!EC_GROUP_get_curve(group, p, a, b, ctx))
@@ -204,8 +204,8 @@ static int uadk_prov_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
 }
 
 static void uadk_prov_fill_ecc_cv_param(struct wd_ecc_curve *ecc_param,
-			      struct curve_param *cv_param,
-			      BIGNUM *g_x, BIGNUM *g_y)
+					struct curve_param *cv_param,
+					BIGNUM *g_x, BIGNUM *g_y)
 {
 	ecc_param->p.dsize = BN_bn2bin(cv_param->p, (void *)ecc_param->p.data);
 	ecc_param->a.dsize = BN_bn2bin(cv_param->a, (void *)ecc_param->a.data);
@@ -226,7 +226,7 @@ static void uadk_prov_fill_ecc_cv_param(struct wd_ecc_curve *ecc_param,
 }
 
 static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
-			     struct wd_ecc_curve_cfg *cv)
+				       struct wd_ecc_curve_cfg *cv)
 {
 	struct wd_ecc_curve *ecc_param = cv->cfg.pparam;
 	struct curve_param *cv_param;
@@ -305,7 +305,7 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 	handle_t sess;
 
 	uadk_prov_init_dtb_param(&param, buff, 0, UADK_ECC_MAX_KEY_BYTES,
-				UADK_ECC_CV_PARAM_NUM);
+				 UADK_ECC_CV_PARAM_NUM);
 
 	memset(&sp, 0, sizeof(sp));
 	sp.cv.cfg.pparam = &param;
@@ -475,31 +475,31 @@ static int set_group(OSSL_PARAM_BLD *bld, struct ec_gen_ctx *gctx)
 
 static int check_curve_params(OSSL_PARAM_BLD *bld, struct ec_gen_ctx *gctx)
 {
-	if (gctx->p == NULL || gctx->a == NULL || gctx->b == NULL || gctx->order == NULL
-		|| !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_P, gctx->p)
-		|| !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_A, gctx->a)
-		|| !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_B, gctx->b)
-		|| !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_ORDER, gctx->order)) {
+	if (gctx->p == NULL || gctx->a == NULL || gctx->b == NULL || gctx->order == NULL ||
+	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_P, gctx->p) ||
+	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_A, gctx->a) ||
+	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_B, gctx->b) ||
+	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_ORDER, gctx->order)) {
 		fprintf(stderr, "failed to set curve params\n");
 		return UADK_P_FAIL;
 	}
 
-	if (gctx->cofactor != NULL
-		&& !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_COFACTOR, gctx->cofactor)) {
+	if (gctx->cofactor != NULL &&
+	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_COFACTOR, gctx->cofactor)) {
 		fprintf(stderr, "failed to set cofactor\n");
 		return UADK_P_FAIL;
 	}
 
-	if (gctx->seed != NULL
-		&& !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_SEED,
-		gctx->seed, gctx->seed_len)) {
+	if (gctx->seed != NULL &&
+	    !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_SEED,
+					      gctx->seed, gctx->seed_len)) {
 		fprintf(stderr, "failed to set seed\n");
 		return UADK_P_FAIL;
 	}
 
-	if (gctx->gen == NULL
-		|| !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_GENERATOR,
-		gctx->gen, gctx->gen_len)) {
+	if (gctx->gen == NULL ||
+	    !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_GENERATOR,
+					      gctx->gen, gctx->gen_len)) {
 		fprintf(stderr, "failed to set gen params\n");
 		return UADK_P_FAIL;
 	}
@@ -518,23 +518,23 @@ static int ec_gen_set_group_from_params(struct ec_gen_ctx *gctx)
 		return UADK_P_FAIL;
 	}
 
-	if (gctx->encoding != NULL
-		&& !OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_ENCODING,
-		gctx->encoding, 0)) {
+	if (gctx->encoding != NULL &&
+	    !OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_ENCODING,
+					     gctx->encoding, 0)) {
 		fprintf(stderr, "failed to set encoding\n");
 		goto free_bld;
 	}
 
-	if (gctx->pt_format != NULL
-		&& !OSSL_PARAM_BLD_push_utf8_string(bld,
-		OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT, gctx->pt_format, 0)) {
+	if (gctx->pt_format != NULL &&
+	    !OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT,
+					     gctx->pt_format, 0)) {
 		fprintf(stderr, "failed to set point format\n");
 		goto free_bld;
 	}
 
 	if (gctx->group_name != NULL) {
 		if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
-			gctx->group_name, 0)) {
+						     gctx->group_name, 0)) {
 			fprintf(stderr, "failed to set group name\n");
 			goto free_bld;
 		}
@@ -543,7 +543,7 @@ static int ec_gen_set_group_from_params(struct ec_gen_ctx *gctx)
 			goto free_bld;
 	} else if (gctx->field_type != NULL) {
 		if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_FIELD_TYPE,
-			gctx->field_type, 0)) {
+						     gctx->field_type, 0)) {
 			fprintf(stderr, "failed to set filed type\n");
 			goto free_bld;
 		}

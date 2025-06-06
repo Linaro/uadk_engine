@@ -38,7 +38,7 @@
 #define ENV_ENABLED	1
 
 /* The max BD data length is 16M-512B */
-#define BUF_LEN      0xFFFE00
+#define BUF_LEN		0xFFFE00
 
 #define SM3_DIGEST_LENGTH	32
 #define SHA1_CBLOCK		64
@@ -48,15 +48,15 @@
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (8 * 1024)
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MAX_DIGEST_LENGTH	64
-#define DIGEST_BLOCK_SIZE (512 * 1024)
+#define DIGEST_BLOCK_SIZE	(512 * 1024)
 
 /* copied form openssl/include/internal/sm3.h
  * OpenSSL 3.0 has no <openssl/sm3.h>
  */
-# define SM3_DIGEST_LENGTH 32
-# define SM3_WORD unsigned int
-# define SM3_CBLOCK      64
-# define SM3_LBLOCK      (SM3_CBLOCK/4)
+# define SM3_DIGEST_LENGTH	32
+# define SM3_WORD		unsigned int
+# define SM3_CBLOCK		64
+# define SM3_LBLOCK		(SM3_CBLOCK/4)
 
 typedef struct SM3state_st {
 	SM3_WORD A, B, C, D, E, F, G, H;
@@ -373,7 +373,7 @@ static handle_t sched_single_init(handle_t h_sched_ctx, void *sched_param)
 }
 
 static __u32 sched_single_pick_next_ctx(handle_t sched_ctx,
-		void *sched_key, const int sched_mode)
+					void *sched_key, const int sched_mode)
 {
 	if (sched_mode)
 		return CTX_ASYNC;
@@ -536,8 +536,8 @@ err_unlock:
 }
 
 static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
-			enum wd_digest_type alg, enum wd_digest_mode mode,
-			 __u32 out_len)
+				  enum wd_digest_type alg, enum wd_digest_mode mode,
+				  __u32 out_len)
 {
 	priv->setup.alg = alg;
 	priv->setup.mode = mode;
@@ -837,7 +837,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	}
 
 	if (priv->req.in_bytes <= priv->switch_threshold &&
-		priv->state == SEC_DIGEST_INIT) {
+	    priv->state == SEC_DIGEST_INIT) {
 		/* hw v2 does not support in_bytes=0 refer digest_bd2_type_check
 		 * so switch to sw
 		 */

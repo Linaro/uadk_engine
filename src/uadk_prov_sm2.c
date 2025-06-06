@@ -431,7 +431,7 @@ static void *uadk_keymgmt_sm2_dup(const void *keydata_from, int selection)
  * @return Return inited key generation context if success, return NULL if failed.
  */
 static void *uadk_keymgmt_sm2_gen_init(void *provctx, int selection,
-				const OSSL_PARAM params[])
+				       const OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().gen_init) {
 		fprintf(stderr, "failed to get keymgmt gen_init function\n");
@@ -476,7 +476,7 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_settable_params(ossl_unused void *prov
  * @return Return params list if success, return NULL if failed.
  */
 static const OSSL_PARAM *uadk_keymgmt_sm2_gen_settable_params(ossl_unused void *genctx,
-							ossl_unused void *provctx)
+							      ossl_unused void *provctx)
 {
 	if (!get_default_sm2_keymgmt().gen_settable_params) {
 		fprintf(stderr, "failed to get keymgmt gen_settable_params function\n");
@@ -871,7 +871,7 @@ static int uadk_prov_sm2_sig_set_mdname(PROV_SM2_SIGN_CTX *psm2ctx, const char *
 
 	if (smctx->sm2_md->md == NULL) {
 		smctx->sm2_md->md = EVP_MD_fetch(psm2ctx->libctx,
-					psm2ctx->mdname, psm2ctx->propq);
+						 psm2ctx->mdname, psm2ctx->propq);
 		if (smctx->sm2_md->md == NULL) {
 			fprintf(stderr, "failed to fetch digest method\n");
 			return UADK_P_FAIL;
@@ -879,7 +879,7 @@ static int uadk_prov_sm2_sig_set_mdname(PROV_SM2_SIGN_CTX *psm2ctx, const char *
 	}
 
 	if (strlen(mdname) >= sizeof(psm2ctx->mdname) ||
-		!EVP_MD_is_a(smctx->sm2_md->md, mdname)) {
+	    !EVP_MD_is_a(smctx->sm2_md->md, mdname)) {
 		fprintf(stderr, "failed to check mdname, digest=%s\n", mdname);
 		return UADK_P_FAIL;
 	}
@@ -890,7 +890,7 @@ static int uadk_prov_sm2_sig_set_mdname(PROV_SM2_SIGN_CTX *psm2ctx, const char *
 }
 
 static int uadk_prov_compute_hash(const char *in, size_t in_len,
-				char *out, size_t out_len, void *usr)
+				  char *out, size_t out_len, void *usr)
 {
 	const EVP_MD *digest = (const EVP_MD *)usr;
 	int ret = WD_SUCCESS;
@@ -901,8 +901,8 @@ static int uadk_prov_compute_hash(const char *in, size_t in_len,
 		return -WD_EINVAL;
 
 	if (EVP_DigestInit(hash, digest) == 0 ||
-		EVP_DigestUpdate(hash, in, in_len) == 0 ||
-		EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
+	    EVP_DigestUpdate(hash, in, in_len) == 0 ||
+	    EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
 		fprintf(stderr, "compute hash failed\n");
 		ret = -WD_EINVAL;
 	}
@@ -990,7 +990,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 }
 
 static int uadk_signature_sm2_sign_init_sw(void *vpsm2ctx, void *ec,
-					const OSSL_PARAM params[])
+					   const OSSL_PARAM params[])
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().sign_init) {
 		fprintf(stderr, "switch to software sm2 sign_init.\n");
@@ -1074,7 +1074,7 @@ static int uadk_signature_sm2_verify_init(void *vpsm2ctx, void *ec,
 }
 
 static int uadk_prov_sm2_check_tbs_params(PROV_SM2_SIGN_CTX *psm2ctx,
-					const unsigned char *tbs, size_t tbslen)
+					  const unsigned char *tbs, size_t tbslen)
 {
 	SM2_PROV_CTX *smctx = psm2ctx->sm2_pctx;
 
@@ -1227,7 +1227,7 @@ free_sig:
 }
 
 static int uadk_prov_sm2_sign_ber_to_bin(unsigned char *sig, size_t sig_len,
-					struct wd_dtb *r, struct wd_dtb *s)
+					 struct wd_dtb *r, struct wd_dtb *s)
 {
 	const unsigned char *p = sig;
 	unsigned char *der = NULL;
@@ -1329,7 +1329,7 @@ uninit_iot:
 }
 
 static int uadk_signature_sm2_sign_sw(void *vpsm2ctx, unsigned char *sig, size_t *siglen,
-				   size_t sigsize, const unsigned char *tbs, size_t tbslen)
+				      size_t sigsize, const unsigned char *tbs, size_t tbslen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().sign) {
 		fprintf(stderr, "switch to soft sm2 sign\n");
@@ -1457,8 +1457,8 @@ static int uadk_prov_sm2_update_public_key(SM2_PROV_CTX *smctx, EC_KEY *eckey)
 }
 
 static int uadk_prov_sm2_verify(PROV_SM2_SIGN_CTX *psm2ctx,
-		      const unsigned char *sig, size_t siglen,
-		      const unsigned char *tbs, size_t tbslen)
+				const unsigned char *sig, size_t siglen,
+				const unsigned char *tbs, size_t tbslen)
 {
 	unsigned char buf_r[UADK_ECC_MAX_KEY_BYTES] = {0};
 	unsigned char buf_s[UADK_ECC_MAX_KEY_BYTES] = {0};
@@ -1511,7 +1511,7 @@ uninit_iot:
 }
 
 static int uadk_signature_sm2_verify_sw(void *vpsm2ctx, const unsigned char *sig, size_t siglen,
-				     const unsigned char *tbs, size_t tbslen)
+					const unsigned char *tbs, size_t tbslen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().verify) {
 		fprintf(stderr, "switch to soft sm2 verify\n");
@@ -1558,8 +1558,8 @@ static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdnam
 	int md_nid;
 	WPACKET pkt;
 
-	if (!uadk_signature_sm2_sign_init(vpsm2ctx, ec, params)
-		|| !uadk_prov_sm2_sig_set_mdname(psm2ctx, mdname))
+	if (!uadk_signature_sm2_sign_init(vpsm2ctx, ec, params) ||
+	    !uadk_prov_sm2_sig_set_mdname(psm2ctx, mdname))
 		return UADK_P_FAIL;
 
 	smctx = psm2ctx->sm2_pctx;
@@ -1582,9 +1582,9 @@ static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdnam
 	md_nid = EVP_MD_get_type(smctx->sm2_md->md);
 	smctx->sm2_md->md_nid = md_nid;
 	psm2ctx->aid_len = 0;
-	if (WPACKET_init_der(&pkt, psm2ctx->aid_buf, sizeof(psm2ctx->aid_buf))
-		&& ossl_DER_w_algorithmIdentifier_SM2_with_MD(&pkt, -1, psm2ctx->key, md_nid)
-		&& WPACKET_finish(&pkt)) {
+	if (WPACKET_init_der(&pkt, psm2ctx->aid_buf, sizeof(psm2ctx->aid_buf)) &&
+	    ossl_DER_w_algorithmIdentifier_SM2_with_MD(&pkt, -1, psm2ctx->key, md_nid) &&
+	    WPACKET_finish(&pkt)) {
 		WPACKET_get_total_written(&pkt, &psm2ctx->aid_len);
 		psm2ctx->aid = WPACKET_get_curr(&pkt);
 	}
@@ -1602,7 +1602,7 @@ static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdnam
 }
 
 static int uadk_prov_check_equation_param(struct sm2_param *param, EVP_MD_CTX *hash,
-				uint8_t *buf, int p_bytes)
+					  uint8_t *buf, int p_bytes)
 {
 	if (BN_bn2binpad(param->a, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
@@ -1616,7 +1616,7 @@ static int uadk_prov_check_equation_param(struct sm2_param *param, EVP_MD_CTX *h
 }
 
 static int uadk_prov_check_base_point_group_param(struct sm2_param *param, BN_CTX *ctx,
-					const EC_KEY *key)
+						  const EC_KEY *key)
 {
 	const EC_GROUP *group = EC_KEY_get0_group(key);
 
@@ -1631,7 +1631,7 @@ static int uadk_prov_check_base_point_group_param(struct sm2_param *param, BN_CT
 }
 
 static int uadk_prov_check_base_point_param(struct sm2_param *param, EVP_MD_CTX *hash,
-				  uint8_t *buf, int p_bytes)
+					    uint8_t *buf, int p_bytes)
 {
 	if (BN_bn2binpad(param->xG, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
@@ -1645,7 +1645,7 @@ static int uadk_prov_check_base_point_param(struct sm2_param *param, EVP_MD_CTX 
 }
 
 static int uadk_prov_check_pkey_point_group_param(struct sm2_param *param, BN_CTX *ctx,
-					const EC_KEY *key)
+						  const EC_KEY *key)
 {
 	const EC_GROUP *group = EC_KEY_get0_group(key);
 
@@ -1659,7 +1659,7 @@ static int uadk_prov_check_pkey_point_group_param(struct sm2_param *param, BN_CT
 }
 
 static int uadk_prov_check_pkey_point_param(struct sm2_param *param, EVP_MD_CTX *hash,
-				  uint8_t *buf, int p_bytes, uint8_t *out)
+					    uint8_t *buf, int p_bytes, uint8_t *out)
 {
 	if (BN_bn2binpad(param->xA, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
@@ -1711,7 +1711,7 @@ end:
 }
 
 static int uadk_prov_check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash,
-				const size_t id_len, const uint8_t *id)
+					  const size_t id_len, const uint8_t *id)
 {
 	uint8_t e_byte;
 	uint16_t entl;
@@ -1752,8 +1752,8 @@ static int uadk_prov_check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash
 }
 
 static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
-				const uint8_t *id, const size_t id_len,
-				const EC_KEY *key)
+					  const uint8_t *id, const size_t id_len,
+					  const EC_KEY *key)
 {
 	const EC_GROUP *group = EC_KEY_get0_group(key);
 	struct sm2_param *params = NULL;
@@ -2146,8 +2146,8 @@ static int uadk_prov_sm2_locate_id_digest(PROV_SM2_SIGN_CTX *psm2ctx,  const OSS
 	 * this needs to be adjusted accordingly.
 	 */
 	p = OSSL_PARAM_locate_const(params, OSSL_SIGNATURE_PARAM_DIGEST_SIZE);
-	if (p != NULL && (!OSSL_PARAM_get_size_t(p, &mdsize)
-	    || mdsize != psm2ctx->sm2_pctx->sm2_md->mdsize)) {
+	if (p != NULL && (!OSSL_PARAM_get_size_t(p, &mdsize) ||
+			  mdsize != psm2ctx->sm2_pctx->sm2_md->mdsize)) {
 		fprintf(stderr, "failed to locate digest size\n");
 		return UADK_P_FAIL;
 	}
@@ -2259,13 +2259,13 @@ static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
 }
 
 static const OSSL_PARAM *uadk_signature_sm2_settable_ctx_params(ossl_unused void *vpsm2ctx,
-							ossl_unused void *provctx)
+								ossl_unused void *provctx)
 {
 	return sm2_sig_known_settable_ctx_params;
 }
 
 static const OSSL_PARAM *uadk_signature_sm2_gettable_ctx_params(ossl_unused void *vpsm2ctx,
-							ossl_unused void *provctx)
+								ossl_unused void *provctx)
 {
 	return sm2_sig_known_gettable_ctx_params;
 }
@@ -2347,14 +2347,14 @@ static const OSSL_PARAM *uadk_signature_sm2_gettable_ctx_md_params(void *vpsm2ct
 }
 
 static int uadk_signature_sm2_verify_recover_init(void *vpsm2ctx, void *vsm2,
-					const OSSL_PARAM params[])
+						  const OSSL_PARAM params[])
 {
 	return UADK_P_SUCCESS;
 }
 
 static int uadk_signature_sm2_verify_recover(void *vpsm2ctx, unsigned char *rout,
-				   size_t *routlen, size_t routsize,
-				   const unsigned char *sig, size_t siglen)
+					     size_t *routlen, size_t routsize,
+					     const unsigned char *sig, size_t siglen)
 {
 	return UADK_P_SUCCESS;
 }
@@ -2481,7 +2481,7 @@ static void uadk_prov_sm2_set_default_md(PROV_SM2_ASYM_CTX *psm2ctx)
 }
 
 static int uadk_asym_cipher_sm2_encrypt_init_sw(void *vpsm2ctx, void *vkey,
-					     const OSSL_PARAM params[])
+						const OSSL_PARAM params[])
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().encrypt_init) {
 		fprintf(stderr, "switch to software sm2 encrypt init\n");
@@ -2553,8 +2553,8 @@ do_soft:
 }
 
 static int uadk_prov_sm2_encrypt_check(PROV_SM2_ASYM_CTX *psm2ctx,
-			     unsigned char *out, size_t *outlen,
-			     const unsigned char *in, size_t inlen)
+				       unsigned char *out, size_t *outlen,
+				       const unsigned char *in, size_t inlen)
 {
 	SM2_PROV_CTX *smctx = psm2ctx->sm2_pctx;
 	const EVP_MD *md;
@@ -2623,8 +2623,8 @@ static int uadk_prov_sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 }
 
 static int uadk_prov_sm2_asym_bin_to_ber(struct wd_ecc_point *c1,
-				       struct wd_dtb *c2, struct wd_dtb *c3,
-				       unsigned char *ber, size_t *ber_len)
+					 struct wd_dtb *c2, struct wd_dtb *c3,
+					 unsigned char *ber, size_t *ber_len)
 {
 	struct sm2_ciphertext ctext;
 	int ctext_leni, ret;
@@ -2687,8 +2687,8 @@ free_x1:
 }
 
 static int uadk_prov_sm2_encrypt_sw(PROV_SM2_ASYM_CTX *vpsm2ctx,
-				 unsigned char *out, size_t *outlen,
-				 const unsigned char *in, size_t inlen)
+				    unsigned char *out, size_t *outlen,
+				    const unsigned char *in, size_t inlen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().encrypt) {
 		fprintf(stderr, "switch to software sm2 encrypt\n");
@@ -2803,9 +2803,9 @@ static int uadk_prov_sm2_ciphertext_size(const EC_KEY *key,
 	 * Integer and string are simple type; set constructed = 0, means
 	 * primitive and definite length encoding.
 	 */
-	sz = ECC_POINT_SIZE(ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER))
-		+ ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING)
-		+ ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
+	sz = ECC_POINT_SIZE(ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER)) +
+	     ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING) +
+	     ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
 	*ct_size = ASN1_object_size(1, sz, V_ASN1_SEQUENCE);
 
 	return UADK_P_SUCCESS;
@@ -2888,7 +2888,8 @@ static int uadk_prov_sm2_decrypt_check(SM2_PROV_CTX *smctx,
 }
 
 static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext *ctext,
-				struct wd_ecc_point *c1, struct wd_dtb *c2, struct wd_dtb *c3)
+					 struct wd_ecc_point *c1, struct wd_dtb *c2,
+					 struct wd_dtb *c3)
 {
 	int c1x_len, c1y_len, md_size;
 
@@ -2924,7 +2925,8 @@ static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext
 }
 
 static int uadk_prov_sm2_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
-				struct wd_ecc_point *c1, struct wd_dtb *c2, struct wd_dtb *c3)
+					  struct wd_ecc_point *c1,
+					  struct wd_dtb *c2, struct wd_dtb *c3)
 {
 	struct wd_ecc_out *ecc_out;
 	struct wd_ecc_in *ecc_in;
@@ -2970,8 +2972,8 @@ static int uadk_prov_sm2_get_plaintext(struct wd_ecc_req *req,
 }
 
 static int uadk_prov_sm2_decrypt_sw(PROV_SM2_ASYM_CTX *ctx,
-				unsigned char *out, size_t *outlen,
-				const unsigned char *in, size_t inlen)
+				    unsigned char *out, size_t *outlen,
+				    const unsigned char *in, size_t inlen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().decrypt) {
 		fprintf(stderr, "switch to software sm2 decrypt\n");
@@ -2982,8 +2984,8 @@ static int uadk_prov_sm2_decrypt_sw(PROV_SM2_ASYM_CTX *ctx,
 }
 
 static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
-				unsigned char *out, size_t *outlen,
-				const unsigned char *in, size_t inlen)
+				 unsigned char *out, size_t *outlen,
+				 const unsigned char *in, size_t inlen)
 {
 	const unsigned char *original_in = in;
 	SM2_PROV_CTX *smctx = ctx->sm2_pctx;
@@ -3193,7 +3195,7 @@ static int uadk_asym_cipher_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *param
 }
 
 static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PARAM params[],
-					    OSSL_LIB_CTX *ctx)
+						 OSSL_LIB_CTX *ctx)
 {
 	const char *propquery = NULL;
 	const OSSL_PARAM *p;
@@ -3293,13 +3295,13 @@ do_soft:
 }
 
 static const OSSL_PARAM *uadk_asym_cipher_sm2_gettable_ctx_params(ossl_unused void *vpsm2ctx,
-							ossl_unused void *provctx)
+								  ossl_unused void *provctx)
 {
 	return sm2_asym_cipher_known_gettable_ctx_params;
 }
 
 static const OSSL_PARAM *uadk_asym_cipher_sm2_settable_ctx_params(ossl_unused void *vpsm2ctx,
-							ossl_unused void *provctx)
+								  ossl_unused void *provctx)
 {
 	return sm2_asym_cipher_known_settable_ctx_params;
 }

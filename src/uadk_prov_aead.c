@@ -431,7 +431,7 @@ static int do_aes_gcm_prepare(struct aead_priv_ctx *priv)
 }
 
 static void uadk_do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char *output,
-				  const unsigned char *input, size_t inlen)
+				       const unsigned char *input, size_t inlen)
 {
 	priv->req.in_bytes = inlen;
 	/* AAD data will be input and output together with plaintext or ciphertext. */

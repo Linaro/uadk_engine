@@ -165,7 +165,7 @@ static int ecdh_set_privk(struct ecdh_ctx *pecdhctx,
 	 *          set to ctx->cofactor_mode
 	 */
 	key_cofactor_mode = (EC_KEY_get_flags(pecdhctx->k) & EC_FLAG_COFACTOR_ECDH) ?
-				COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
+			    COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
 	if (pecdhctx->cofactor_mode != COFACTOR_MODE_USE_KEY &&
 	    pecdhctx->cofactor_mode != key_cofactor_mode &&
 	    !BN_is_one(sess_ctx->cofactor)) {
@@ -449,7 +449,7 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 }
 
 static int uadk_ecdh_sw_derive(void *vpecdhctx, unsigned char *secret,
-			  size_t *psecretlen, size_t outlen)
+			       size_t *psecretlen, size_t outlen)
 {
 	if (!enable_sw_offload || !get_default_ecdh_keyexch().derive)
 		return UADK_P_FAIL;
@@ -681,8 +681,8 @@ static int ecdh_get_cofactor_mode(struct ecdh_ctx *pectx, OSSL_PARAM params[])
 
 	if (mode == COFACTOR_MODE_USE_KEY)
 		/* Check what is the default for pecdhctx->k */
-		mode = EC_KEY_get_flags(pectx->k) & EC_FLAG_COFACTOR_ECDH ?
-			COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
+		mode = (EC_KEY_get_flags(pectx->k) & EC_FLAG_COFACTOR_ECDH) ?
+		       COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
 
 	return OSSL_PARAM_set_int(p, mode);
 }

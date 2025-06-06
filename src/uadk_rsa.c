@@ -672,7 +672,7 @@ static handle_t rsa_sched_init(handle_t h_sched_ctx, void *sched_param)
 }
 
 static __u32 rsa_pick_next_ctx(handle_t sched_ctx,
-		void *sched_key, const int sched_mode)
+			       void *sched_key, const int sched_mode)
 {
 	if (sched_mode)
 		return CTX_ASYNC;
@@ -1750,7 +1750,7 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 	}
 
 	sign_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			   rsa_sess->req.dst_bytes, NULL);
+			    rsa_sess->req.dst_bytes, NULL);
 	if (!sign_bn) {
 		ret = UADK_DO_SOFT;
 		goto free_buf;
@@ -1845,7 +1845,7 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	}
 
 	verify_bn = BN_bin2bn((const unsigned char *)rsa_sess->req.dst,
-			    rsa_sess->req.dst_bytes, NULL);
+			      rsa_sess->req.dst_bytes, NULL);
 	if (!verify_bn) {
 		ret = UADK_DO_SOFT;
 		goto free_buf;

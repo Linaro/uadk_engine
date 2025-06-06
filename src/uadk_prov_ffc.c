@@ -547,7 +547,7 @@ make_dh_bn(modp_4096_p);
 make_dh_bn(modp_4096_q);
 
 int ossl_ffc_params_set_seed(FFC_PARAMS *params,
-				    const unsigned char *seed, size_t seedlen)
+			     const unsigned char *seed, size_t seedlen)
 {
 	if (params == NULL)
 		return 0;
@@ -605,10 +605,10 @@ int ossl_ffc_params_copy(FFC_PARAMS *dst, const FFC_PARAMS *src)
 	if (src == NULL || dst == NULL)
 		return 0;
 
-	if (!ffc_bn_cpy(&dst->p, src->p)
-			|| !ffc_bn_cpy(&dst->g, src->g)
-			|| !ffc_bn_cpy(&dst->q, src->q)
-			|| !ffc_bn_cpy(&dst->j, src->j))
+	if (!ffc_bn_cpy(&dst->p, src->p) ||
+	    !ffc_bn_cpy(&dst->g, src->g) ||
+	    !ffc_bn_cpy(&dst->q, src->q) ||
+	    !ffc_bn_cpy(&dst->j, src->j))
 		return 0;
 
 	OPENSSL_free(dst->seed);
@@ -630,7 +630,7 @@ int ossl_ffc_params_copy(FFC_PARAMS *dst, const FFC_PARAMS *src)
 }
 
 void ossl_ffc_params_get0_pqg(const FFC_PARAMS *d, const BIGNUM **p,
-				     const BIGNUM **q, const BIGNUM **g)
+			      const BIGNUM **q, const BIGNUM **g)
 {
 	if (d == NULL)
 		return;
@@ -867,15 +867,15 @@ static int generate_p(BN_CTX *ctx, const EVP_MD *evpmd, int max_counter, int n,
 			 * A.1.1.3 Step (13.1)
 			 * tmp = V(j) = Hash((seed + offset + j) % 2^seedlen)
 			 */
-			if (!EVP_Digest(buf, buf_len, md, NULL, evpmd, NULL)
-				|| (BN_bin2bn(md, mdsize, tmp) == NULL)
-				/*
-				 * A.1.1.2 Step (11.2)
-				 * A.1.1.3 Step (13.2)
-				 * W += V(j) * 2^(outlen * j)
-				 */
-				|| !BN_lshift(tmp, tmp, (mdsize << 3) * j)
-				|| !BN_add(W, W, tmp))
+			if (!EVP_Digest(buf, buf_len, md, NULL, evpmd, NULL) ||
+			    (BN_bin2bn(md, mdsize, tmp) == NULL) ||
+			    /*
+			     * A.1.1.2 Step (11.2)
+			     * A.1.1.3 Step (13.2)
+			     * W += V(j) * 2^(outlen * j)
+			     */
+			    !BN_lshift(tmp, tmp, (mdsize << 3) * j) ||
+			    !BN_add(W, W, tmp))
 				goto err;
 		}
 
@@ -884,23 +884,23 @@ static int generate_p(BN_CTX *ctx, const EVP_MD *evpmd, int max_counter, int n,
 		 * A.1.1.3 Step (13.3)
 		 * X = W + 2^(L-1) where W < 2^(L-1)
 		 */
-		if (!BN_mask_bits(W, L - 1)
-			|| !BN_copy(X, W)
-			|| !BN_add(X, X, test)
-			/*
-			 * A.1.1.2 Step (11.4) AND
-			 * A.1.1.3 Step (13.4)
-			 * c = X mod 2q
-			 */
-			|| !BN_lshift1(tmp, q)
-			|| !BN_mod(c, X, tmp, ctx)
-			/*
-			 * A.1.1.2 Step (11.5) AND
-			 * A.1.1.3 Step (13.5)
-			 * p = X - (c - 1)
-			 */
-			|| !BN_sub(tmp, c, BN_value_one())
-			|| !BN_sub(p, X, tmp))
+		if (!BN_mask_bits(W, L - 1) ||
+		    !BN_copy(X, W) ||
+		    !BN_add(X, X, test) ||
+		    /*
+		     * A.1.1.2 Step (11.4) AND
+		     * A.1.1.3 Step (13.4)
+		     * c = X mod 2q
+		     */
+		    !BN_lshift1(tmp, q) ||
+		    !BN_mod(c, X, tmp, ctx) ||
+		    /*
+		     * A.1.1.2 Step (11.5) AND
+		     * A.1.1.3 Step (13.5)
+		     * p = X - (c - 1)
+		     */
+		    !BN_sub(tmp, c, BN_value_one()) ||
+		    !BN_sub(p, X, tmp))
 			goto err;
 
 		/*
@@ -1175,9 +1175,9 @@ int ossl_ffc_params_FIPS186_2_gen_verify(OSSL_LIB_CTX *libctx,
 		*res = FFC_CHECK_BAD_LN_PAIR;
 		goto err;
 	}
-	if (qsize != SHA_DIGEST_LENGTH
-		&& qsize != SHA224_DIGEST_LENGTH
-		&& qsize != SHA256_DIGEST_LENGTH) {
+	if (qsize != SHA_DIGEST_LENGTH &&
+	    qsize != SHA224_DIGEST_LENGTH &&
+	    qsize != SHA256_DIGEST_LENGTH) {
 		/* invalid q size */
 		*res = FFC_CHECK_INVALID_Q_VALUE;
 		goto err;
@@ -1313,10 +1313,9 @@ g_only:
 			goto err;
 		if (!generate_unverifiable_g(ctx, mont, g, tmp, p, r0, test, &hret))
 			goto err;
-	} else if (((flags & FFC_PARAM_FLAG_VALIDATE_G) != 0)
-		&& !ossl_ffc_params_validate_unverifiable_g(ctx, mont, p, q,
-							params->g, tmp,
-							res)) {
+	} else if (((flags & FFC_PARAM_FLAG_VALIDATE_G) != 0) &&
+		   !ossl_ffc_params_validate_unverifiable_g(ctx, mont, p, q,
+							    params->g, tmp, res)) {
 		goto err;
 	}
 
@@ -1362,8 +1361,8 @@ int ossl_ffc_params_FIPS186_2_generate(OSSL_LIB_CTX *libctx, FFC_PARAMS *params,
 				       int *res, BN_GENCB *cb)
 {
 	if (!ossl_ffc_params_FIPS186_2_gen_verify(libctx, params,
-					FFC_PARAM_MODE_GENERATE,
-					type, L, N, res, cb))
+						  FFC_PARAM_MODE_GENERATE,
+						  type, L, N, res, cb))
 		return 0;
 
 	ossl_ffc_params_enable_flags(params, FFC_PARAM_FLAG_VALIDATE_LEGACY, 1);
@@ -1494,14 +1493,14 @@ static int generate_canonical_g(BN_CTX *ctx, BN_MONT_CTX *mont,
 		/* Get last 8 bits of counter to the third byte of md */
 		md[2] = (unsigned char)(counter & 0xff);
 		/* Compute digest: W = Hash(seed || "ggen" || index || counter) */
-		if (!EVP_DigestInit_ex(mctx, evpmd, NULL)
-			|| !EVP_DigestUpdate(mctx, seed, seedlen)
-			|| !EVP_DigestUpdate(mctx, ggen, sizeof(ggen))
-			/* Hash the first three bytes of md, corresponds to 'index || counter' */
-			|| !EVP_DigestUpdate(mctx, md, 3)
-			|| !EVP_DigestFinal_ex(mctx, md, NULL)
-			|| (BN_bin2bn(md, mdsize, w) == NULL)
-			|| !BN_mod_exp_mont(g, w, e, p, ctx, mont))
+		if (!EVP_DigestInit_ex(mctx, evpmd, NULL) ||
+		    !EVP_DigestUpdate(mctx, seed, seedlen) ||
+		    !EVP_DigestUpdate(mctx, ggen, sizeof(ggen)) ||
+		    /* Hash the first three bytes of md, corresponds to 'index || counter' */
+		    !EVP_DigestUpdate(mctx, md, 3) ||
+		    !EVP_DigestFinal_ex(mctx, md, NULL) ||
+		    (BN_bin2bn(md, mdsize, w) == NULL) ||
+		    !BN_mod_exp_mont(g, w, e, p, ctx, mont))
 			break; /* exit on failure */
 		/*
 		 * A.2.3 Step (10)
@@ -1754,7 +1753,7 @@ static int ossl_ffc_params_FIPS186_4_gen_verify(OSSL_LIB_CTX *libctx,
 
 	for (;;) {
 		if (!generate_q_fips186_4(ctx, q, md, qsize, seed, seedlen,
-					seed != params->seed, &m, res, cb))
+					  seed != params->seed, &m, res, cb))
 			goto err;
 		/* A.1.1.3 Step (9): Verify that q matches the expected value */
 		if (verify && (BN_cmp(q, params->q) != 0)) {
@@ -1769,7 +1768,7 @@ static int ossl_ffc_params_FIPS186_4_gen_verify(OSSL_LIB_CTX *libctx,
 
 		memcpy(seed_tmp, seed, seedlen);
 		r = generate_p(ctx, md, counter, n, seed_tmp, seedlen, q, p, L,
-			cb, &pcounter, res);
+			       cb, &pcounter, res);
 		if (r > 0)
 			break; /* found p */
 		if (r < 0)
@@ -1804,9 +1803,9 @@ g_only:
 	if (!BN_MONT_CTX_set(mont, p, ctx))
 		goto err;
 
-	if (((flags & FFC_PARAM_FLAG_VALIDATE_G) != 0)
-		&& !ossl_ffc_params_validate_unverifiable_g(ctx, mont, p, q, params->g,
-							tmp, res))
+	if (((flags & FFC_PARAM_FLAG_VALIDATE_G) != 0) &&
+	    !ossl_ffc_params_validate_unverifiable_g(ctx, mont, p, q, params->g,
+						     tmp, res))
 		goto err;
 
 	/*
@@ -1822,7 +1821,7 @@ g_only:
 	if ((seed != NULL) && (params->gindex != FFC_UNVERIFIABLE_GINDEX)) {
 		canonical_g = 1;
 		if (!generate_canonical_g(ctx, mont, md, g, tmp, p, e,
-					params->gindex, seed, seedlen)) {
+					  params->gindex, seed, seedlen)) {
 			*res = FFC_CHECK_INVALID_G;
 			goto err;
 		}
@@ -2005,8 +2004,8 @@ uint16_t ossl_ifc_ffc_compute_security_bits(int n)
 
 	x = n * DH_LOG_2;
 	lx = ilog_e(x);
-	y = (uint16_t)((mul2(DH_C1_923, icbrt64(mul2(mul2(x, lx), lx))) - DH_C4_690)
-			/ DH_LOG_2);
+	y = (uint16_t)((mul2(DH_C1_923, icbrt64(mul2(mul2(x, lx), lx))) - DH_C4_690) /
+		       DH_LOG_2);
 	y = (y + DH_CAI_NUM4) & ~DH_CAI_NUM7;
 	if (y > cap)
 		y = cap;

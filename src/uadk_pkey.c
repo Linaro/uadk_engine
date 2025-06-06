@@ -63,7 +63,7 @@ static handle_t ecc_sched_init(handle_t h_sched_ctx, void *sched_param)
 }
 
 static __u32 ecc_pick_next_ctx(handle_t sched_ctx,
-		void *sched_key, const int sched_mode)
+			       void *sched_key, const int sched_mode)
 {
 	if (sched_mode)
 		return CTX_ASYNC;

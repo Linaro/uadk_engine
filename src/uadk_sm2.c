@@ -160,8 +160,8 @@ static int compute_hash(const char *in, size_t in_len,
 		return -1;
 
 	if (EVP_DigestInit(hash, digest) == 0 ||
-		EVP_DigestUpdate(hash, in, in_len) == 0 ||
-		EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
+	    EVP_DigestUpdate(hash, in, in_len) == 0 ||
+	    EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
 		fprintf(stderr, "compute hash failed\n");
 		ret = -1;
 	}
@@ -639,9 +639,9 @@ static int sm2_ciphertext_size(const EC_KEY *key,
 	 * Integer and string are simple type; set constructed = 0, means
 	 * primitive and definite length encoding.
 	 */
-	sz = ECC_POINT_SIZE(ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER))
-		+ ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING)
-		+ ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
+	sz = ECC_POINT_SIZE(ASN1_object_size(0, field_size + 1, V_ASN1_INTEGER)) +
+	     ASN1_object_size(0, md_size, V_ASN1_OCTET_STRING) +
+	     ASN1_object_size(0, msg_len, V_ASN1_OCTET_STRING);
 	*ct_size = ASN1_object_size(1, sz, V_ASN1_SEQUENCE);
 
 	return 1;
@@ -675,7 +675,7 @@ static int sm2_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 }
 
 static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
-		  const unsigned char *tbs, size_t tbslen)
+			  const unsigned char *tbs, size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
@@ -1333,9 +1333,9 @@ static int sm2_ctrl_str(EVP_PKEY_CTX *ctx,
 	if (strcmp(type, "ec_paramgen_curve") == 0) {
 		int nid;
 
-		if ((EC_curve_nist2nid(value) == NID_undef)
-			&& (OBJ_sn2nid(value) == NID_undef)
-			&& (OBJ_ln2nid(value) == NID_undef)) {
+		if ((EC_curve_nist2nid(value) == NID_undef) &&
+		    (OBJ_sn2nid(value) == NID_undef) &&
+		    (OBJ_ln2nid(value) == NID_undef)) {
 			fprintf(stderr, "invalid curve\n");
 			return 0;
 		}
