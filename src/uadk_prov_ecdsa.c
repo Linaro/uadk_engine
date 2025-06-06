@@ -246,7 +246,7 @@ static int ecdsa_digest_get_approved_nid(struct ecdsa_ctx *ctx, const EVP_MD *md
 static int ecdsa_setup_md(struct ecdsa_ctx *ctx, const char *mdname, const char *mdprops)
 {
 	size_t mdname_len;
-	EVP_MD *md = NULL;
+	EVP_MD *md;
 	int md_nid;
 
 	if (!mdname)

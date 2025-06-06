@@ -425,8 +425,8 @@ end:
 static int rsa_primes_gen(int bits, BIGNUM *e_pub, BIGNUM *p,
 			  BIGNUM *q, BN_GENCB *cb)
 {
-	struct rsa_prime_param *param = NULL;
 	int bitsr[RSA_MAX_PRIME_NUM] = {0};
+	struct rsa_prime_param *param;
 	int flag, quo, rmd, i;
 	BN_CTX *ctx;
 	int bitse = 0;
@@ -827,7 +827,7 @@ free_cfg:
 
 static int uadk_e_rsa_init(void)
 {
-	struct uacce_dev *dev = NULL;
+	struct uacce_dev *dev;
 	int ret;
 
 	if (g_rsa_res.status != UADK_UNINIT)
@@ -858,10 +858,11 @@ static int uadk_e_rsa_init(void)
 
 err_init:
 	g_rsa_res.status = UADK_INIT_FAIL;
-unlock:
-	pthread_spin_unlock(&g_rsa_res.lock);
 	if (dev)
 		free(dev);
+unlock:
+	pthread_spin_unlock(&g_rsa_res.lock);
+
 	return g_rsa_res.status;
 }
 
@@ -1452,8 +1453,8 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 {
 	struct rsa_keygen_param *keygen_param = NULL;
 	struct rsa_keygen_param_bn *bn_param = NULL;
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_keypair *key_pair = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	BN_CTX *bn_ctx = NULL;
 	int is_crt = 1;
 	int ret;
@@ -1523,7 +1524,7 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 				     unsigned char *to, RSA *rsa, int padding)
 {
 	struct rsa_pubkey_param *pub_enc = NULL;
-	struct uadk_rsa_sess *rsa_sess = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	unsigned char *from_buf = NULL;
 	int num_bytes, is_crt, ret;
 	BIGNUM *enc_bn = NULL;
@@ -1614,7 +1615,7 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 	unsigned char *from_buf = NULL;
 	struct uadk_rsa_sess *rsa_sess;
 	int num_bytes, len, ret;
-	BIGNUM *dec_bn = NULL;
+	BIGNUM *dec_bn;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
 	if (!ret)
@@ -1695,11 +1696,11 @@ exe_soft:
 static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 				   unsigned char *to, RSA *rsa, int padding)
 {
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_prikey_param *pri = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	unsigned char *from_buf = NULL;
-	BIGNUM *sign_bn = NULL;
-	BIGNUM *to_bn = NULL;
+	BIGNUM *sign_bn;
+	BIGNUM *to_bn;
 	BIGNUM *res = NULL;
 	int num_bytes, ret;
 
@@ -1792,11 +1793,11 @@ exe_soft:
 static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 				    unsigned char *to, RSA *rsa, int padding)
 {
-	struct uadk_rsa_sess *rsa_sess = NULL;
 	struct rsa_pubkey_param *pub = NULL;
+	struct uadk_rsa_sess *rsa_sess;
 	int num_bytes, is_crt, len, ret;
 	unsigned char *from_buf = NULL;
-	BIGNUM *verify_bn = NULL;
+	BIGNUM *verify_bn;
 
 	ret = check_rsa_input_para(flen, from, to, rsa);
 	if (!ret)

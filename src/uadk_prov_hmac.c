@@ -455,9 +455,9 @@ static int uadk_prov_compute_key_hash(struct hmac_priv_ctx *priv,
 				      const unsigned char *key, size_t keylen)
 {
 	int ret = UADK_HMAC_FAIL;
-	EVP_MD_CTX *ctx = NULL;
-	EVP_MD *key_md = NULL;
 	__u32 outlen = 0;
+	EVP_MD_CTX *ctx;
+	EVP_MD *key_md;
 
 	key_md = EVP_MD_fetch(priv->libctx, priv->alg_name, NULL);
 	if (!key_md)
