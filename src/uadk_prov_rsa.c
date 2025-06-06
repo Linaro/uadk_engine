@@ -112,6 +112,7 @@ struct rsa_prime_param {
 	BIGNUM *rsa_p;
 	BIGNUM *rsa_q;
 	BIGNUM *prime;
+	int retries;
 };
 
 struct rsa_pubkey_param {
@@ -552,7 +553,6 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 				      struct rsa_prime_param *param,
 				      BN_CTX *ctx, BN_GENCB *cb)
 {
-	static int retries;
 	BN_ULONG bitst;
 	int ret;
 
@@ -596,20 +596,20 @@ static int check_rsa_prime_sufficient(int *num, const int *bitsr,
 		if (!ret)
 			return BN_ERR;
 
-		if (retries == PRIME_RETRY_COUNT) {
-			retries = 0;
+		if (param->retries == PRIME_RETRY_COUNT) {
+			param->retries = 0;
 			*bitse = 0;
 			*num = -1;
 			return BN_CONTINUE;
 		}
-		retries++;
+		param->retries++;
 		return BN_REDO;
 	}
 
 	ret = BN_GENCB_call(cb, GENCB_RETRY, *num);
 	if (!ret)
 		return BN_ERR;
-	retries = 0;
+	param->retries = 0;
 
 	return BN_VALID;
 }
