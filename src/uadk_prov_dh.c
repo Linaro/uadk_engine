@@ -1132,17 +1132,21 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 	}
 
 	group = ossl_ffc_uid_to_dh_named_group(gctx->group_nid);
-	if (group) {
-		dh = ossl_dh_new_ex(gctx->libctx);
-		if (dh == NULL) {
-			fprintf(stderr, "failed to get dh from libctx\n");
-			return NULL;
-		}
-		dh->meth = DH_get_default_method();
-		ossl_ffc_named_group_set(&dh->params, group);
-		dh->params.nid = ossl_ffc_named_group_get_uid(group);
-		dh->dirty_cnt++;
+	if (!group) {
+		fprintf(stderr, "failed to get dh named group\n");
+		return NULL;
 	}
+
+	dh = ossl_dh_new_ex(gctx->libctx);
+	if (dh == NULL) {
+		fprintf(stderr, "failed to get dh from libctx\n");
+		return NULL;
+	}
+
+	dh->meth = DH_get_default_method();
+	ossl_ffc_named_group_set(&dh->params, group);
+	dh->params.nid = ossl_ffc_named_group_get_uid(group);
+	dh->dirty_cnt++;
 
 	*ffc = ossl_dh_get0_params(dh);
 	if (*ffc == NULL) {
@@ -1150,8 +1154,6 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 		ossl_dh_free_ex(dh);
 		return NULL;
 	}
-
-	dh->meth = DH_get_default_method();
 
 	return dh;
 }

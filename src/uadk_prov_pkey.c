@@ -304,6 +304,11 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 	int ret, key_bits;
 	handle_t sess;
 
+	if (!eckey) {
+		fprintf(stderr, "input eckey is NULL\n");
+		return (handle_t)0;
+	}
+
 	uadk_prov_init_dtb_param(&param, buff, 0, UADK_ECC_MAX_KEY_BYTES,
 				 UADK_ECC_CV_PARAM_NUM);
 
