@@ -288,6 +288,13 @@ static OSSL_FUNC_mac_settable_ctx_params_fn
 					uadk_prov_hmac_settable_ctx_params;
 static OSSL_FUNC_mac_set_ctx_params_fn	uadk_prov_hmac_set_ctx_params;
 
+static void uadk_hmac_reset(struct hmac_priv_ctx *priv)
+{
+	priv->state = SEC_DIGEST_INIT;
+	priv->last_update_bufflen = 0;
+	priv->total_data_len = 0;
+}
+
 static int uadk_hmac_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
@@ -956,7 +963,7 @@ static int uadk_prov_hmac_final(void *hctx, unsigned char *out, size_t *outl,
 				size_t outsize)
 {
 	struct hmac_priv_ctx *priv = (struct hmac_priv_ctx *)hctx;
-	int ret;
+	int ret = UADK_HMAC_SUCCESS;
 
 	if (!hctx) {
 		fprintf(stderr, "hmac CTX or output data is NULL.\n");
@@ -966,13 +973,16 @@ static int uadk_prov_hmac_final(void *hctx, unsigned char *out, size_t *outl,
 	if (out && outsize > 0) {
 		ret = uadk_hmac_final(priv, out);
 		if (!ret)
-			return ret;
+			goto reset_ctx;
 	}
 
 	if (outl)
 		*outl = priv->out_len;
 
-	return UADK_HMAC_SUCCESS;
+reset_ctx:
+	uadk_hmac_reset(priv);
+
+	return ret;
 }
 
 void uadk_prov_destroy_hmac(void)
