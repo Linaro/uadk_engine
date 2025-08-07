@@ -120,16 +120,6 @@ int ossl_DER_w_precompiled(WPACKET *pkt, int tag,
 	       int_end_context(pkt, tag);
 }
 
-int ossl_DER_w_boolean(WPACKET *pkt, int tag, int b)
-{
-	return int_start_context(pkt, tag) &&
-	       WPACKET_start_sub_packet(pkt) &&
-	       (!b || WPACKET_put_bytes_u8(pkt, 0xFF)) &&
-	       !WPACKET_close(pkt) &&
-	       !WPACKET_put_bytes_u8(pkt, DER_P_BOOLEAN) &&
-	       int_end_context(pkt, tag);
-}
-
 int ossl_DER_w_octet_string(WPACKET *pkt, int tag,
 			const unsigned char *data, size_t data_n)
 {
@@ -139,19 +129,6 @@ int ossl_DER_w_octet_string(WPACKET *pkt, int tag,
 	       WPACKET_close(pkt) &&
 	       WPACKET_put_bytes_u8(pkt, DER_P_OCTET_STRING) &&
 	       int_end_context(pkt, tag);
-}
-
-int ossl_DER_w_octet_string_uint32(WPACKET *pkt, int tag, uint32_t value)
-{
-	unsigned char tmp[4] = { 0, 0, 0, 0 };
-	unsigned char *pbuf = tmp + (sizeof(tmp) - 1);
-
-	while (value > 0) {
-		*pbuf-- = (value & 0xFF);
-		value >>= LOW_BIT_SIZE;
-	}
-
-	return ossl_DER_w_octet_string(pkt, tag, tmp, sizeof(tmp));
 }
 
 static int int_der_w_integer(WPACKET *pkt, int tag,
@@ -193,52 +170,6 @@ static int int_put_bytes_uint32(WPACKET *pkt, const void *v,
 int ossl_DER_w_uint32(WPACKET *pkt, int tag, uint32_t v)
 {
 	return int_der_w_integer(pkt, tag, int_put_bytes_uint32, &v);
-}
-
-static BN_ULONG *bn_get_words(const BIGNUM *a)
-{
-	return a->d;
-}
-
-static int int_put_bytes_bn(WPACKET *pkt, const void *v,
-			    unsigned int *top_byte)
-{
-	unsigned char *p = NULL;
-	size_t n = BN_num_bytes(v);
-
-	/* The BIGNUM limbs are in LE order */
-	*top_byte =
-		((bn_get_words(v)[(n - 1) / BN_BYTES])
-		>> (BYTES_TO_BITS_OFFSET * ((n - 1) % BN_BYTES)))
-		& 0xFF;
-
-	if (!WPACKET_allocate_bytes(pkt, n, &p))
-		return 0;
-
-	if (p != NULL)
-		BN_bn2bin(v, p);
-
-	return 1;
-}
-
-int ossl_DER_w_bn(WPACKET *pkt, int tag, const BIGNUM *v)
-{
-	if (v == NULL || BN_is_negative(v))
-		return 0;
-
-	if (BN_is_zero(v))
-		return ossl_DER_w_uint32(pkt, tag, 0);
-
-	return int_der_w_integer(pkt, tag, int_put_bytes_bn, v);
-}
-
-int ossl_DER_w_null(WPACKET *pkt, int tag)
-{
-	return int_start_context(pkt, tag) &&
-	       WPACKET_start_sub_packet(pkt) &&
-	       WPACKET_close(pkt) &&
-	       WPACKET_put_bytes_u8(pkt, DER_P_NULL) &&
-	       int_end_context(pkt, tag);
 }
 
 /* Constructed things need a start and an end */
