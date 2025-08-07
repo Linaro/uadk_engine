@@ -47,6 +47,11 @@ static void async_fd_cleanup(ASYNC_WAIT_CTX *ctx, const void *key,
 	close(readfd);
 }
 
+ASYNC_JOB *async_get_async_job(void)
+{
+	return ASYNC_get_current_job();
+}
+
 int async_setup_async_event_notification(struct async_op *op)
 {
 	ASYNC_WAIT_CTX *waitctx;
