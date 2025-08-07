@@ -815,10 +815,6 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 {
 	int ret;
 
-	if (priv->req.in_bytes <= priv->switch_threshold &&
-		priv->state == SEC_DIGEST_INIT)
-		return 0;
-
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
 	if (ret) {
 		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
@@ -835,18 +831,6 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	int cnt = 0;
 	int idx;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "async cipher init failed.\n");
-		return ret;
-	}
-
-	if (priv->req.in_bytes <= priv->switch_threshold &&
-	    priv->state == SEC_DIGEST_INIT) {
-		/* hw v2 does not support in_bytes=0 refer digest_bd2_type_check
-		 * so switch to sw
-		 */
-		return 0;
-	}
 	cb_param = malloc(sizeof(struct uadk_e_cb_info));
 	if (!cb_param) {
 		fprintf(stderr, "failed to alloc cb_param.\n");
@@ -892,7 +876,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-	struct async_op *op;
+	struct async_op *op = NULL;
 	int ret = 1;
 
 	if (unlikely(!priv)) {
@@ -917,6 +901,24 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	if (priv->e_nid == NID_sha384)
 		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
 
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		if (async_get_async_job())
+			goto hw_err;
+
+		/* Synchronous, only the synchronous mode supports soft computing */
+		ret = digest_soft_final(priv, digest);
+		digest_soft_cleanup(priv);
+		return ret;
+	}
+
+	if (priv->req.in_bytes <= priv->switch_threshold &&
+	    priv->state == SEC_DIGEST_INIT)
+		/*
+		 * hw v2 does not support in_bytes=0 refer digest_bd2_type_check
+		 * so switch to sw.
+		 */
+		return uadk_e_digest_soft_work(priv, priv->req.in_bytes, digest);
+
 	op = malloc(sizeof(struct async_op));
 	if (!op)
 		return 0;
@@ -929,13 +931,6 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	}
 
 	if (!op->job) {
-		/* Synchronous, only the synchronous mode supports soft computing */
-		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = digest_soft_final(priv, digest);
-			digest_soft_cleanup(priv);
-			goto clear;
-		}
-
 		ret = do_digest_sync(priv);
 		if (!ret)
 			goto hw_err;
@@ -956,9 +951,11 @@ hw_err:
 		ret = 0;
 		fprintf(stderr, "do sec digest stream mode failed.\n");
 	}
-clear:
-	(void)async_clear_async_event_notification();
-	free(op);
+	
+	if (op) {
+		(void)async_clear_async_event_notification();
+		free(op);
+	}
 	return ret;
 }
 
