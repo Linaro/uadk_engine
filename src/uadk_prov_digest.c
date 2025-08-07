@@ -277,6 +277,13 @@ out:
 	return ret;
 }
 
+static void uadk_digest_reset(struct digest_priv_ctx *priv)
+{
+	priv->state = SEC_DIGEST_INIT;
+	priv->last_update_bufflen = 0;
+	priv->total_data_len = 0;
+}
+
 static int uadk_digest_poll(void *ctx)
 {
 	__u64 rx_cnt = 0;
@@ -685,7 +692,7 @@ sync_err:
 	if (priv->state == SEC_DIGEST_INIT) {
 		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
-		ret = 0;
+		ret = UADK_DIGEST_FAIL;
 		fprintf(stderr, "do sec digest final failed.\n");
 	}
 clear:
@@ -914,7 +921,7 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 			   size_t *outl, size_t outsz)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
-	int ret;
+	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !out) {
 		fprintf(stderr, "CTX or output data is NULL.\n");
@@ -924,20 +931,23 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 	if (outsz > 0) {
 		ret = uadk_digest_final(priv, out);
 		if (!ret)
-			return ret;
+			goto reset_ctx;
 	}
 
 	if (outl)
 		*outl = priv->md_size;
 
-	return UADK_DIGEST_SUCCESS;
+reset_ctx:
+	uadk_digest_reset(priv);
+
+	return ret;
 }
 
 static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 			    unsigned char *out, size_t *outl, size_t outsz)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
-	int ret;
+	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !in || !out) {
 		fprintf(stderr, "CTX or input or output data is NULL.\n");
@@ -953,13 +963,16 @@ static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 	if (outsz > 0) {
 		ret = uadk_digest_digest(priv, in, inl, out);
 		if (!ret)
-			return ret;
+			goto reset_ctx;
 	}
 
 	if (unlikely(outl != NULL))
 		*outl = priv->md_size;
 
-	return UADK_DIGEST_SUCCESS;
+reset_ctx:
+	uadk_digest_reset(priv);
+
+	return ret;
 }
 
 void uadk_prov_destroy_digest(void)
