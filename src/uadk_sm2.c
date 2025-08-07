@@ -26,7 +26,9 @@
 #include "uadk.h"
 #include "uadk_pkey.h"
 
-#define GET_SIGNLEN	1
+#define GET_SIGNLEN		1
+#define SM2_DEFAULT_USERID	"1234567812345678"
+#define SM2_DEFAULT_USERID_LEN	16
 
 enum {
 	CTX_INIT_FAIL = -1,
@@ -221,6 +223,26 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 	smctx->order = order;
 
 	return 0;
+}
+
+static int sm2_ctx_check(struct sm2_ctx *smctx)
+{
+	if (!smctx) {
+		fprintf(stderr, "sm2 sign smctx is NULL\n");
+		return UADK_DO_SOFT;
+	}
+
+	if (!smctx->sess && sm2_update_sess(smctx)) {
+		fprintf(stderr, "sm2 sign sess is NULL\n");
+		return UADK_DO_SOFT;
+	}
+
+	if (smctx->init_status != CTX_INIT_SUCC) {
+		fprintf(stderr, "sm2 ctx init failed\n");
+		return UADK_DO_SOFT;
+	}
+
+	return 1;
 }
 
 static int update_public_key(EVP_PKEY_CTX *ctx)
@@ -685,6 +707,7 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	const int sig_sz = ECDSA_size(ec);
+	int ret;
 
 	if (!siglen) {
 		fprintf(stderr, "siglen is NULL\n");
@@ -702,15 +725,9 @@ static int sm2_sign_check(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 		return GET_SIGNLEN;
 	}
 
-	if (!smctx || !smctx->sess) {
-		fprintf(stderr, "smctx or sess NULL\n");
+	ret = sm2_ctx_check(smctx);
+	if (ret == UADK_DO_SOFT)
 		return UADK_DO_SOFT;
-	}
-
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
-		return UADK_DO_SOFT;
-	}
 
 	if (sig_sz <= 0) {
 		fprintf(stderr, "sig_sz error\n");
@@ -813,16 +830,11 @@ static int sm2_verify_check(EVP_PKEY_CTX *ctx,
 			    size_t tbslen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	int ret;
 
-	if (!smctx || !smctx->sess) {
-		fprintf(stderr, "smctx or sess NULL\n");
+	ret = sm2_ctx_check(smctx);
+	if (ret == UADK_DO_SOFT)
 		return UADK_DO_SOFT;
-	}
-
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
-		return UADK_DO_SOFT;
-	}
 
 	if (tbslen > SM2_KEY_BYTES)
 		return UADK_DO_SOFT;
@@ -924,17 +936,11 @@ static int sm2_encrypt_check(EVP_PKEY_CTX *ctx,
 	EVP_PKEY *p_key = EVP_PKEY_CTX_get0_pkey(ctx);
 	EC_KEY *ec = EVP_PKEY_get0(p_key);
 	const EVP_MD *md;
-	int c3_size;
+	int ret, c3_size;
 
-	if (!smctx || !smctx->sess) {
-		fprintf(stderr, "smctx or sess NULL\n");
+	ret = sm2_ctx_check(smctx);
+	if (ret == UADK_DO_SOFT)
 		return UADK_DO_SOFT;
-	}
-
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
-		return UADK_DO_SOFT;
-	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	c3_size = EVP_MD_size(md);
@@ -1034,18 +1040,12 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 			     const unsigned char *in, size_t inlen)
 {
 	struct sm2_ctx *smctx = EVP_PKEY_CTX_get_data(ctx);
+	int ret, hash_size;
 	const EVP_MD *md;
-	int hash_size;
 
-	if (!smctx || !smctx->sess) {
-		fprintf(stderr, "smctx or sess NULL\n");
+	ret = sm2_ctx_check(smctx);
+	if (ret == UADK_DO_SOFT)
 		return UADK_DO_SOFT;
-	}
-
-	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
-		return UADK_DO_SOFT;
-	}
 
 	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
 	hash_size = EVP_MD_size(md);
@@ -1229,6 +1229,7 @@ static int sm2_init(EVP_PKEY_CTX *ctx)
 	}
 
 	smctx->init_status = CTX_INIT_SUCC;
+
 end:
 	EVP_PKEY_CTX_set_data(ctx, smctx);
 	EVP_PKEY_CTX_set0_keygen_info(ctx, NULL, 0);
@@ -1601,13 +1602,14 @@ static int sm2_digest_custom(EVP_PKEY_CTX *ctx, EVP_MD_CTX *mctx)
 	}
 
 	if (!smctx->ctx.id_set) {
-		/*
-		 * An ID value must be set. The specifications are not clear whether a
-		 * NULL is allowed. We only allow it if set explicitly for maximum
-		 * flexibility.
-		 */
-		fprintf(stderr, "id not set\n");
-		return 0;
+		/* If the id is not set, use the default value. */
+		smctx->ctx.id = OPENSSL_memdup(SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN);
+		if (smctx->ctx.id == NULL) {
+			fprintf(stderr, "failed to memdup ctx id\n");
+			return 0;
+		}
+		smctx->ctx.id_len = SM2_DEFAULT_USERID_LEN;
+		smctx->ctx.id_set = 1;
 	}
 
 	if (mdlen < 0) {
@@ -1628,11 +1630,16 @@ static int sm2_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
 static int sm2_copy(EVP_PKEY_CTX *dst, const EVP_PKEY_CTX *src)
 # endif
 {
-	struct sm2_ctx *dctx, *sctx;
+	struct sm2_ctx *sctx = EVP_PKEY_CTX_get_data(src);
+	struct sm2_ctx *dctx;
+
+	if (!sctx) {
+		fprintf(stderr, "src ctx is NULL\n");
+		return 0;
+	}
 
 	if (!sm2_init(dst))
 		return 0;
-	sctx = EVP_PKEY_CTX_get_data(src);
 	dctx = EVP_PKEY_CTX_get_data(dst);
 	if (sctx->ctx.gen_group != NULL) {
 		dctx->ctx.gen_group = EC_GROUP_dup(sctx->ctx.gen_group);
