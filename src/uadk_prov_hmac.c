@@ -41,7 +41,7 @@
 
 #define MAX_DIGEST_LENGTH	64
 #define MAX_KEY_LEN		144
-#define HMAC_BLOCK_SIZE		(512 * 1024)
+#define HMAC_BLOCK_SIZE		16384
 #define ALG_NAME_SIZE		128
 #define PARAMS_SIZE		2
 
