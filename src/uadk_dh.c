@@ -887,6 +887,7 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 	const BIGNUM *p = NULL;
 	const BIGNUM *g = NULL;
 	const BIGNUM *q = NULL;
+	__u16 len;
 	int ret;
 
 	if (!dh || !key || !pub_key || !DH_get0_priv_key(dh))
@@ -918,8 +919,11 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 		goto free_data;
 	}
 
-	memcpy(key, dh_sess->req.pri, dh_sess->req.pri_bytes);
-	ret = dh_sess->req.pri_bytes;
+	len = dh_sess->req.pri_bytes < dh_sess->key_size ?
+	      dh_sess->req.pri_bytes : dh_sess->key_size;
+	memset(key, 0, dh_sess->key_size - len);
+	memcpy(key + dh_sess->key_size - len, dh_sess->req.pri, len);
+	ret = dh_sess->key_size;
 	dh_free_eng_session(dh_sess);
 
 	return ret;
