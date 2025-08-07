@@ -32,6 +32,8 @@
 #define SM2_KEY_BYTES		32
 #define SM2_GET_SIGNLEN		1
 #define SM3_DIGEST_LENGTH	32
+#define SM2_DEFAULT_USERID	"1234567812345678"
+#define SM2_DEFAULT_USERID_LEN	16
 
 static pthread_mutex_t sign_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t asym_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1853,6 +1855,17 @@ static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 		if (z == NULL) {
 			fprintf(stderr, "failed to alloc z\n");
 			return UADK_P_FAIL;
+		}
+
+		/* if id is not set, use default id */
+		if (psm2ctx->id == NULL) {
+			/* psm2ctx id will be freed in uadk_signature_sm2_freectx, not here */
+			psm2ctx->id = OPENSSL_memdup(SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN);
+			if (psm2ctx->id == NULL) {
+				fprintf(stderr, "failed to memdup psm2ctx id\n");
+				goto free_z;
+			}
+			psm2ctx->id_len = SM2_DEFAULT_USERID_LEN;
 		}
 
 		/* get hashed prefix 'z' of tbs message */
