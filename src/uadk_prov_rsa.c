@@ -64,8 +64,6 @@
 #define GENCB_RETRY			3
 #define PRIME_CHECK_BIT_NUM		4
 
-#define rsa_pss_restricted(prsactx) (prsactx->min_saltlen != -1)
-
 UADK_PKEY_KEYMGMT_DESCR(rsa, RSA);
 UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
 UADK_PKEY_ASYM_CIPHER_DESCR(rsa, RSA);
@@ -2145,7 +2143,6 @@ static void uadk_signature_rsa_freectx(void *vprsactx)
 
 	free_tbuf(priv);
 	OPENSSL_clear_free(priv, sizeof(*priv));
-	uadk_prov_destroy_rsa();
 }
 
 static void *uadk_asym_cipher_rsa_newctx(void *provctx)
@@ -2168,7 +2165,6 @@ static void uadk_asym_cipher_rsa_freectx(void *vprsactx)
 		return;
 
 	OPENSSL_free(priv);
-	uadk_prov_destroy_rsa();
 }
 
 static int uadk_signature_rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
@@ -2221,30 +2217,31 @@ static int uadk_rsa_check_padding(const PROV_RSA_SIG_CTX *prsactx,
 	switch (prsactx->pad_mode) {
 	case RSA_NO_PADDING:
 		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_PADDING_MODE);
-		return 0;
+		return UADK_E_FAIL;
 	case RSA_X931_PADDING:
 		if (RSA_X931_hash_id(mdnid) == -1) {
 			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_X931_DIGEST);
-			return 0;
+			return UADK_E_FAIL;
 		}
 		break;
 	case RSA_PKCS1_PSS_PADDING:
-		if (rsa_pss_restricted(prsactx))
+		if (prsactx->min_saltlen != -1) {
 			if ((mdname != NULL && !EVP_MD_is_a(prsactx->md, mdname)) ||
 			    (mgf1_mdname != NULL &&
 			    !EVP_MD_is_a(prsactx->mgf1_md, mgf1_mdname))) {
 				ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
-				return 0;
+				return UADK_E_FAIL;
 			}
+		}
 		break;
 	default:
 		break;
 	}
 
-	return 1;
+	return UADK_E_SUCCESS;
 }
 
-int uadk_digest_md_to_nid(const EVP_MD *md, const OSSL_ITEM *it, size_t it_len)
+static int uadk_digest_md_to_nid(const EVP_MD *md, const OSSL_ITEM *it, size_t it_len)
 {
 	size_t i;
 
@@ -2257,7 +2254,7 @@ int uadk_digest_md_to_nid(const EVP_MD *md, const OSSL_ITEM *it, size_t it_len)
 	return NID_undef;
 }
 
-int uadk_digest_get_approved_nid(const EVP_MD *md)
+static int uadk_digest_get_approved_nid(const EVP_MD *md)
 {
 	static const OSSL_ITEM name_to_nid[] = {
 		{ NID_sha1,      OSSL_DIGEST_NAME_SHA1      },
@@ -2276,7 +2273,7 @@ int uadk_digest_get_approved_nid(const EVP_MD *md)
 	return uadk_digest_md_to_nid(md, name_to_nid, OSSL_NELEM(name_to_nid));
 }
 
-int uadk_digest_rsa_sign_get_md_nid(OSSL_LIB_CTX *ctx, const EVP_MD *md,
+static int uadk_digest_rsa_sign_get_md_nid(OSSL_LIB_CTX *ctx, const EVP_MD *md,
 				    int sha1_allowed)
 {
 	return uadk_digest_get_approved_nid(md);
@@ -2285,6 +2282,8 @@ int uadk_digest_rsa_sign_get_md_nid(OSSL_LIB_CTX *ctx, const EVP_MD *md,
 static int uadk_rsa_setup_md(PROV_RSA_SIG_CTX *ctx, const char *mdname,
 			     const char *mdprops)
 {
+	size_t mdname_len;
+
 	if (mdprops == NULL)
 		mdprops = ctx->propq;
 
@@ -2293,8 +2292,7 @@ static int uadk_rsa_setup_md(PROV_RSA_SIG_CTX *ctx, const char *mdname,
 		int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN);
 		int md_nid = uadk_digest_rsa_sign_get_md_nid(ctx->libctx, md,
 				sha1_allowed);
-		size_t mdname_len = strlen(mdname);
-
+		mdname_len = strlen(mdname);
 		if (md == NULL || md_nid <= 0 ||
 		    !uadk_rsa_check_padding(ctx, mdname, NULL, md_nid) ||
 		    mdname_len >= sizeof(ctx->mdname)) {
@@ -2307,24 +2305,32 @@ static int uadk_rsa_setup_md(PROV_RSA_SIG_CTX *ctx, const char *mdname,
 			if (mdname_len >= sizeof(ctx->mdname))
 				ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
 						"%s exceeds name buffer length", mdname);
-			EVP_MD_free(md);
+			if (md)
+				EVP_MD_free(md);
 			return 0;
 		}
 
 		if (!ctx->mgf1_md_set) {
 			if (!EVP_MD_up_ref(md)) {
-				EVP_MD_free(md);
+				if (md)
+					EVP_MD_free(md);
 				return 0;
 			}
-			EVP_MD_free(ctx->mgf1_md);
+			if (ctx->mgf1_md)
+				EVP_MD_free(ctx->mgf1_md);
 			ctx->mgf1_md = md;
 			ctx->mgf1_mdnid = md_nid;
 			OPENSSL_strlcpy(ctx->mgf1_mdname, mdname, sizeof(ctx->mgf1_mdname));
 		}
 
-		EVP_MD_CTX_free(ctx->mdctx);
-		EVP_MD_free(ctx->md);
-		ctx->mdctx = NULL;
+		if (ctx->mdctx) {
+			EVP_MD_CTX_free(ctx->mdctx);
+			ctx->mdctx = NULL;
+		}
+
+		if (ctx->md)
+			EVP_MD_free(ctx->md);
+
 		ctx->md = md;
 		ctx->mdnid = md_nid;
 		OPENSSL_strlcpy(ctx->mdname, mdname, sizeof(ctx->mdname));
@@ -2361,8 +2367,11 @@ static int uadk_signature_rsa_digest_signverify_init(void *vprsactx, const char 
 	return 1;
 
 error:
-	EVP_MD_CTX_free(priv->mdctx);
-	priv->mdctx = NULL;
+	if (priv->mdctx) {
+		EVP_MD_CTX_free(priv->mdctx);
+		priv->mdctx = NULL;
+	}
+
 	return 0;
 }
 
@@ -2426,7 +2435,7 @@ ENCODE_DIGESTINFO_SHA(sha3_512, 0x0a, SHA512_DIGEST_LENGTH);
 		return digestinfo_##name##_der
 
 
-const unsigned char *uadk_rsa_digestinfo_encoding(int md_nid, size_t *len)
+static const unsigned char *uadk_rsa_digestinfo_encoding(int md_nid, size_t *len)
 {
 	switch (md_nid) {
 	MD_CASE(sha1);
@@ -2506,7 +2515,6 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 	if (priv->mdctx == NULL)
 		return UADK_E_FAIL;
 
-	priv->flag_allow_md = 1;
 	rsasize = uadk_rsa_size(priv->rsa);
 
 	/*
@@ -2524,6 +2532,8 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 		*siglen = rsasize;
 		return 1;
 	}
+
+	priv->flag_allow_md = 1;
 
 	if (priv->pad_mode == RSA_PKCS1_PADDING) {
 		/* Compute the encoded digest. */
@@ -2544,18 +2554,22 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 				goto err;
 			encoded = tmps;
 		}
+	} else {
+		fprintf(stderr, "This padding mode is not supported\n");
+		return UADK_E_FAIL;
 	}
 
 	ret = uadk_prov_rsa_private_sign(encoded_len, encoded, sig, priv->rsa, priv->pad_mode);
 	if (ret == UADK_DO_SOFT || ret == UADK_E_FAIL)
-		goto exe_soft;
+		goto err;
 
+	OPENSSL_clear_free(tmps, encoded_len);
 	return ret;
 err:
 	OPENSSL_clear_free(tmps, encoded_len);
-exe_soft:
 	if (ret == UADK_DO_SOFT)
-		uadk_rsa_sw_sign(vprsactx, sig, siglen, sigsize, digest, dlen);
+		return uadk_rsa_sw_sign(vprsactx, sig, siglen, sigsize, digest, dlen);
+
 	return UADK_E_FAIL;
 }
 
@@ -2584,7 +2598,7 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	unsigned char *decrypt_buf = NULL, *encoded = NULL;
 	size_t decrypt_len, encoded_len = 0;
 	unsigned char digest[EVP_MAX_MD_SIZE];
-	unsigned int dlen = 0, len;
+	unsigned int dlen = 0;
 	int ret = UADK_E_FAIL;
 
 	if (priv == NULL)
@@ -2600,25 +2614,24 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 		return UADK_E_FAIL;
 
-
 	if (priv->pad_mode == RSA_PKCS1_PADDING) {
 		if (siglen != (size_t)uadk_rsa_size(priv->rsa)) {
 			ERR_raise(ERR_LIB_RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
-			return 0;
+			return UADK_E_FAIL;
 		}
 
 		/* Recover the encoded digest. */
 		decrypt_buf = OPENSSL_malloc(siglen);
 		if (decrypt_buf == NULL) {
 			ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
-			goto err;
+			return UADK_E_FAIL;
 		}
 
-		len = uadk_prov_rsa_public_verify(siglen, sig, decrypt_buf,
+		ret = uadk_prov_rsa_public_verify(siglen, sig, decrypt_buf,
 						 priv->rsa, priv->pad_mode);
-		if (len <= 0)
+		if (ret <= 0)
 			goto err;
-		decrypt_len = len;
+		decrypt_len = ret;
 
 		if (priv->mdnid == NID_md5_sha1) {
 			/*
@@ -2628,34 +2641,50 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 			 */
 			if (decrypt_len != SSL_SIG_LENGTH) {
 				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				ret = UADK_E_FAIL;
 				goto err;
 			}
 
 			if (siglen != SSL_SIG_LENGTH) {
 				ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+				ret = UADK_E_FAIL;
 				goto err;
 			}
 
-			if (memcmp(decrypt_buf, sig, SSL_SIG_LENGTH) != 0) {
+			if (memcmp(decrypt_buf, digest, SSL_SIG_LENGTH) != 0) {
 				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				ret = UADK_E_FAIL;
 				goto err;
 			}
 		} else {
 			/* Construct the encoded digest and ensure it matches. */
-			if (!encode_pkcs1(&encoded, &encoded_len, priv->mdnid, digest, dlen))
+			if (!encode_pkcs1(&encoded, &encoded_len, priv->mdnid, digest, dlen)) {
+				ret = UADK_E_FAIL;
 				goto err;
+			}
 
 			if (encoded_len != decrypt_len
 					|| memcmp(encoded, decrypt_buf, encoded_len) != 0) {
 				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				ret = UADK_E_FAIL;
 				goto err;
 			}
 		}
-		ret = 1;
+		ret = UADK_E_SUCCESS;
+	} else {
+		fprintf(stderr, "This padding mode is not supported\n");
+		return UADK_E_FAIL;
 	}
+
 err:
-	OPENSSL_clear_free(encoded, encoded_len);
-	OPENSSL_clear_free(decrypt_buf, siglen);
+	if (encoded)
+		OPENSSL_clear_free(encoded, encoded_len);
+	if (decrypt_buf)
+		OPENSSL_clear_free(decrypt_buf, siglen);
+
+	if (ret == UADK_DO_SOFT)
+		return uadk_rsa_sw_verify(vprsactx, sig, siglen, digest, dlen);
+
 	return ret;
 }
 
