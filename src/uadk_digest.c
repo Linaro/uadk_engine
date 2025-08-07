@@ -140,6 +140,7 @@ struct digest_priv_ctx {
 	bool is_stream_copy;
 	size_t total_data_len;
 	struct sched_params sched_param;
+	__u32 out_bytes;
 };
 
 struct digest_info {
@@ -544,7 +545,7 @@ static void digest_priv_ctx_setup(struct digest_priv_ctx *priv,
 	priv->setup.alg = alg;
 	priv->setup.mode = mode;
 	priv->req.out_buf_bytes = MAX_DIGEST_LENGTH;
-	priv->req.out_bytes = out_len;
+	priv->out_bytes = out_len;
 }
 
 static void digest_priv_ctx_reset(struct digest_priv_ctx *priv)
@@ -574,41 +575,51 @@ static int uadk_e_digest_ctrl(EVP_MD_CTX *ctx, int cmd, int numa_node, void *p2)
 	return 1;
 }
 
+static bool is_digest_nid_found(struct digest_priv_ctx *priv, int nid)
+
+{
+	__u32 counts = ARRAY_SIZE(digest_info_table);
+	__u32 i;
+
+	for (i = 0; i < counts; i++) {
+		if (nid == digest_info_table[i].nid) {
+			digest_priv_ctx_setup(priv, digest_info_table[i].alg,
+					      digest_info_table[i].mode,
+					      digest_info_table[i].out_len);
+			return true;
+		}
+	}
+
+	fprintf(stderr, "failed to find the digest nid!\n");
+	return false;
+}
+
 static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 {
 	struct digest_priv_ctx *priv =
 		(struct digest_priv_ctx *) EVP_MD_CTX_md_data(ctx);
-	__u32 digest_counts = ARRAY_SIZE(digest_info_table);
-	__u32 i;
-	int ret;
+	int ret, nid;
 
 	if (unlikely(!priv)) {
 		fprintf(stderr, "priv get from digest ctx is NULL.\n");
 		return 0;
 	}
 
-	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
-
 	digest_priv_ctx_reset(priv);
+
+	nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
+	if (nid != priv->e_nid) {
+		ret = is_digest_nid_found(priv, nid);
+		if (!ret)
+			return 0;
+		priv->e_nid = nid;
+	}
 
 	ret = uadk_e_init_digest();
 	if (unlikely(!ret)) {
 		priv->switch_flag = UADK_DO_SOFT;
 		fprintf(stderr, "uadk failed to initialize digest.\n");
 		return digest_soft_init(priv);
-	}
-
-	for (i = 0; i < digest_counts; i++) {
-		if (priv->e_nid == digest_info_table[i].nid) {
-			digest_priv_ctx_setup(priv, digest_info_table[i].alg,
-			digest_info_table[i].mode, digest_info_table[i].out_len);
-			break;
-		}
-	}
-
-	if (unlikely(i == digest_counts)) {
-		fprintf(stderr, "failed to setup the private ctx.\n");
-		return 0;
 	}
 
 	/* Use the default numa parameters */
@@ -635,22 +646,15 @@ out:
 	return 0;
 }
 
-static void digest_update_out_length(EVP_MD_CTX *ctx)
+static void digest_update_out_length(struct digest_priv_ctx *priv)
 {
-	struct digest_priv_ctx *priv =
-		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
-
-	if (unlikely(!priv)) {
-		fprintf(stderr, "priv get from digest ctx is NULL.\n");
-		return;
-	}
-
 	/* Sha224 and Sha384 need full length mac buffer as doing long hash */
 	if (priv->e_nid == NID_sha224)
 		priv->req.out_bytes = WD_DIGEST_SHA224_FULL_LEN;
-
-	if (priv->e_nid == NID_sha384)
+	else if (priv->e_nid == NID_sha384)
 		priv->req.out_bytes = WD_DIGEST_SHA384_FULL_LEN;
+	else
+		priv->req.out_bytes = priv->out_bytes;
 }
 
 static void digest_set_msg_state(struct digest_priv_ctx *priv, bool is_end)
@@ -676,7 +680,7 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		return 0;
 	}
 
-	digest_update_out_length(ctx);
+	digest_update_out_length(priv);
 	digest_set_msg_state(priv, false);
 
 	do {
@@ -893,13 +897,7 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
 	priv->req.in_bytes = priv->last_update_bufflen;
-	priv->e_nid = EVP_MD_nid(EVP_MD_CTX_md(ctx));
-
-	if (priv->e_nid == NID_sha224)
-		priv->req.out_bytes = WD_DIGEST_SHA224_LEN;
-
-	if (priv->e_nid == NID_sha384)
-		priv->req.out_bytes = WD_DIGEST_SHA384_LEN;
+	priv->req.out_bytes = priv->out_bytes;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		if (async_get_async_job())
@@ -978,6 +976,7 @@ static int uadk_e_digest_cleanup(EVP_MD_CTX *ctx)
 	}
 
 	digest_soft_cleanup(priv);
+	priv->e_nid = NID_undef;
 
 	return 1;
 }
