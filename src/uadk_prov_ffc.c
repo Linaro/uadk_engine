@@ -21,6 +21,7 @@
 #define BN_DEF(lo, hi) lo, hi
 #endif
 
+#define HASH_FIRST_BYTES	3
 /* DH parameters from RFC3526 */
 
 # ifndef FIPS_MODULE
@@ -1510,7 +1511,7 @@ static int generate_canonical_g(BN_CTX *ctx, BN_MONT_CTX *mont,
 		    !EVP_DigestUpdate(mctx, seed, seedlen) ||
 		    !EVP_DigestUpdate(mctx, ggen, sizeof(ggen)) ||
 		    /* Hash the first three bytes of md, corresponds to 'index || counter' */
-		    !EVP_DigestUpdate(mctx, md, 3) ||
+		    !EVP_DigestUpdate(mctx, md, HASH_FIRST_BYTES) ||
 		    !EVP_DigestFinal_ex(mctx, md, NULL) ||
 		    (BN_bin2bn(md, mdsize, w) == NULL) ||
 		    !BN_mod_exp_mont(g, w, e, p, ctx, mont))
