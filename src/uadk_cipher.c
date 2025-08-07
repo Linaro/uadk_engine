@@ -65,6 +65,8 @@ struct cipher_priv_ctx {
 	size_t switch_threshold;
 	bool update_iv;
 	struct sched_params sched_param;
+	int nid;
+	const EVP_CIPHER *sw_cipher;
 };
 
 struct cipher_info {
@@ -171,8 +173,7 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 {
 	/* Real implementation: Openssl soft arithmetic key initialization function */
 	struct cipher_priv_ctx *priv;
-	const EVP_CIPHER *sw_cipher;
-	int ret, nid, sw_size;
+	int ret, sw_size;
 
 	if (unlikely(key == NULL)) {
 		fprintf(stderr, "uadk engine init parameter key is NULL.\n");
@@ -185,14 +186,7 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		return 0;
 	}
 
-	nid = EVP_CIPHER_CTX_nid(ctx);
-	sw_cipher = sec_ciphers_get_cipher_sw_impl(nid);
-	if (unlikely(sw_cipher == NULL)) {
-		fprintf(stderr, "get openssl software cipher failed, nid = %d.\n", nid);
-		return 0;
-	}
-
-	sw_size = EVP_CIPHER_impl_ctx_size(sw_cipher);
+	sw_size = EVP_CIPHER_impl_ctx_size(priv->sw_cipher);
 	if (unlikely(sw_size == 0)) {
 		fprintf(stderr, "get openssl software cipher ctx size failed.\n");
 		return 0;
@@ -209,7 +203,7 @@ static int uadk_e_cipher_sw_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		iv = EVP_CIPHER_CTX_iv_noconst(ctx);
 
 	EVP_CIPHER_CTX_set_cipher_data(ctx, priv->sw_ctx_data);
-	ret = EVP_CIPHER_meth_get_init(sw_cipher)(ctx, key, iv, enc);
+	ret = EVP_CIPHER_meth_get_init(priv->sw_cipher)(ctx, key, iv, enc);
 	EVP_CIPHER_CTX_set_cipher_data(ctx, priv);
 	if (unlikely(ret != 1)) {
 		fprintf(stderr, "failed init openssl soft work key.\n");
@@ -225,9 +219,8 @@ static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 				   const unsigned char *in, size_t inl)
 {
 	struct cipher_priv_ctx *priv;
-	const EVP_CIPHER *sw_cipher;
 	unsigned char *iv;
-	int ret, nid;
+	int ret;
 
 	priv = (struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (unlikely(priv == NULL)) {
@@ -245,15 +238,9 @@ static int uadk_e_cipher_soft_work(EVP_CIPHER_CTX *ctx, unsigned char *out,
 		memcpy(iv, priv->iv, EVP_CIPHER_CTX_iv_length(ctx));
 		priv->update_iv = true;
 	}
-	sw_cipher = sec_ciphers_get_cipher_sw_impl(EVP_CIPHER_CTX_nid(ctx));
-	if (unlikely(sw_cipher == NULL)) {
-		nid = EVP_CIPHER_CTX_nid(ctx);
-		fprintf(stderr, "get openssl software cipher failed, nid = %d.\n", nid);
-		return 0;
-	}
 
 	EVP_CIPHER_CTX_set_cipher_data(ctx, priv->sw_ctx_data);
-	ret = EVP_CIPHER_meth_get_do_cipher(sw_cipher)(ctx, out, in, inl);
+	ret = EVP_CIPHER_meth_get_do_cipher(priv->sw_cipher)(ctx, out, in, inl);
 	if (unlikely(ret != 1)) {
 		fprintf(stderr, "OpenSSL do cipher failed.\n");
 		return 0;
@@ -475,11 +462,21 @@ err_unlock:
 	return 0;
 }
 
-static void cipher_priv_ctx_setup(struct cipher_priv_ctx *priv,
-				  enum wd_cipher_alg alg, enum wd_cipher_mode mode)
+static bool is_cipher_nid_found(struct cipher_priv_ctx *priv, int nid)
 {
-	priv->setup.alg = alg;
-	priv->setup.mode = mode;
+	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
+	__u32 i;
+
+	for (i = 0; i < cipher_counts; i++) {
+		if (nid == cipher_info_table[i].nid) {
+			priv->setup.alg = cipher_info_table[i].alg;
+			priv->setup.mode = cipher_info_table[i].mode;
+			return true;
+		}
+	}
+
+	fprintf(stderr, "failed to find the cipher nid!\n");
+	return false;
 }
 
 static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
@@ -487,9 +484,7 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
-	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
 	int nid, ret;
-	__u32 i;
 
 	if (unlikely(!priv)) {
 		fprintf(stderr, "priv get from cipher ctx is NULL.\n");
@@ -501,7 +496,6 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 		return 0;
 	}
 
-	nid = EVP_CIPHER_CTX_nid(ctx);
 	priv->req.op_type = enc ? WD_CIPHER_ENCRYPTION : WD_CIPHER_DECRYPTION;
 
 	if (iv)
@@ -509,17 +503,18 @@ static int uadk_e_cipher_init(EVP_CIPHER_CTX *ctx, const unsigned char *key,
 	else
 		memcpy(priv->iv, EVP_CIPHER_CTX_iv_noconst(ctx), EVP_CIPHER_CTX_iv_length(ctx));
 
-	for (i = 0; i < cipher_counts; i++) {
-		if (nid == cipher_info_table[i].nid) {
-			cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
-						cipher_info_table[i].mode);
-			break;
-		}
-	}
+	nid = EVP_CIPHER_CTX_nid(ctx);
+	if (nid != priv->nid) {
+		ret = is_cipher_nid_found(priv, nid);
+		if (!ret)
+			return 0;
 
-	if (i == cipher_counts) {
-		fprintf(stderr, "failed to setup the private ctx.\n");
-		return 0;
+		priv->sw_cipher = sec_ciphers_get_cipher_sw_impl(nid);
+		if (unlikely(priv->sw_cipher == NULL)) {
+			fprintf(stderr, "get openssl software cipher failed, nid = %d.\n", nid);
+			return 0;
+		}
+		priv->nid = nid;
 	}
 
 	ret = uadk_e_cipher_sw_init(ctx, key, iv, enc);
@@ -543,6 +538,9 @@ static int uadk_e_cipher_cleanup(EVP_CIPHER_CTX *ctx)
 		wd_cipher_free_sess(priv->sess);
 		priv->sess = 0;
 	}
+
+	priv->nid = NID_undef;
+	priv->sw_cipher = NULL;
 
 	return 1;
 }
@@ -644,10 +642,8 @@ static int uadk_e_cipher_ctrl(EVP_CIPHER_CTX *ctx, int type, int numa_node, void
 
 static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 {
-	__u32 cipher_counts = ARRAY_SIZE(cipher_info_table);
 	struct sched_params *para;
-	int nid, ret, type;
-	__u32 i;
+	int nid, ret, type = 0;
 
 	priv->req.iv_bytes = EVP_CIPHER_CTX_iv_length(ctx);
 	priv->req.iv = priv->iv;
@@ -667,10 +663,8 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	 * the cipher algorithm does not distinguish between
 	 * encryption and decryption queues
 	 */
-	type = priv->req.op_type;
-	ret = uadk_e_is_env_enabled("cipher");
-	if (ret)
-		type = 0;
+	if (priv->req.op_type)
+		type = uadk_e_is_env_enabled("cipher") ? 0 : priv->req.op_type;
 
 	/* Use the default numa parameters */
 	if (priv->setup.sched_param != &priv->sched_param)
@@ -681,18 +675,10 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 
 	if (!priv->sess) {
 		nid = EVP_CIPHER_CTX_nid(ctx);
-
-		for (i = 0; i < cipher_counts; i++) {
-			if (nid == cipher_info_table[i].nid) {
-				cipher_priv_ctx_setup(priv, cipher_info_table[i].alg,
-							cipher_info_table[i].mode);
-				break;
-			}
-		}
-
-		if (i == cipher_counts) {
-			fprintf(stderr, "failed to setup the private ctx.\n");
-			return;
+		if (nid != priv->nid) {
+			ret = is_cipher_nid_found(priv, nid);
+			if (!ret)
+				return;
 		}
 
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
