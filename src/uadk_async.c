@@ -44,6 +44,13 @@ static void uadk_e_set_async_poll_state(int state)
 static void async_fd_cleanup(ASYNC_WAIT_CTX *ctx, const void *key,
 			     OSSL_ASYNC_FD readfd, void *custom)
 {
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	int (*callback)(void *arg);
+	void *args;
+
+	if (ASYNC_WAIT_CTX_get_callback(ctx, &callback, &args))
+		return;
+# endif
 	close(readfd);
 }
 
@@ -52,6 +59,10 @@ int async_setup_async_event_notification(struct async_op *op)
 	ASYNC_WAIT_CTX *waitctx;
 	void *custom = NULL;
 	OSSL_ASYNC_FD efd;
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	int (*callback)(void *arg);
+	void *args;
+# endif
 
 	memset(op, 0, sizeof(struct async_op));
 	op->job = ASYNC_get_current_job();
@@ -61,6 +72,11 @@ int async_setup_async_event_notification(struct async_op *op)
 	waitctx = ASYNC_get_wait_ctx(op->job);
 	if (!waitctx)
 		return UADK_E_FAIL;
+
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	if (ASYNC_WAIT_CTX_get_callback(waitctx, &callback, &args))
+		return UADK_E_SUCCESS;
+# endif
 
 	if (!ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom)) {
 		efd = eventfd(0, EFD_NONBLOCK);
@@ -84,6 +100,10 @@ int async_clear_async_event_notification(void)
 	void *custom = NULL;
 	OSSL_ASYNC_FD efd;
 	ASYNC_JOB *job;
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	int (*callback)(void *arg);
+	void *args;
+#endif
 
 	job = ASYNC_get_current_job();
 	if (!job)
@@ -93,6 +113,10 @@ int async_clear_async_event_notification(void)
 	if (!waitctx)
 		return UADK_E_FAIL;
 
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	if (ASYNC_WAIT_CTX_get_callback(waitctx, &callback, &args))
+		return UADK_E_SUCCESS;
+#endif
 	if (!ASYNC_WAIT_CTX_get_changed_fds(waitctx, NULL, &num_add_fds, NULL, &num_del_fds))
 		return UADK_E_FAIL;
 
@@ -235,6 +259,11 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 	void *custom;
 	uint64_t buf;
 	int ret;
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	int callback_set = 0;
+	int (*callback)(void *arg);
+	void *args;
+#endif
 
 	ret = async_add_poll_task(ctx, op, type);
 	if (!ret)
@@ -244,10 +273,18 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 	if (!waitctx)
 		return UADK_E_FAIL;
 
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	if (ASYNC_WAIT_CTX_get_callback(waitctx, &callback, &args))
+		callback_set = 1;
+#endif
 	do {
 		if (!ASYNC_pause_job())
 			return UADK_E_FAIL;
 
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+		if (callback_set)
+			return UADK_E_SUCCESS;
+#endif
 		ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 		if (ret <= 0)
 			continue;
@@ -270,11 +307,21 @@ int async_wake_job(ASYNC_JOB *job)
 	uint64_t buf = 1;
 	void *custom;
 	int ret;
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	int (*callback)(void *arg);
+	void *args;
+#endif
 
 	waitctx = ASYNC_get_wait_ctx(job);
 	if (!waitctx)
 		return UADK_E_FAIL;
 
+# if OPENSSL_VERSION_NUMBER >= 0x30000000
+	if (ASYNC_WAIT_CTX_get_callback(waitctx, &callback, &args)) {
+		(*callback)(args);
+		return UADK_E_SUCCESS;
+	}
+#endif
 	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
 		if (write(efd, &buf, sizeof(uint64_t)) == -1) {
