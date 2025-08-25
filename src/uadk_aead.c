@@ -272,8 +272,10 @@ static int uadk_e_init_aead_cipher(void)
 }
 
 static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey,
-			   int ckey_len, struct wd_aead_sess_setup *setup)
+			   int ckey_len)
 {
+	struct wd_aead_sess_setup setup = {0};
+	struct sched_params params = {0};
 	int ret;
 
 	ret = uadk_e_init_aead_cipher();
@@ -281,7 +283,15 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 		return UADK_E_FAIL;
 
 	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(setup);
+		params.type = priv->req.op_type;
+		if (params.type && uadk_e_is_env_enabled("aead"))
+			params.type = 0;
+		params.numa_id = g_aead_engine.numa_id;
+		setup.sched_param = &params;
+		setup.calg = WD_CIPHER_AES;
+		setup.cmode = WD_CIPHER_GCM;
+
+		priv->sess = wd_aead_alloc_sess(&setup);
 		if (!priv->sess) {
 			fprintf(stderr, "uadk engine failed to alloc aead session!\n");
 			return UADK_E_FAIL;
@@ -289,12 +299,6 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 		ret = wd_aead_set_authsize(priv->sess, AES_GCM_TAG_LEN);
 		if (ret < 0) {
 			fprintf(stderr, "uadk engine failed to set authsize!\n");
-			goto out;
-		}
-
-		ret = wd_aead_set_ckey(priv->sess, ckey, ckey_len);
-		if (ret) {
-			fprintf(stderr, "uadk engine failed to set ckey!\n");
 			goto out;
 		}
 
@@ -306,7 +310,17 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 		}
 	}
 
+	ret = wd_aead_set_ckey(priv->sess, ckey, ckey_len);
+	if (ret) {
+		fprintf(stderr, "uadk engine failed to set ckey!\n");
+		goto free_data;
+	}
+
 	return UADK_E_SUCCESS;
+
+free_data:
+	if (priv->data)
+		free(priv->data);
 out:
 	wd_aead_free_sess(priv->sess);
 	priv->sess = 0;
@@ -316,10 +330,8 @@ out:
 static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 			       const unsigned char *iv, int enc)
 {
-	struct wd_aead_sess_setup setup;
-	struct sched_params params = {0};
 	struct aead_priv_ctx *priv;
-	int ret, ckey_len;
+	int ckey_len;
 
 	priv = (struct aead_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
 	if (!priv) {
@@ -327,49 +339,32 @@ static int uadk_e_aes_gcm_init(EVP_CIPHER_CTX *ctx, const unsigned char *ckey,
 		return UADK_E_FAIL;
 	}
 
-	if (unlikely(!ckey))
-		return UADK_E_SUCCESS;
-
-	if (iv)
+	if (iv) {
 		memcpy(priv->iv, iv, AES_GCM_IV_LEN);
-
-	setup.calg = WD_CIPHER_AES;
-	setup.cmode = WD_CIPHER_GCM;
-	setup.dalg = 0;
-	setup.dmode = 0;
+		priv->req.iv = priv->iv;
+		priv->req.iv_bytes = AES_GCM_IV_LEN;
+		memset(priv->iv + AES_GCM_IV_LEN, 0, AES_GCM_CTR_LEN);
+	}
 
 	priv->req.assoc_bytes = 0;
 	priv->req.out_bytes = 0;
 	priv->req.data_fmt = WD_FLAT_BUF;
-
-	priv->req.iv = priv->iv;
-	priv->req.iv_bytes = AES_GCM_IV_LEN;
-	memset(priv->iv + AES_GCM_IV_LEN, 0, AES_GCM_CTR_LEN);
-
 	priv->req.mac = priv->mac;
 	priv->req.mac_bytes = AES_GCM_TAG_LEN;
-	priv->taglen = 0;
 	priv->is_req_tag_set = false;
 	priv->mode = UNINIT_STREAM;
-	priv->data = NULL;
 
 	if (enc)
 		priv->req.op_type = WD_CIPHER_ENCRYPTION_DIGEST;
 	else
 		priv->req.op_type = WD_CIPHER_DECRYPTION_DIGEST;
 
-	params.type = priv->req.op_type;
-	ret = uadk_e_is_env_enabled("aead");
-	if (ret)
-		params.type = 0;
-	params.numa_id = g_aead_engine.numa_id;
-	setup.sched_param = &params;
+	if (!ckey)
+		return UADK_E_SUCCESS;
 
 	ckey_len = EVP_CIPHER_CTX_key_length(ctx);
 
-	ret = uadk_e_ctx_init(priv, ckey, ckey_len, &setup);
-
-	return ret;
+	return uadk_e_ctx_init(priv, ckey, ckey_len);
 }
 
 static int uadk_e_aes_gcm_cleanup(EVP_CIPHER_CTX *ctx)

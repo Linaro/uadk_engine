@@ -32,6 +32,8 @@
 #define SM2_KEY_BYTES		32
 #define SM2_GET_SIGNLEN		1
 #define SM3_DIGEST_LENGTH	32
+#define SM2_DEFAULT_USERID	"1234567812345678"
+#define SM2_DEFAULT_USERID_LEN	16
 
 static pthread_mutex_t sign_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t asym_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -817,7 +819,8 @@ static void uadk_signature_sm2_freectx(void *vpsm2ctx)
 		}
 
 		if (smctx->sm2_pd) {
-			BN_free(smctx->sm2_pd->order);
+			if (smctx->sm2_pd->order)
+				BN_free(smctx->sm2_pd->order);
 			OPENSSL_free(smctx->sm2_pd);
 		}
 
@@ -950,11 +953,25 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 		0x53, 0xbb, 0xf4, 0x09, 0x39, 0xd5, 0x41, 0x23
 	};
 	struct wd_ecc_sess_setup setup = {0};
+	struct sched_params params = {0};
 	handle_t sess;
-	BIGNUM *order;
 	int type;
 
-	setup.alg = "sm2";
+	if (smctx->sm2_pd == NULL) {
+		fprintf(stderr, "invalid: sm2 pd is NULL\n");
+		return UADK_P_FAIL;
+	}
+
+	/* order is free in freectx */
+	if (smctx->sm2_pd->order == NULL) {
+		smctx->sm2_pd->order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
+		if (smctx->sm2_pd->order == NULL) {
+			fprintf(stderr, "failed to BN_bin2bn order\n");
+			return UADK_P_FAIL;
+		}
+	}
+	setup.rand.usr = (void *)smctx->sm2_pd->order;
+
 	if (smctx->sm2_md->md) {
 		/* Set hash method */
 		setup.hash.cb = uadk_prov_compute_hash;
@@ -967,14 +984,15 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 		}
 		setup.hash.type = type;
 	}
+	setup.alg = "sm2";
 
-	order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
+	/* Use the default numa parameters */
+	params.numa_id = -1;
+	setup.sched_param = &params;
 	setup.rand.cb = uadk_prov_ecc_get_rand;
-	setup.rand.usr = (void *)order;
 	sess = wd_ecc_alloc_sess(&setup);
 	if (sess == (handle_t)0) {
 		fprintf(stderr, "failed to alloc sess\n");
-		BN_free(order);
 		smctx->init_status = CTX_INIT_FAIL;
 		return UADK_P_FAIL;
 	}
@@ -986,10 +1004,6 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 
 	smctx->sm2_pd->prikey = NULL;
 	smctx->sm2_pd->pubkey = NULL;
-
-	if (smctx->sm2_pd->order)
-		BN_free(smctx->sm2_pd->order);
-	smctx->sm2_pd->order = order;
 
 	return UADK_P_SUCCESS;
 }
@@ -1060,12 +1074,6 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 
 	psm2ctx->sm2_pctx->init_status = CTX_INIT_SUCC;
 
-	ret = uadk_prov_sm2_update_sess(psm2ctx->sm2_pctx);
-	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to update sess in sign init\n");
-		goto do_soft;
-	}
-
 	return UADK_P_SUCCESS;
 
 do_soft:
@@ -1085,11 +1093,6 @@ static int uadk_prov_sm2_check_tbs_params(PROV_SM2_SIGN_CTX *psm2ctx,
 
 	if (smctx == NULL) {
 		fprintf(stderr, "invalid: ctx is NULL\n");
-		return UADK_P_FAIL;
-	}
-
-	if (smctx->sess == (handle_t)0) {
-		fprintf(stderr, "invalid: smctx->sess is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1303,6 +1306,15 @@ static int uadk_prov_sm2_sign(PROV_SM2_SIGN_CTX *psm2ctx,
 	struct wd_dtb *s = NULL;
 	int ret;
 
+	/* sess is free in uadk_signature_sm2_freectx() */
+	if (smctx->sess == (handle_t)0) {
+		ret = uadk_prov_sm2_update_sess(smctx);
+		if (ret == UADK_P_FAIL) {
+			fprintf(stderr, "failed to alloc sess in sign\n");
+			return ret;
+		}
+	}
+
 	ret = uadk_prov_sm2_sign_init_iot(smctx->sess, &req, (void *)tbs, tbslen);
 	if (ret == UADK_P_FAIL)
 		return ret;
@@ -1474,6 +1486,15 @@ static int uadk_prov_sm2_verify(PROV_SM2_SIGN_CTX *psm2ctx,
 	struct wd_dtb r = {0};
 	struct wd_dtb s = {0};
 	int ret;
+
+	/* sess is free in uadk_signature_sm2_freectx() */
+	if (smctx->sess == (handle_t)0) {
+		ret = uadk_prov_sm2_update_sess(smctx);
+		if (ret == UADK_P_FAIL) {
+			fprintf(stderr, "failed to alloc sess in verify\n");
+			return ret;
+		}
+	}
 
 	r.data = (void *)buf_r;
 	s.data = (void *)buf_s;
@@ -1836,6 +1857,17 @@ static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 			return UADK_P_FAIL;
 		}
 
+		/* if id is not set, use default id */
+		if (psm2ctx->id == NULL) {
+			/* psm2ctx id will be freed in uadk_signature_sm2_freectx, not here */
+			psm2ctx->id = OPENSSL_memdup(SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN);
+			if (psm2ctx->id == NULL) {
+				fprintf(stderr, "failed to memdup psm2ctx id\n");
+				goto free_z;
+			}
+			psm2ctx->id_len = SM2_DEFAULT_USERID_LEN;
+		}
+
 		/* get hashed prefix 'z' of tbs message */
 		ret = uadk_prov_sm2_compute_z_digest(z, smctx->sm2_md->md, psm2ctx->id,
 			psm2ctx->id_len, psm2ctx->key);
@@ -2177,21 +2209,10 @@ static int uadk_prov_sm2_locate_id_digest(PROV_SM2_SIGN_CTX *psm2ctx,  const OSS
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_signature_sm2_set_ctx_params_sw(void *vpsm2ctx, const OSSL_PARAM params[])
-{
-	if (uadk_get_sw_offload_state() && get_default_sm2_signature().set_ctx_params) {
-		fprintf(stderr, "switch to software sm2 set_ctx_params\n");
-		return get_default_sm2_signature().set_ctx_params(vpsm2ctx, params);
-	}
-
-	return UADK_P_FAIL;
-}
-
 static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM params[])
 {
 	PROV_SM2_SIGN_CTX *psm2ctx = (PROV_SM2_SIGN_CTX *)vpsm2ctx;
 	SM2_PROV_CTX *smctx;
-	int ret;
 
 	/*
 	 * 'set_ctx_param' function can be called independently,
@@ -2212,23 +2233,7 @@ static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM pa
 		return UADK_P_FAIL;
 	}
 
-	ret = uadk_prov_sm2_locate_id_digest(psm2ctx, params);
-	if (ret == UADK_P_FAIL)
-		return ret;
-
-	/* If not init, do not need to update session, just set the data before */
-	if (smctx->init_status == CTX_INIT_SUCC) {
-		ret = uadk_prov_sm2_update_sess(smctx);
-		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to update sess in set_ctx\n");
-			goto do_soft;
-		}
-	}
-
-	return UADK_P_SUCCESS;
-
-do_soft:
-	return uadk_signature_sm2_set_ctx_params_sw(vpsm2ctx, params);
+	return uadk_prov_sm2_locate_id_digest(psm2ctx, params);
 }
 
 static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
@@ -2457,10 +2462,13 @@ static void uadk_asym_cipher_sm2_freectx(void *vpsm2ctx)
 			EVP_MD_free(smctx->sm2_md->md);
 			OPENSSL_free(smctx->sm2_md);
 		}
+
 		if (smctx->sm2_pd) {
-			BN_free(smctx->sm2_pd->order);
+			if (smctx->sm2_pd->order)
+				BN_free(smctx->sm2_pd->order);
 			OPENSSL_free(smctx->sm2_pd);
 		}
+
 		if (smctx->sess)
 			wd_ecc_free_sess(smctx->sess);
 		OPENSSL_free(smctx);

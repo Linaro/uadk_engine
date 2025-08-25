@@ -50,7 +50,7 @@
 #define MD5_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	(8 * 1024)
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT	(512)
 #define MAX_DIGEST_LENGTH	64
-#define DIGEST_BLOCK_SIZE	(512 * 1024)
+#define DIGEST_BLOCK_SIZE	16384
 #define ALG_NAME_SIZE		128
 
 #define UADK_DIGEST_DEF_CTXS	1
@@ -275,6 +275,13 @@ static int uadk_digest_soft_work(struct digest_priv_ctx *priv, int len,
 out:
 	digest_soft_cleanup(priv);
 	return ret;
+}
+
+static void uadk_digest_reset(struct digest_priv_ctx *priv)
+{
+	priv->state = SEC_DIGEST_INIT;
+	priv->last_update_bufflen = 0;
+	priv->total_data_len = 0;
 }
 
 static int uadk_digest_poll(void *ctx)
@@ -685,7 +692,7 @@ sync_err:
 	if (priv->state == SEC_DIGEST_INIT) {
 		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
-		ret = 0;
+		ret = UADK_DIGEST_FAIL;
 		fprintf(stderr, "do sec digest final failed.\n");
 	}
 clear:
@@ -914,7 +921,7 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 			   size_t *outl, size_t outsz)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
-	int ret;
+	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !out) {
 		fprintf(stderr, "CTX or output data is NULL.\n");
@@ -924,20 +931,23 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 	if (outsz > 0) {
 		ret = uadk_digest_final(priv, out);
 		if (!ret)
-			return ret;
+			goto reset_ctx;
 	}
 
 	if (outl)
 		*outl = priv->md_size;
 
-	return UADK_DIGEST_SUCCESS;
+reset_ctx:
+	uadk_digest_reset(priv);
+
+	return ret;
 }
 
 static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 			    unsigned char *out, size_t *outl, size_t outsz)
 {
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
-	int ret;
+	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !in || !out) {
 		fprintf(stderr, "CTX or input or output data is NULL.\n");
@@ -953,13 +963,16 @@ static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 	if (outsz > 0) {
 		ret = uadk_digest_digest(priv, in, inl, out);
 		if (!ret)
-			return ret;
+			goto reset_ctx;
 	}
 
 	if (unlikely(outl != NULL))
 		*outl = priv->md_size;
 
-	return UADK_DIGEST_SUCCESS;
+reset_ctx:
+	uadk_digest_reset(priv);
+
+	return ret;
 }
 
 void uadk_prov_destroy_digest(void)
