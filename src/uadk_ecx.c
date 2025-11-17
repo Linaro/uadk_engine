@@ -740,15 +740,6 @@ int uadk_x25519_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	return UADK_E_SUCCESS;
 }
 
-void uadk_x25519_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	if (!pkey_meth || !pkey_meth->x25519)
-		return;
-
-	EVP_PKEY_meth_free(pkey_meth->x25519);
-	pkey_meth->x25519 = NULL;
-}
-
 int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 {
 	const EVP_PKEY_METHOD *openssl_meth;
@@ -784,13 +775,4 @@ int uadk_x448_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	pkey_meth->x448 = meth;
 
 	return UADK_E_SUCCESS;
-}
-
-void uadk_x448_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	if (!pkey_meth || !pkey_meth->x448)
-		return;
-
-	EVP_PKEY_meth_free(pkey_meth->x448);
-	pkey_meth->x448 = NULL;
 }
