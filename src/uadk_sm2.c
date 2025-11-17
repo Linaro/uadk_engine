@@ -1707,12 +1707,3 @@ int uadk_sm2_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 
 	return 1;
 }
-
-void uadk_sm2_delete_pmeth(struct uadk_pkey_meth *pkey_meth)
-{
-	if (!pkey_meth || !pkey_meth->sm2)
-		return;
-
-	EVP_PKEY_meth_free(pkey_meth->sm2);
-	pkey_meth->sm2 = NULL;
-}
