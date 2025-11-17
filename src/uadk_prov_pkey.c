@@ -17,6 +17,7 @@
  *
  */
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define ECC_TYPE		5
 #define CTX_ASYNC		1
@@ -128,7 +129,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 	int ret;
 
 	if (out == NULL) {
-		fprintf(stderr, "out is NULL\n");
+		UADK_ERR("out is NULL\n");
 		return UADK_P_INVALID;
 	}
 
@@ -139,7 +140,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 	do {
 		ret = BN_priv_rand_range(k, usr);
 		if (ret == 0) {
-			fprintf(stderr, "failed to BN_priv_rand_range\n");
+			UADK_ERR("failed to BN_priv_rand_range\n");
 			ret = -EINVAL;
 			goto err;
 		}
@@ -147,7 +148,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 		ret = BN_bn2binpad(k, (void *)out, (int)out_len);
 		if (ret < 0) {
 			ret = -EINVAL;
-			fprintf(stderr, "failed to BN_bn2binpad\n");
+			UADK_ERR("failed to BN_bn2binpad\n");
 			goto err;
 		}
 	} while (--count >= 0 && BN_is_zero(k));
@@ -305,7 +306,7 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 	handle_t sess;
 
 	if (!eckey) {
-		fprintf(stderr, "input eckey is NULL\n");
+		UADK_ERR("input eckey is NULL\n");
 		return (handle_t)0;
 	}
 
@@ -317,13 +318,13 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 	group = EC_KEY_get0_group(eckey);
 	ret = uadk_prov_set_sess_setup_cv(group, &sp.cv);
 	if (ret == 0) {
-		fprintf(stderr, "failed to set_sess_setup_cv\n");
+		UADK_ERR("failed to set_sess_setup_cv\n");
 		return (handle_t)0;
 	}
 
 	order = EC_GROUP_get0_order(group);
 	if (order == NULL) {
-		fprintf(stderr, "failed to get ecc order\n");
+		UADK_ERR("failed to get ecc order\n");
 		return (handle_t)0;
 	}
 
@@ -337,7 +338,7 @@ handle_t uadk_prov_ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 	sp.sched_param = &sch_p;
 	sess = wd_ecc_alloc_sess(&sp);
 	if (sess == (handle_t)0)
-		fprintf(stderr, "failed to alloc ecc sess\n");
+		UADK_ERR("failed to alloc ecc sess\n");
 
 	return sess;
 }
@@ -379,7 +380,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 
 	ret = async_setup_async_event_notification(&op);
 	if (ret == 0) {
-		fprintf(stderr, "failed to setup async event notification\n");
+		UADK_ERR("failed to setup async event notification\n");
 		return ret;
 	}
 
@@ -406,12 +407,12 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 	do {
 		ret = wd_do_ecc_async(sess, req);
 		if (ret < 0 && ret != -EBUSY) {
-			fprintf(stderr, "failed to do ecc async\n");
+			UADK_ERR("failed to do ecc async\n");
 			goto free_poll_task;
 		}
 
 		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
-			fprintf(stderr, "do ecc async operation timeout\n");
+			UADK_ERR("do ecc async operation timeout\n");
 			goto free_poll_task;
 		}
 	} while (ret == -EBUSY);
@@ -446,7 +447,7 @@ int uadk_prov_ecc_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to recv msg: timeout!\n");
+	UADK_ERR("failed to recv msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -458,13 +459,13 @@ static int set_group(OSSL_PARAM_BLD *bld, struct ec_gen_ctx *gctx)
 
 	params = OSSL_PARAM_BLD_to_param(bld);
 	if (params == NULL) {
-		fprintf(stderr, "failed to get params from bld\n");
+		UADK_ERR("failed to get params from bld\n");
 		return UADK_P_FAIL;
 	}
 
 	group = EC_GROUP_new_from_params(params, gctx->libctx, NULL);
 	if (group == NULL) {
-		fprintf(stderr, "failed to get group from params\n");
+		UADK_ERR("failed to get group from params\n");
 		OSSL_PARAM_free(params);
 		return UADK_P_FAIL;
 	}
@@ -485,27 +486,27 @@ static int check_curve_params(OSSL_PARAM_BLD *bld, struct ec_gen_ctx *gctx)
 	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_A, gctx->a) ||
 	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_B, gctx->b) ||
 	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_ORDER, gctx->order)) {
-		fprintf(stderr, "failed to set curve params\n");
+		UADK_ERR("failed to set curve params\n");
 		return UADK_P_FAIL;
 	}
 
 	if (gctx->cofactor != NULL &&
 	    !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_EC_COFACTOR, gctx->cofactor)) {
-		fprintf(stderr, "failed to set cofactor\n");
+		UADK_ERR("failed to set cofactor\n");
 		return UADK_P_FAIL;
 	}
 
 	if (gctx->seed != NULL &&
 	    !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_SEED,
 					      gctx->seed, gctx->seed_len)) {
-		fprintf(stderr, "failed to set seed\n");
+		UADK_ERR("failed to set seed\n");
 		return UADK_P_FAIL;
 	}
 
 	if (gctx->gen == NULL ||
 	    !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_EC_GENERATOR,
 					      gctx->gen, gctx->gen_len)) {
-		fprintf(stderr, "failed to set gen params\n");
+		UADK_ERR("failed to set gen params\n");
 		return UADK_P_FAIL;
 	}
 
@@ -519,28 +520,28 @@ static int ec_gen_set_group_from_params(struct ec_gen_ctx *gctx)
 
 	bld = OSSL_PARAM_BLD_new();
 	if (bld == NULL) {
-		fprintf(stderr, "failed to OSSL_PARAM_BLD_new\n");
+		UADK_ERR("failed to OSSL_PARAM_BLD_new\n");
 		return UADK_P_FAIL;
 	}
 
 	if (gctx->encoding != NULL &&
 	    !OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_ENCODING,
 					     gctx->encoding, 0)) {
-		fprintf(stderr, "failed to set encoding\n");
+		UADK_ERR("failed to set encoding\n");
 		goto free_bld;
 	}
 
 	if (gctx->pt_format != NULL &&
 	    !OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT,
 					     gctx->pt_format, 0)) {
-		fprintf(stderr, "failed to set point format\n");
+		UADK_ERR("failed to set point format\n");
 		goto free_bld;
 	}
 
 	if (gctx->group_name != NULL) {
 		if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
 						     gctx->group_name, 0)) {
-			fprintf(stderr, "failed to set group name\n");
+			UADK_ERR("failed to set group name\n");
 			goto free_bld;
 		}
 		/* Ignore any other parameters if there is a group name */
@@ -549,7 +550,7 @@ static int ec_gen_set_group_from_params(struct ec_gen_ctx *gctx)
 	} else if (gctx->field_type != NULL) {
 		if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_EC_FIELD_TYPE,
 						     gctx->field_type, 0)) {
-			fprintf(stderr, "failed to set filed type\n");
+			UADK_ERR("failed to set filed type\n");
 			goto free_bld;
 		}
 	} else {
@@ -570,7 +571,7 @@ free_bld:
 static int ec_gen_assign_group(EC_KEY *ec, EC_GROUP *group)
 {
 	if (group == NULL) {
-		fprintf(stderr, "invalid: ec group is NULL\n");
+		UADK_ERR("invalid: ec group is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -616,7 +617,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	if (gctx->gen_group == NULL) {
 		ret = ec_gen_set_group_from_params(gctx);
 		if (ret == 0) {
-			fprintf(stderr, "failed to set group from params\n");
+			UADK_ERR("failed to set group from params\n");
 			return UADK_P_FAIL;
 		}
 	} else {
@@ -627,7 +628,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 			 */
 			ret = ossl_ec_encoding_name2id(gctx->encoding);
 			if (ret < 0) {
-				fprintf(stderr, "failed to encoding name to id\n");
+				UADK_ERR("failed to encoding name to id\n");
 				return UADK_P_FAIL;
 			}
 			EC_GROUP_set_asn1_flag(gctx->gen_group, ret);
@@ -639,7 +640,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 			 */
 			ret = ossl_ec_pt_format_name2id(gctx->pt_format);
 			if (ret < 0) {
-				fprintf(stderr, "failed to point format name to id\n");
+				UADK_ERR("failed to point format name to id\n");
 				return UADK_P_FAIL;
 			}
 			EC_GROUP_set_point_conversion_form(gctx->gen_group, ret);
@@ -649,7 +650,7 @@ int uadk_prov_ecc_genctx_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	/* We must always assign a group, no matter what */
 	ret = ec_gen_assign_group(ec, gctx->gen_group);
 	if (ret == 0) {
-		fprintf(stderr, "invalid: ec group is NULL\n");
+		UADK_ERR("invalid: ec group is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -710,13 +711,13 @@ int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *ec)
 
 	d = EC_KEY_get0_private_key(ec);
 	if (d == NULL) {
-		fprintf(stderr, "private key not set\n");
+		UADK_ERR("private key not set\n");
 		return UADK_P_FAIL;
 	}
 
 	group = EC_KEY_get0_group(ec);
 	if (group == NULL) {
-		fprintf(stderr, "failed to get ecc group\n");
+		UADK_ERR("failed to get ecc group\n");
 		return UADK_P_FAIL;
 	}
 
@@ -728,7 +729,7 @@ int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *ec)
 
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
-		fprintf(stderr, "failed to set ecc prikey, ret = %d\n", ret);
+		UADK_ERR("failed to set ecc prikey, ret = %d\n", ret);
 		return UADK_P_FAIL;
 	}
 
@@ -758,7 +759,7 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *ec)
 
 	point = EC_KEY_get0_public_key(ec);
 	if (point == NULL) {
-		fprintf(stderr, "pubkey not set!\n");
+		UADK_ERR("pubkey not set!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -766,7 +767,7 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *ec)
 	len = EC_POINT_point2buf(group, point, UADK_OCTET_STRING,
 				 &point_bin, NULL);
 	if (len == 0) {
-		fprintf(stderr, "EC_POINT_point2buf error.\n");
+		UADK_ERR("EC_POINT_point2buf error.\n");
 		return UADK_P_FAIL;
 	}
 
@@ -778,7 +779,7 @@ int uadk_prov_ecc_set_public_key(handle_t sess, const EC_KEY *ec)
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_pubkey(ecc_key, &pubkey);
 	if (ret) {
-		fprintf(stderr, "failed to set ecc pubkey\n");
+		UADK_ERR("failed to set ecc pubkey\n");
 		OPENSSL_free(point_bin);
 		return UADK_P_FAIL;
 	}
@@ -872,7 +873,7 @@ int uadk_prov_ecc_bit_check(const EC_GROUP *group)
 		break;
 	}
 
-	fprintf(stderr, "invalid: unsupport key bits %d!\n", bits);
+	UADK_ERR("invalid: unsupport key bits %d!\n", bits);
 
 	return UADK_DO_SOFT;
 }
@@ -899,19 +900,19 @@ int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
 		return UADK_P_SUCCESS;
 
 	if (!group) {
-		fprintf(stderr, "invalid: group is NULL!\n");
+		UADK_ERR("invalid: group is NULL!\n");
 		return UADK_P_FAIL;
 	}
 
 	nid = EC_GROUP_get_curve_name(group);
 	if (nid == NID_undef) {
-		fprintf(stderr, "invalid: explicit curves are not allowed in fips mode!\n");
+		UADK_ERR("invalid: explicit curves are not allowed in fips mode!\n");
 		return UADK_P_FAIL;
 	}
 
 	curve_name = EC_curve_nid2nist(nid);
 	if (!curve_name) {
-		fprintf(stderr, "invalid: Curve NID %d is not approved in FIPS mode!\n",
+		UADK_ERR("invalid: Curve NID %d is not approved in FIPS mode!\n",
 			nid);
 		return UADK_P_FAIL;
 	}
@@ -923,7 +924,7 @@ int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
 	strength = (unsigned int)EC_GROUP_order_bits(group) >> 1;
 	/* The min security strength allowed for legacy verification is 80 bits */
 	if (strength < UADK_PROV_SECURITY_BITS) {
-		fprintf(stderr, "invalid: Curve %s strength %d is not approved in FIPS mode!\n",
+		UADK_ERR("invalid: Curve %s strength %d is not approved in FIPS mode!\n",
 			curve_name, strength);
 		return UADK_P_FAIL;
 	}
@@ -933,7 +934,7 @@ int uadk_prov_ecc_check_key(OSSL_LIB_CTX *ctx, const EC_KEY *ec, int protect)
 	 * security strength
 	 */
 	if (protect && strength < UADK_PROV_MIN_BITS) {
-		fprintf(stderr, "invalid: Curve %s strength %d cannot be used for signing\n",
+		UADK_ERR("invalid: Curve %s strength %d cannot be used for signing\n",
 			curve_name, strength);
 		return UADK_P_FAIL;
 	}
@@ -948,7 +949,7 @@ int uadk_prov_pkey_version(void)
 
 	dev1 = wd_get_accel_dev("rsa");
 	if (!dev1) {
-		fprintf(stderr, "no pkey device available!\n");
+		UADK_ERR("no pkey device available!\n");
 		return HW_PKEY_INVALID;
 	}
 

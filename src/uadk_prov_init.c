@@ -31,6 +31,7 @@
 #include "uadk_prov.h"
 #include "uadk_prov_bio.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
@@ -675,7 +676,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		libctx = prov_libctx_of(provctx);
 		default_prov = OSSL_PROVIDER_load(libctx, "default");
 		if (!default_prov) {
-			fprintf(stderr, "failed to load default provider\n");
+			UADK_ERR("failed to load default provider\n");
 			return NULL;
 		}
 		/*
@@ -849,9 +850,9 @@ static void uadk_set_alg_sel_state(void)
 			*(uadk_prov_alg_cfg_info[i].enable) = 0;
 		else {
 			*(uadk_prov_alg_cfg_info[i].enable) = 1;
-			fprintf(stderr, "invalid: %s en param(%s) is error, default to enabled\n",
-				 uadk_prov_alg_cfg_info[i].name,
-				 *uadk_prov_alg_cfg_info[i].param);
+			UADK_INFO("invalid: %s en param(%s) is error!, default to enabled\n",
+				  uadk_prov_alg_cfg_info[i].name,
+				  *uadk_prov_alg_cfg_info[i].param);
 		}
 	}
 }
@@ -867,7 +868,7 @@ static int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 	OSSL_PARAM core_params[31], *p = core_params;
 
 	if (handle == NULL) {
-		fprintf(stderr, "invalid: OSSL_CORE_HANDLE is NULL\n");
+		UADK_ERR("invalid: OSSL_CORE_HANDLE is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -907,7 +908,7 @@ static int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 	*p = OSSL_PARAM_construct_end();
 
 	if (!c_get_params(handle, core_params)) {
-		fprintf(stderr, "WARN: UADK get parameters from core is failed.\n");
+		UADK_ERR("WARN: UADK get parameters from core is failed.\n");
 		return UADK_P_FAIL;
 	}
 
@@ -922,7 +923,7 @@ static void provider_init_child_at_fork_handler(void)
 
 	ret = async_module_init();
 	if (!ret)
-		fprintf(stderr, "async_module_init fail!\n");
+		UADK_ERR("async_module_init fail!\n");
 }
 
 static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
@@ -931,7 +932,7 @@ static int uadk_prov_ctx_set_core_bio_method(struct uadk_prov_ctx *ctx)
 
 	core_bio = ossl_bio_prov_init_bio_method();
 	if (core_bio == NULL) {
-		fprintf(stderr, "failed to set bio from dispatch\n");
+		UADK_ERR("failed to set bio from dispatch\n");
 		return UADK_P_FAIL;
 	}
 
@@ -970,7 +971,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	int ret;
 
 	if (oin == NULL) {
-		fprintf(stderr, "failed to get dispatch in\n");
+		UADK_ERR("failed to get dispatch in\n");
 		return UADK_P_FAIL;
 	}
 
@@ -983,7 +984,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	ctx = OPENSSL_zalloc(sizeof(*ctx));
 	if (ctx == NULL) {
-		fprintf(stderr, "failed to alloc ctx\n");
+		UADK_ERR("failed to alloc ctx\n");
 		return UADK_P_FAIL;
 	}
 
@@ -999,7 +1000,7 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 
 	ret = async_module_init();
 	if (!ret)
-		fprintf(stderr, "async_module_init fail!\n");
+		UADK_ERR("async_module_init fail!\n");
 	pthread_atfork(NULL, NULL, provider_init_child_at_fork_handler);
 
 	*provctx = (void *)ctx;

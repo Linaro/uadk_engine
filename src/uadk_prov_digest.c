@@ -170,13 +170,13 @@ static int uadk_create_digest_soft_ctx(struct digest_priv_ctx *priv)
 	}
 
 	if (unlikely(!priv->soft_md)) {
-		fprintf(stderr, "digest failed to fetch\n");
+		UADK_ERR("digest failed to fetch\n");
 		return UADK_DIGEST_FAIL;
 	}
 
 	priv->soft_ctx = EVP_MD_CTX_new();
 	if (!priv->soft_ctx) {
-		fprintf(stderr, "EVP_MD_CTX_new failed.\n");
+		UADK_ERR("EVP_MD_CTX_new failed.\n");
 		goto free;
 	}
 
@@ -195,7 +195,7 @@ static int uadk_digest_soft_init(struct digest_priv_ctx *priv)
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestInit_ex(priv->soft_ctx, priv->soft_md, NULL)) {
-		fprintf(stderr, "soft digest init failed.\n");
+		UADK_ERR("soft digest init failed.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -211,7 +211,7 @@ static int uadk_digest_soft_update(struct digest_priv_ctx *priv,
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestUpdate(priv->soft_ctx, data, len)) {
-		fprintf(stderr, "soft digest update failed.\n");
+		UADK_ERR("soft digest update failed.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -228,7 +228,7 @@ static int uadk_digest_soft_final(struct digest_priv_ctx *priv, unsigned char *d
 		return UADK_DIGEST_FAIL;
 
 	if (!EVP_DigestFinal_ex(priv->soft_ctx, digest, &digest_length)) {
-		fprintf(stderr, "soft digest final failed.\n");
+		UADK_ERR("soft digest final failed.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -299,7 +299,7 @@ static int uadk_digest_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to poll msg: timeout!\n");
+	UADK_ERR("failed to poll msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -322,7 +322,7 @@ static int uadk_get_digest_info(struct digest_priv_ctx *priv)
 	}
 
 	if (unlikely(i == digest_counts)) {
-		fprintf(stderr, "failed to digest info.\n");
+		UADK_ERR("failed to digest info.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -351,7 +351,7 @@ static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
 	cparams.bmp = numa_allocate_nodemask();
 	if (!cparams.bmp) {
 		ret = UADK_DIGEST_FAIL;
-		fprintf(stderr, "failed to create nodemask!\n");
+		UADK_ERR("failed to create nodemask!\n");
 		goto mutex_unlock;
 	}
 
@@ -362,7 +362,7 @@ static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
 
 	ret = wd_digest_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
-		fprintf(stderr, "uadk failed to initialize digest dev, ret = %d\n", ret);
+		UADK_ERR("uadk failed to initialize digest dev, ret = %d\n", ret);
 		goto free_nodemask;
 	}
 	ret = UADK_DIGEST_SUCCESS;
@@ -396,7 +396,7 @@ static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
 	if (!priv->sess) {
 		priv->sess = wd_digest_alloc_sess(&setup);
 		if (unlikely(!priv->sess)) {
-			fprintf(stderr, "uadk failed to alloc sess.\n");
+			UADK_ERR("uadk failed to alloc sess.\n");
 			return UADK_DIGEST_FAIL;
 		}
 	}
@@ -484,7 +484,7 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 
 		ret = wd_do_digest_sync(priv->sess, &priv->req);
 		if (ret) {
-			fprintf(stderr, "do sec digest update failed, switch to soft digest.\n");
+			UADK_ERR("do sec digest update failed, switch to soft digest.\n");
 			goto do_soft_digest;
 		}
 
@@ -521,7 +521,7 @@ do_soft_digest:
 		return ret;
 	}
 
-	fprintf(stderr, "do soft digest failed during updating!\n");
+	UADK_ERR("do soft digest failed during updating!\n");
 
 	return UADK_DIGEST_FAIL;
 
@@ -533,7 +533,7 @@ out:
 static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
 	if (!priv->data) {
-		fprintf(stderr, "failed to do digest update, data in CTX is NULL.\n");
+		UADK_ERR("failed to do digest update, data in CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -585,7 +585,7 @@ static int uadk_do_digest_sync(struct digest_priv_ctx *priv)
 
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
 	if (ret) {
-		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
+		UADK_ERR("do sec digest sync failed, switch to soft digest.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -599,7 +599,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	int cnt = 0;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "digest soft switching is not supported in asynchronous mode.\n");
+		UADK_ERR("digest soft switching is not supported in asynchronous mode.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -618,12 +618,12 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
-			fprintf(stderr, "do sec digest async failed.\n");
+			UADK_ERR("do sec digest async failed.\n");
 			goto free_poll_task;
 		}
 
 		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
-			fprintf(stderr, "do digest async operation timeout.\n");
+			UADK_ERR("do digest async operation timeout.\n");
 			goto free_poll_task;
 		}
 	} while (ret == -EBUSY);
@@ -645,7 +645,7 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	int ret;
 
 	if (!priv->data) {
-		fprintf(stderr, "failed to do digest final, data in CTX is NULL.\n");
+		UADK_ERR("failed to do digest final, data in CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -664,7 +664,7 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to setup async event notification.\n");
+		UADK_ERR("failed to setup async event notification.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -693,7 +693,7 @@ sync_err:
 		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
 		ret = UADK_DIGEST_FAIL;
-		fprintf(stderr, "do sec digest final failed.\n");
+		UADK_ERR("do sec digest final failed.\n");
 	}
 clear:
 	async_clear_async_event_notification();
@@ -707,7 +707,7 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
 	int ret;
 
 	if (!data) {
-		fprintf(stderr, "failed to do single digest, data in CTX is NULL.\n");
+		UADK_ERR("failed to do single digest, data in CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -717,7 +717,7 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to setup async event notification.\n");
+		UADK_ERR("failed to setup async event notification.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -733,7 +733,7 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
 		ret = uadk_do_digest_async(priv, &op);
 
 	if (!ret) {
-		fprintf(stderr, "do sec single block digest failed.\n");
+		UADK_ERR("do sec single block digest failed.\n");
 		async_clear_async_event_notification();
 		return ret;
 	}
@@ -782,22 +782,22 @@ static int uadk_digest_default_get_params(OSSL_PARAM params[], size_t blksz,
 
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_BLOCK_SIZE);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, blksz)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set digest size parameter: blksz.\n");
 		return UADK_DIGEST_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_SIZE);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, paramsz)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set digest size parameter: paramsz.\n");
 		return UADK_DIGEST_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_XOF);
 	if (p != NULL && !OSSL_PARAM_set_int(p, 0)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set digest int parameter: xof.\n");
 		return UADK_DIGEST_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_DIGEST_PARAM_ALGID_ABSENT);
 	if (p != NULL && !OSSL_PARAM_set_int(p, 0)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set digest int parameter: absent.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -809,7 +809,7 @@ static void uadk_prov_freectx(void *dctx)
 	struct digest_priv_ctx *priv = (struct digest_priv_ctx *)dctx;
 
 	if (!dctx) {
-		fprintf(stderr, "the CTX to be free is NULL.\n");
+		UADK_ERR("the CTX to be free is NULL.\n");
 		return;
 	}
 
@@ -852,7 +852,7 @@ static void *uadk_prov_dupctx(void *dctx)
 	if (dst_ctx->soft_ctx) {
 		dst_ctx->soft_ctx = EVP_MD_CTX_dup(src_ctx->soft_ctx);
 		if (!dst_ctx->soft_ctx) {
-			fprintf(stderr, "EVP_MD_CTX_new failed in ctx copy.\n");
+			UADK_ERR("EVP_MD_CTX_new failed in ctx copy.\n");
 			goto free_data;
 		}
 
@@ -879,7 +879,7 @@ static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 	int ret;
 
 	if (!dctx) {
-		fprintf(stderr, "CTX is NULL.\n");
+		UADK_ERR("CTX is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -894,7 +894,7 @@ static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 
 	ret = uadk_prov_digest_dev_init(priv);
 	if (unlikely(ret <= 0)) {
-		fprintf(stderr, "digest switch to soft init!\n");
+		UADK_ERR("digest switch to soft init!\n");
 		return uadk_digest_soft_init(priv);
 	}
 
@@ -904,7 +904,7 @@ static int uadk_prov_init(void *dctx, const OSSL_PARAM params[])
 static int uadk_prov_update(void *dctx, const unsigned char *in, size_t inl)
 {
 	if (!dctx || !in) {
-		fprintf(stderr, "CTX or input data is NULL.\n");
+		UADK_ERR("CTX or input data is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -924,7 +924,7 @@ static int uadk_prov_final(void *dctx, unsigned char *out,
 	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !out) {
-		fprintf(stderr, "CTX or output data is NULL.\n");
+		UADK_ERR("CTX or output data is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -950,13 +950,13 @@ static int uadk_prov_digest(void *dctx, const unsigned char *in, size_t inl,
 	int ret = UADK_DIGEST_SUCCESS;
 
 	if (!dctx || !in || !out) {
-		fprintf(stderr, "CTX or input or output data is NULL.\n");
+		UADK_ERR("CTX or input or output data is NULL.\n");
 		return UADK_DIGEST_FAIL;
 	}
 
 	if (inl > BUF_LEN) {
-		fprintf(stderr, "data len(%zu) can not be processed in single digest.\n",
-			inl);
+		UADK_ERR("data len(%zu) can not be processed in single digest.\n",
+			 inl);
 		return UADK_DIGEST_FAIL;
 	}
 
@@ -1045,7 +1045,7 @@ int uadk_prov_digest_version(void)
 
 	dev = wd_get_accel_dev("digest");
 	if (!dev) {
-		fprintf(stderr, "no digest device available!\n");
+		UADK_ERR("no digest device available!\n");
 		return UADK_DIGEST_FAIL;
 	}
 

@@ -29,6 +29,7 @@
 #include "uadk.h"
 #include "uadk_async.h"
 #include "uadk_prov.h"
+#include "uadk_utils.h"
 
 #define MAX_IV_LEN			16
 #define MAX_KEY_LEN			64
@@ -142,7 +143,7 @@ static int uadk_aead_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to poll msg: timeout!\n");
+	UADK_ERR("failed to poll msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -173,13 +174,13 @@ static int uadk_create_aead_soft_ctx(struct aead_priv_ctx *priv)
 	}
 
 	if (unlikely(!priv->sw_aead)) {
-		fprintf(stderr, "aead failed to fetch\n");
+		UADK_ERR("aead failed to fetch\n");
 		return UADK_AEAD_FAIL;
 	}
 
 	priv->sw_ctx = EVP_CIPHER_CTX_new();
 	if (!priv->sw_ctx) {
-		fprintf(stderr, "EVP_AEAD_CTX_new failed.\n");
+		UADK_ERR("EVP_AEAD_CTX_new failed.\n");
 		goto free;
 	}
 
@@ -206,7 +207,7 @@ static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned c
 		ret = EVP_DecryptInit_ex2(priv->sw_ctx, priv->sw_aead, key, iv, params);
 
 	if (!ret) {
-		fprintf(stderr, "aead soft init error!\n");
+		UADK_ERR("aead soft init error!\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -229,7 +230,7 @@ static int uadk_aead_soft_update(struct aead_priv_ctx *priv, unsigned char *out,
 		ret = EVP_DecryptUpdate(priv->sw_ctx, out, outl, in, len);
 
 	if (!ret) {
-		fprintf(stderr, "aead soft update error.\n");
+		UADK_ERR("aead soft update error.\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -270,7 +271,7 @@ static int uadk_aead_soft_final(struct aead_priv_ctx *priv, unsigned char *diges
 	return UADK_AEAD_SUCCESS;
 
 error:
-	fprintf(stderr, "aead soft final failed.\n");
+	UADK_ERR("aead soft final failed.\n");
 	return UADK_AEAD_FAIL;
 }
 
@@ -303,7 +304,7 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 	cparams.bmp = numa_allocate_nodemask();
 	if (!cparams.bmp) {
 		ret = UADK_AEAD_FAIL;
-		fprintf(stderr, "failed to create nodemask!\n");
+		UADK_ERR("failed to create nodemask!\n");
 		goto mutex_unlock;
 	}
 
@@ -315,7 +316,7 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 	ret = wd_aead_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
 	if (unlikely(ret)) {
 		ret = UADK_AEAD_FAIL;
-		fprintf(stderr, "failed to init aead!\n");
+		UADK_ERR("failed to init aead!\n");
 		goto free_nodemask;
 	}
 
@@ -336,7 +337,7 @@ static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 	int ret;
 
 	if (!priv->key_set || !priv->iv_set) {
-		fprintf(stderr, "key or iv is not set yet!\n");
+		UADK_ERR("key or iv is not set yet!\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -361,19 +362,19 @@ static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 	if (!priv->sess) {
 		priv->sess = wd_aead_alloc_sess(&setup);
 		if (!priv->sess) {
-			fprintf(stderr, "uadk failed to alloc session!\n");
+			UADK_ERR("uadk failed to alloc session!\n");
 			return UADK_AEAD_FAIL;
 		}
 
 		ret = wd_aead_set_authsize(priv->sess, priv->taglen);
 		if (ret) {
-			fprintf(stderr, "uadk failed to set authsize!\n");
+			UADK_ERR("uadk failed to set authsize!\n");
 			goto free_sess;
 		}
 
 		ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
 		if (ret) {
-			fprintf(stderr, "uadk failed to set key!\n");
+			UADK_ERR("uadk failed to set key!\n");
 			goto free_sess;
 		}
 	}
@@ -422,7 +423,7 @@ static int do_aes_gcm_prepare(struct aead_priv_ctx *priv)
 			memcpy(priv->req.mac, priv->buf, AES_GCM_TAG_LEN);
 			priv->tag_set = SET_TAG;
 		} else {
-			fprintf(stderr, "invalid: aead gcm mac length only support 16B.\n");
+			UADK_ERR("invalid: aead gcm mac length only support 16B.\n");
 			return UADK_AEAD_FAIL;
 		}
 	}
@@ -453,7 +454,7 @@ static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *ou
 
 	if ((state == AEAD_MSG_BLOCK || state == AEAD_MSG_END)
 		&& !priv->enc && priv->tag_set != SET_TAG) {
-		fprintf(stderr, "The tag for synchronous decryption is not set.\n");
+		UADK_ERR("The tag for synchronous decryption is not set.\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -464,7 +465,7 @@ static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *ou
 	priv->req.state = 0;
 	ret = wd_do_aead_sync(priv->sess, &priv->req);
 	if (unlikely(ret < 0 || priv->req.state)) {
-		fprintf(stderr, "do aead task failed, msg state: %u, ret: %d, state: %u!\n",
+		UADK_ERR("do aead task failed, msg state: %u, ret: %d, state: %u!\n",
 			state, ret, priv->req.state);
 		return UADK_AEAD_FAIL;
 	}
@@ -515,12 +516,12 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 	int ret;
 
 	if (!priv->enc && priv->tag_set != SET_TAG) {
-		fprintf(stderr, "The tag for asynchronous decryption is not set.\n");
+		UADK_ERR("The tag for asynchronous decryption is not set.\n");
 		return UADK_AEAD_FAIL;
 	}
 
 	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
-		fprintf(stderr, "aead input data length is too long!\n");
+		UADK_ERR("aead input data length is too long!\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -541,9 +542,9 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 		ret = wd_do_aead_async(priv->sess, &priv->req);
 		if (unlikely(ret < 0)) {
 			if (unlikely(ret != -EBUSY))
-				fprintf(stderr, "do aead async operation failed ret = %d.\n", ret);
+				UADK_ERR("do aead async operation failed ret = %d.\n", ret);
 			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
-				fprintf(stderr, "do aead async operation timeout.\n");
+				UADK_ERR("do aead async operation timeout.\n");
 			else
 				continue;
 
@@ -554,7 +555,7 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_AEAD);
 	if (unlikely(!ret || priv->req.state)) {
-		fprintf(stderr, "do aead async job failed, ret: %d, state: %u!\n",
+		UADK_ERR("do aead async job failed, ret: %d, state: %u!\n",
 			ret, priv->req.state);
 		return UADK_AEAD_FAIL;
 	}
@@ -574,7 +575,7 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 		if (priv->mode != ASYNC_MODE)
 			goto soft;
 
-		fprintf(stderr, "the aad len is out of range, aad len = %zu.\n", inlen);
+		UADK_ERR("the aad len is out of range, aad len = %zu.\n", inlen);
 		return UADK_AEAD_FAIL;
 	}
 
@@ -596,7 +597,7 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 	return UADK_AEAD_SUCCESS;
 
 soft:
-	fprintf(stderr, "aead failed to update aad, switch to soft.\n");
+	UADK_ERR("aead failed to update aad, switch to soft.\n");
 	return SWITCH_TO_SOFT;
 }
 
@@ -613,13 +614,13 @@ static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char
 
 		ret = async_setup_async_event_notification(op);
 		if (unlikely(!ret)) {
-			fprintf(stderr, "failed to setup async event notification.\n");
+			UADK_ERR("failed to setup async event notification.\n");
 			goto free_op;
 		}
 
 		ret = uadk_do_aead_async(priv, op, out, in, inlen);
 		if (unlikely(ret < 0)) {
-			fprintf(stderr, "uadk_do_aead_async failed ret = %d.\n", ret);
+			UADK_ERR("uadk_do_aead_async failed ret = %d.\n", ret);
 			goto free_notification;
 		}
 
@@ -716,7 +717,7 @@ static int uadk_prov_aead_cipher(void *vctx, unsigned char *out, size_t *outl,
 		return UADK_OSSL_FAIL;
 
 	if (outsize < inl) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		UADK_ERR("invalid: aead cipher outsize is too small.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -739,7 +740,7 @@ static int uadk_prov_aead_stream_update(void *vctx, unsigned char *out,
 		return UADK_OSSL_FAIL;
 
 	if (outsize < inl) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		UADK_ERR("invalid: input param outsize is too small.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -749,7 +750,7 @@ static int uadk_prov_aead_stream_update(void *vctx, unsigned char *out,
 	if (ret == SWITCH_TO_SOFT)
 		goto do_soft;
 	else if (ret < 0) {
-		fprintf(stderr, "stream data update failed.\n");
+		UADK_ERR("stream data update failed.\n");
 		return UADK_OSSL_FAIL;
 	} else {
 		*outl = inl;
@@ -785,7 +786,7 @@ static int uadk_prov_aead_stream_final(void *vctx, unsigned char *out,
 
 	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, NULL, 0);
 	if (ret < 0) {
-		fprintf(stderr, "stream data final failed, ret = %d\n", ret);
+		UADK_ERR("stream data final failed, ret = %d\n", ret);
 		return UADK_OSSL_FAIL;
 	}
 
@@ -816,7 +817,7 @@ static int uadk_get_aead_info(struct aead_priv_ctx *priv)
 	}
 
 	if (unlikely(i == aead_counts)) {
-		fprintf(stderr, "failed to get aead info.\n");
+		UADK_ERR("failed to get aead info.\n");
 		return UADK_AEAD_FAIL;
 	}
 
@@ -829,7 +830,7 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *
 	int ret;
 
 	if (ivlen > MAX_IV_LEN || keylen > MAX_KEY_LEN) {
-		fprintf(stderr, "invalid keylen or ivlen.\n");
+		UADK_ERR("invalid keylen or ivlen.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -857,7 +858,7 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *
 		if (ASYNC_get_current_job())
 			return UADK_OSSL_FAIL;
 
-		fprintf(stderr, "aead switch to soft init.!\n");
+		UADK_ERR("aead switch to soft init.!\n");
 		return uadk_prov_aead_soft_init(priv, key, iv, params);
 	}
 
@@ -921,12 +922,12 @@ static int uadk_prov_aead_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 	if (p) {
 		vp = priv->buf;
 		if (!OSSL_PARAM_get_octet_string(p, &vp, EVP_GCM_TLS_TAG_LEN, &sz)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			UADK_ERR("failed to get string parameter: sz.\n");
 			return UADK_OSSL_FAIL;
 		}
 
 		if (sz == 0 || priv->enc) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_TAG);
+			UADK_ERR("invalid sz or enc.\n");
 			return UADK_OSSL_FAIL;
 		}
 		priv->tag_set = READ_TAG;
@@ -938,11 +939,11 @@ static int uadk_prov_aead_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 		size_t keylen;
 
 		if (!OSSL_PARAM_get_size_t(p, &keylen)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			UADK_ERR("failed to get parameter: keylen.\n");
 			return UADK_OSSL_FAIL;
 		}
 		if (priv->keylen != keylen) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+			UADK_ERR("keylen is invalid.\n");
 			return UADK_OSSL_FAIL;
 		}
 	}
@@ -950,11 +951,11 @@ static int uadk_prov_aead_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_IVLEN);
 	if (p) {
 		if (!OSSL_PARAM_get_size_t(p, &sz)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_GET_PARAMETER);
+			UADK_ERR("failed to get size parameter: sz.\n");
 			return UADK_OSSL_FAIL;
 		}
 		if (sz == 0 || sz > priv->ivlen) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
+			UADK_ERR("invalid sz or ivlen.\n");
 			return UADK_OSSL_FAIL;
 		}
 		priv->ivlen = sz;
@@ -985,13 +986,13 @@ static int uadk_prov_aead_get_ctx_iv(OSSL_PARAM *p, struct aead_priv_ctx *priv)
 		return UADK_OSSL_FAIL;
 
 	if (priv->ivlen > p->data_size) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
+		UADK_ERR("invalid: input param ivlen is too long.\n");
 		return UADK_OSSL_FAIL;
 	}
 
 	if (!OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen)
 		&& !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set octet ptr parameter: iv.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -1008,13 +1009,13 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IVLEN);
 	if (p && !OSSL_PARAM_set_size_t(p, priv->ivlen)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set size parameter: ivlen.\n");
 		return UADK_OSSL_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p && !OSSL_PARAM_set_size_t(p, priv->keylen)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set size parameter: keylen.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -1024,7 +1025,7 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 				priv->taglen : AES_GCM_TAG_LEN;
 
 		if (!OSSL_PARAM_set_size_t(p, taglen)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+			UADK_ERR("failed to set size parameter: taglen.\n");
 			return UADK_OSSL_FAIL;
 		}
 	}
@@ -1043,12 +1044,12 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 
 		if (sz == 0 || sz > EVP_GCM_TLS_TAG_LEN || !priv->enc
 			|| priv->taglen == UNINITIALISED_SIZET) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_TAG);
+			UADK_ERR("invalid size enc or taglen.\n");
 			return UADK_OSSL_FAIL;
 		}
 
 		if (!OSSL_PARAM_set_octet_string(p, priv->buf, sz)) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+			UADK_ERR("failed to set octet string parameter: sz.\n");
 			return UADK_OSSL_FAIL;
 		}
 	}
@@ -1079,32 +1080,32 @@ static int uadk_cipher_aead_get_params(OSSL_PARAM params[], unsigned int md,
 
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_MODE);
 	if (p && !OSSL_PARAM_set_uint(p, md)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set uint parameter: md.\n");
 		return UADK_OSSL_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_AEAD);
 	if (p && !OSSL_PARAM_set_int(p, (flags & PROV_CIPHER_FLAG_AEAD) != 0)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set int parameter: flag aead.\n");
 		return UADK_OSSL_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_CUSTOM_IV);
 	if (p && !OSSL_PARAM_set_int(p, (flags & PROV_CIPHER_FLAG_CUSTOM_IV) != 0)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set int parameter: flag custom iv.\n");
 		return UADK_OSSL_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_KEYLEN);
 	if (p && !OSSL_PARAM_set_size_t(p, kbits)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set size parameter: kbits.\n");
 		return UADK_OSSL_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_BLOCK_SIZE);
 	if (p && !OSSL_PARAM_set_size_t(p, blkbits)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set size parameter: blkbits.\n");
 		return UADK_OSSL_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IVLEN);
 	if (p && !OSSL_PARAM_set_size_t(p, ivbits)) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+		UADK_ERR("failed to set size parameter: ivbits.\n");
 		return UADK_OSSL_FAIL;
 	}
 
@@ -1132,7 +1133,7 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 	if (dst_ctx->sw_ctx) {
 		dst_ctx->sw_ctx = EVP_CIPHER_CTX_dup(src_ctx->sw_ctx);
 		if (!dst_ctx->sw_ctx) {
-			fprintf(stderr, "EVP_CIPHER_CTX_dup failed in ctx copy.\n");
+			UADK_ERR("EVP_CIPHER_CTX_dup failed in ctx copy.\n");
 			goto free_data;
 		}
 

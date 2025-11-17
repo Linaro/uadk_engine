@@ -130,7 +130,7 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 
 	priv->soft_libctx = OSSL_LIB_CTX_new();
 	if (!priv->soft_libctx) {
-		fprintf(stderr, "new soft libctx failed.\n");
+		UADK_ERR("new soft libctx failed.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -151,13 +151,13 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 	}
 
 	if (unlikely(!priv->soft_md)) {
-		fprintf(stderr, "hmac soft fetch failed.\n");
+		UADK_ERR("hmac soft fetch failed.\n");
 		goto free_libctx;
 	}
 
 	priv->soft_ctx = EVP_MAC_CTX_new(priv->soft_md);
 	if (!priv->soft_ctx) {
-		fprintf(stderr, "hmac soft new ctx failed.\n");
+		UADK_ERR("hmac soft new ctx failed.\n");
 		goto free_mac_md;
 	}
 
@@ -189,7 +189,7 @@ static int uadk_hmac_soft_init(struct hmac_priv_ctx *priv)
 
 	ret = EVP_MAC_init(priv->soft_ctx, priv->key, priv->keylen, params);
 	if (!ret) {
-		fprintf(stderr, "do soft hmac init failed!\n");
+		UADK_ERR("do soft hmac init failed!\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -208,7 +208,7 @@ static int uadk_hmac_soft_update(struct hmac_priv_ctx *priv,
 
 	ret = EVP_MAC_update(priv->soft_ctx, data, len);
 	if (!ret)
-		fprintf(stderr, "do soft hmac update failed!\n");
+		UADK_ERR("do soft hmac update failed!\n");
 
 	return ret;
 }
@@ -223,7 +223,7 @@ static int uadk_hmac_soft_final(struct hmac_priv_ctx *priv, unsigned char *out)
 
 	ret = EVP_MAC_final(priv->soft_ctx, out, &hmac_length, priv->out_len);
 	if (!ret)
-		fprintf(stderr, "do soft hmac final failed!\n");
+		UADK_ERR("do soft hmac final failed!\n");
 
 	return ret;
 }
@@ -310,7 +310,7 @@ static int uadk_hmac_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to poll msg: timeout!\n");
+	UADK_ERR("failed to poll msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -368,7 +368,7 @@ static int uadk_get_hmac_info(struct hmac_priv_ctx *priv)
 		}
 	}
 
-	fprintf(stderr, "failed to get hmac info, algname = %s.\n", priv->alg_name);
+	UADK_ERR("failed to get hmac info, algname = %s.\n", priv->alg_name);
 
 	return UADK_HMAC_FAIL;
 }
@@ -398,7 +398,7 @@ static const char *get_uadk_alg_name(__u32 alg_id)
 		break;
 	}
 
-	fprintf(stderr, "failed to find alg, nid = %u.\n", alg_id);
+	UADK_ERR("failed to find alg, nid = %u.\n", alg_id);
 
 	return NULL;
 }
@@ -432,7 +432,7 @@ static int uadk_prov_hmac_dev_init(struct hmac_priv_ctx *priv)
 	cparams.bmp = numa_allocate_nodemask();
 	if (!cparams.bmp) {
 		ret = UADK_HMAC_FAIL;
-		fprintf(stderr, "failed to create nodemask!\n");
+		UADK_ERR("failed to create nodemask!\n");
 		goto mutex_unlock;
 	}
 
@@ -443,7 +443,7 @@ static int uadk_prov_hmac_dev_init(struct hmac_priv_ctx *priv)
 
 	ret = wd_digest_init2_((char *)alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
-		fprintf(stderr, "uadk failed to initialize hmac, ret = %d\n", ret);
+		UADK_ERR("uadk failed to initialize hmac, ret = %d\n", ret);
 		goto free_nodemask;
 	}
 	ret = UADK_HMAC_SUCCESS;
@@ -501,8 +501,8 @@ static int uadk_hmac_ctx_init(struct hmac_priv_ctx *priv)
 
 	ret = uadk_prov_hmac_dev_init(priv);
 	if (unlikely(ret <= 0)) {
-		fprintf(stderr, "uadk failed to initialize hmac%s.\n",
-			SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+		UADK_ERR("uadk failed to initialize hmac%s.\n",
+			 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 		goto soft_init;
 	}
 
@@ -515,15 +515,15 @@ static int uadk_hmac_ctx_init(struct hmac_priv_ctx *priv)
 	if (!priv->sess) {
 		priv->sess = wd_digest_alloc_sess(&setup);
 		if (unlikely(!priv->sess)) {
-			fprintf(stderr, "uadk failed to alloc hmac sess%s.\n",
-				SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+			UADK_ERR("uadk failed to alloc hmac sess%s.\n",
+				 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 			goto soft_init;
 		}
 
 		ret = wd_digest_set_key(priv->sess, priv->key, priv->keylen);
 		if (ret) {
-			fprintf(stderr, "uadk failed to set hmac key%s.\n",
-				SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+			UADK_ERR("uadk failed to set hmac key%s.\n",
+				 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 			goto free_sess;
 		}
 	}
@@ -569,7 +569,7 @@ static int uadk_do_hmac_sync(struct hmac_priv_ctx *priv)
 
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
 	if (ret) {
-		fprintf(stderr, "do sec hmac sync failed.\n");
+		UADK_ERR("do sec hmac sync failed.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -583,7 +583,7 @@ static int uadk_do_hmac_async(struct hmac_priv_ctx *priv, struct async_op *op)
 	int cnt = 0;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "soft switching is not supported in asynchronous mode.\n");
+		UADK_ERR("soft switching is not supported in asynchronous mode.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -601,12 +601,12 @@ static int uadk_do_hmac_async(struct hmac_priv_ctx *priv, struct async_op *op)
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
 		if (ret < 0 && ret != -EBUSY) {
-			fprintf(stderr, "do sec digest async failed.\n");
+			UADK_ERR("do sec digest async failed.\n");
 			goto free_poll_task;
 		}
 
 		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
-			fprintf(stderr, "do digest async operation timeout.\n");
+			UADK_ERR("do digest async operation timeout.\n");
 			goto free_poll_task;
 		}
 	} while (ret == -EBUSY);
@@ -669,8 +669,8 @@ static int uadk_hmac_update_inner(struct hmac_priv_ctx *priv, const void *data, 
 
 		ret = uadk_do_hmac_sync(priv);
 		if (!ret) {
-			fprintf(stderr, "do sec hmac update failed%s.\n",
-				SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+			UADK_ERR("do sec hmac update failed%s.\n",
+				 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 			goto do_soft_hmac;
 		}
 
@@ -720,7 +720,7 @@ err_out:
 static int uadk_hmac_update(struct hmac_priv_ctx *priv, const void *data, size_t data_len)
 {
 	if (!priv->data) {
-		fprintf(stderr, "failed to do digest update, data in CTX is NULL.\n");
+		UADK_ERR("failed to do digest update, data in CTX is NULL.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -747,7 +747,7 @@ static int uadk_hmac_final(struct hmac_priv_ctx *priv, unsigned char *digest)
 	int ret;
 
 	if (!priv->data) {
-		fprintf(stderr, "failed to do digest final, data in CTX is NULL.\n");
+		UADK_ERR("failed to do digest final, data in CTX is NULL.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -767,7 +767,7 @@ static int uadk_hmac_final(struct hmac_priv_ctx *priv, unsigned char *digest)
 
 	ret = async_setup_async_event_notification(&op);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to setup async event notification.\n");
+		UADK_ERR("failed to setup async event notification.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -795,12 +795,12 @@ static int uadk_hmac_final(struct hmac_priv_ctx *priv, unsigned char *digest)
 
 do_hmac_err:
 	if (priv->state == SEC_DIGEST_INIT) {
-		fprintf(stderr, "do sec digest final failed%s.\n",
-			SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+		UADK_ERR("do sec digest final failed%s.\n",
+			 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 		ret = uadk_hmac_soft_work(priv, priv->req.in_bytes, digest);
 	} else {
 		ret = UADK_HMAC_FAIL;
-		fprintf(stderr, "do sec digest final failed.\n");
+		UADK_ERR("do sec digest final failed.\n");
 	}
 clear:
 	async_clear_async_event_notification();
@@ -843,7 +843,7 @@ static void *uadk_prov_hmac_dupctx(void *hctx)
 		dst_ctx->soft_libctx = NULL;
 		dst_ctx->soft_ctx = EVP_MAC_CTX_dup(src_ctx->soft_ctx);
 		if (!dst_ctx->soft_ctx) {
-			fprintf(stderr, "create soft_ctx failed in ctx copy.\n");
+			UADK_ERR("create soft_ctx failed in ctx copy.\n");
 			goto free_data;
 		}
 
@@ -877,7 +877,7 @@ static void uadk_prov_hmac_freectx(void *hctx)
 	struct hmac_priv_ctx *priv = (struct hmac_priv_ctx *)hctx;
 
 	if (!hctx) {
-		fprintf(stderr, "the CTX to be free is NULL.\n");
+		UADK_ERR("the CTX to be free is NULL.\n");
 		return;
 	}
 
@@ -910,7 +910,7 @@ static int uadk_prov_hmac_init(void *hctx, const unsigned char *key,
 	int ret;
 
 	if (!hctx) {
-		fprintf(stderr, "CTX is NULL.\n");
+		UADK_ERR("CTX is NULL.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -938,15 +938,15 @@ static int uadk_prov_hmac_init(void *hctx, const unsigned char *key,
 	return UADK_HMAC_SUCCESS;
 
 soft_init:
-	fprintf(stderr, "uadk failed to initialize dev%s.\n",
-		SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
+	UADK_ERR("uadk failed to initialize dev%s.\n",
+		 SW_SWITCH_PRINT_ENABLE(enable_sw_offload));
 	return uadk_hmac_soft_init(priv);
 }
 
 static int uadk_prov_hmac_update(void *hctx, const unsigned char *data, size_t datalen)
 {
 	if (!hctx || !data) {
-		fprintf(stderr, "CTX or input data is NULL.\n");
+		UADK_ERR("CTX or input data is NULL.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -966,7 +966,7 @@ static int uadk_prov_hmac_final(void *hctx, unsigned char *out, size_t *outl,
 	int ret = UADK_HMAC_SUCCESS;
 
 	if (!hctx) {
-		fprintf(stderr, "hmac CTX or output data is NULL.\n");
+		UADK_ERR("hmac CTX or output data is NULL.\n");
 		return UADK_HMAC_FAIL;
 	}
 
@@ -1073,7 +1073,7 @@ static int uadk_prov_hmac_set_ctx_params(void *hctx, const OSSL_PARAM params[])
 		 */
 		ret = snprintf(priv->alg_name, ALG_NAME_SIZE, "%s", (char *)p->data);
 		if (ret < 0) {
-			fprintf(stderr, "Invalid alg name %s.\n", (char *)p->data);
+			UADK_ERR("Invalid alg name %s.\n", (char *)p->data);
 			return UADK_HMAC_FAIL;
 		}
 

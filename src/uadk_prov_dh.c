@@ -27,6 +27,7 @@
 #include "uadk_prov.h"
 #include "uadk_prov_ffc.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define DH768BITS			768
 #define DH1024BITS			1024
@@ -75,7 +76,7 @@ static UADK_PKEY_KEYEXCH get_default_dh_keyexch(void)
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
 			initialized = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default dh provider\n");
+			UADK_ERR("failed to EVP_KEYEXCH_fetch default dh provider\n");
 		}
 	}
 	pthread_mutex_unlock(&dh_default_mutex);
@@ -386,7 +387,7 @@ static void *uadk_keymgmt_dh_dup(const void *keydata_from, int selection)
 static int uadk_DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 {
 	if (dh == NULL) {
-		fprintf(stderr, "invalid: dh is NULL\n");
+		UADK_ERR("invalid: dh is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -481,7 +482,7 @@ static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
 	bits = uadk_DH_get_length(dh) ?
 	       uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
 	if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY)) {
-		fprintf(stderr, "failed to BN_priv_rand\n");
+		UADK_ERR("failed to BN_priv_rand\n");
 		return UADK_P_FAIL;
 	}
 
@@ -508,14 +509,14 @@ static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 	qbits = BN_num_bits(dh->params.q);
 	/* Step (2) : check range of n */
 	if (n < (max_strength << 1) || n > qbits) {
-		fprintf(stderr, "n is invalid!\n");
+		UADK_ERR("n is invalid!\n");
 		return UADK_P_FAIL;
 	}
 
 	two_powN = BN_new();
 	/* 2^n */
 	if (two_powN == NULL || !BN_lshift(two_powN, BN_value_one(), n)) {
-		fprintf(stderr, "failed to BN_new or two_powN is zero\n");
+		UADK_ERR("failed to BN_new or two_powN is zero\n");
 		goto err;
 	}
 
@@ -525,7 +526,7 @@ static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 	do {
 		if (!BN_priv_rand_range_ex(new_prikey, two_powN, 0, NULL) ||
 		    !BN_add_word(new_prikey, 1)) {
-			fprintf(stderr, "failed to BN_priv_rand_range_ex\n");
+			UADK_ERR("failed to BN_priv_rand_range_ex\n");
 			goto err;
 		}
 		/* Step (6) : loop if c > M - 2 (i.e. c + 1 >= M) */
@@ -533,7 +534,7 @@ static int dh_gen_rand_prikey(const DH *dh, BIGNUM *new_prikey)
 			break;
 
 		if (cnt++ > RAND_MAX_CNT) {
-			fprintf(stderr, "failed to get appropriate prikey, timeout\n");
+			UADK_ERR("failed to get appropriate prikey, timeout\n");
 			goto err;
 		}
 	} while (1);
@@ -553,12 +554,12 @@ static int uadk_prov_dh_prepare_prikey(struct uadk_dh_sess *dh_sess, const DH *d
 	if (*prikey == NULL) {
 		*prikey = BN_secure_new();
 		if (*prikey == NULL) {
-			fprintf(stderr, "failed to do BN_secure_new\n");
+			UADK_ERR("failed to do BN_secure_new\n");
 			return UADK_P_FAIL;
 		}
 
 		if (dh_gen_rand_prikey(dh, *prikey) == UADK_P_FAIL) {
-			fprintf(stderr, "failed to generate new private key\n");
+			UADK_ERR("failed to generate new private key\n");
 			goto free_prikey;
 		}
 
@@ -632,7 +633,7 @@ static int uadk_prov_dh_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to poll msg: timeout!\n");
+	UADK_ERR("failed to poll msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -682,7 +683,7 @@ static struct uadk_dh_sess *uadk_prov_dh_new_session(DH *dh, __u16 bits, bool is
 	struct sched_params params = {0};
 
 	if (dh_sess == NULL) {
-		fprintf(stderr, "failed to alloc dh session\n");
+		UADK_ERR("failed to alloc dh session\n");
 		return NULL;
 	}
 
@@ -695,7 +696,7 @@ static struct uadk_dh_sess *uadk_prov_dh_new_session(DH *dh, __u16 bits, bool is
 	dh_sess->setup.sched_param = &params;
 	dh_sess->sess = wd_dh_alloc_sess(&dh_sess->setup);
 	if (dh_sess->sess == (handle_t)0) {
-		fprintf(stderr, "failed to init dh sess\n");
+		UADK_ERR("failed to init dh sess\n");
 		OPENSSL_free(dh_sess);
 		return NULL;
 	}
@@ -752,25 +753,25 @@ static int uadk_prov_dh_prepare_data(const BIGNUM *g, DH *dh, struct uadk_dh_ses
 	 */
 	bits = (__u16)uadk_DH_bits(dh);
 	if (bits == 0) {
-		fprintf(stderr, "invalid dh bits %u\n", bits);
+		UADK_ERR("invalid dh bits %u\n", bits);
 		return UADK_P_FAIL;
 	}
 
 	ret = check_dh_bit_useful(bits);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "invalid: dh%u is not supported by uadk provider\n", bits);
+		UADK_ERR("invalid: dh%u is not supported by uadk provider\n", bits);
 		return UADK_DO_SOFT;
 	}
 
 	*dh_sess = uadk_prov_dh_new_session(dh, bits, is_g2);
 	if (*dh_sess == NULL) {
-		fprintf(stderr, "failed to get session\n");
+		UADK_ERR("failed to get session\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_dh_prepare_prikey(*dh_sess, dh, prikey);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get private key\n");
+		UADK_ERR("failed to get private key\n");
 		uadk_prov_dh_free_session(*dh_sess);
 	}
 
@@ -797,7 +798,7 @@ static int dh_set_g(const BIGNUM *g, const __u16 key_size,
 
 	ret = wd_dh_set_g(dh_sess->sess, &g_dtb);
 	if (ret) {
-		fprintf(stderr, "failed to set dh g\n");
+		UADK_ERR("failed to set dh g\n");
 		return UADK_P_FAIL;
 	}
 
@@ -810,13 +811,13 @@ static int uadk_prov_dh_get_pubkey(struct uadk_dh_sess *dh_sess, BIGNUM **pubkey
 
 	pubkey_str = (const unsigned char *)dh_sess->req.pri;
 	if (pubkey_str == NULL) {
-		fprintf(stderr, "dh_sess->req.pri is NULL\n");
+		UADK_ERR("dh_sess->req.pri is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	*pubkey = BN_bin2bn(pubkey_str, dh_sess->req.pri_bytes, *pubkey);
 	if (*pubkey == NULL) {
-		fprintf(stderr, "failed to trans pubkey outs\n");
+		UADK_ERR("failed to trans pubkey outs\n");
 		return UADK_P_FAIL;
 	}
 
@@ -831,14 +832,14 @@ static int uadk_prov_dh_fill_genkey_req(const BIGNUM *g, const BIGNUM *p, const 
 
 	g_bin = OPENSSL_zalloc(key_size);
 	if (g_bin == NULL) {
-		fprintf(stderr, "failed to alloc g_bin\n");
+		UADK_ERR("failed to alloc g_bin\n");
 		return UADK_P_FAIL;
 	}
 
 	/* x is private key, x and p will be treated together in uadk */
 	x_bin = OPENSSL_zalloc(key_size * DH_PARAMS_CNT);
 	if (x_bin == NULL) {
-		fprintf(stderr, "failed to alloc x_bin\n");
+		UADK_ERR("failed to alloc x_bin\n");
 		goto free_g;
 	}
 	p_bin = x_bin + key_size;
@@ -909,12 +910,12 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
 			if (ret < 0 && ret != -EBUSY) {
-				fprintf(stderr, "failed to do dh async\n");
+				UADK_ERR("failed to do dh async\n");
 				goto free_poll_task;
 			}
 
 			if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
-				fprintf(stderr, "do dh async operation timeout\n");
+				UADK_ERR("do dh async operation timeout\n");
 				goto free_poll_task;
 			}
 		} while (ret == -EBUSY);
@@ -963,51 +964,51 @@ static int uadk_prov_dh_generate_key(DH *dh)
 	int ret;
 
 	if (dh == NULL) {
-		fprintf(stderr, "invalid: dh is NULL\n");
+		UADK_ERR("invalid: dh is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_dh_init();
 	if (ret) {
-		fprintf(stderr, "failed to init dh\n");
+		UADK_ERR("failed to init dh\n");
 		return UADK_DO_SOFT;
 	}
 
 	uadk_DH_get0_pqg(dh, &p, NULL, &g);
 	if (p == NULL || g == NULL) {
-		fprintf(stderr, "invalid: p or g is NULL\n");
+		UADK_ERR("invalid: p or g is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Get session and prepare private key */
 	ret = uadk_prov_dh_prepare_data(g, dh, &dh_sess, &prikey);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to prepare dh data\n");
+		UADK_ERR("failed to prepare dh data\n");
 		return ret;
 	}
 
 	ret = uadk_prov_dh_fill_genkey_req(g, p, prikey, dh_sess);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to fill req\n");
+		UADK_ERR("failed to fill req\n");
 		goto free_data;
 	}
 
 	ret = uadk_prov_dh_do_crypto(dh_sess);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to generate DH key\n");
+		UADK_ERR("failed to generate DH key\n");
 		ret = UADK_DO_SOFT;
 		goto free_req;
 	}
 
 	ret = uadk_prov_dh_get_pubkey(dh_sess, &pubkey);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get public key\n");
+		UADK_ERR("failed to get public key\n");
 		goto free_req;
 	}
 
 	ret = uadk_prov_dh_set_pkey(dh, pubkey, prikey);
 	if (ret == UADK_P_FAIL)
-		fprintf(stderr, "failed to set dh pkey\n");
+		UADK_ERR("failed to set dh pkey\n");
 
 	uadk_prov_dh_free_genkey_req(dh_sess);
 	uadk_prov_dh_free_session(dh_sess);
@@ -1092,14 +1093,14 @@ static DH *ossl_dh_new_ex(OSSL_LIB_CTX *libctx)
 	DH *dh = OPENSSL_zalloc(sizeof(*dh));
 
 	if (dh == NULL) {
-		fprintf(stderr, "failed to alloc dh\n");
+		UADK_ERR("failed to alloc dh\n");
 		return NULL;
 	}
 
 	dh->references = 1;
 	dh->lock = CRYPTO_THREAD_lock_new();
 	if (dh->lock == NULL) {
-		fprintf(stderr, "failed to new dh thread lock\n");
+		UADK_ERR("failed to new dh thread lock\n");
 		OPENSSL_free(dh);
 		return NULL;
 	}
@@ -1126,20 +1127,20 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 	if (gctx->group_nid == NID_undef) {
 		gctx->group_nid = ossl_dh_get_named_group_uid_from_size(gctx->pbits);
 		if (gctx->group_nid == NID_undef) {
-			fprintf(stderr, "failed to get named group uid from size\n");
+			UADK_ERR("failed to get named group uid from size\n");
 			return NULL;
 		}
 	}
 
 	group = ossl_ffc_uid_to_dh_named_group(gctx->group_nid);
 	if (!group) {
-		fprintf(stderr, "failed to get dh named group\n");
+		UADK_ERR("failed to get dh named group\n");
 		return NULL;
 	}
 
 	dh = ossl_dh_new_ex(gctx->libctx);
 	if (dh == NULL) {
-		fprintf(stderr, "failed to get dh from libctx\n");
+		UADK_ERR("failed to get dh from libctx\n");
 		return NULL;
 	}
 
@@ -1150,7 +1151,7 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 
 	*ffc = ossl_dh_get0_params(dh);
 	if (*ffc == NULL) {
-		fprintf(stderr, "failed to gen ffc params\n");
+		UADK_ERR("failed to gen ffc params\n");
 		ossl_dh_free_ex(dh);
 		return NULL;
 	}
@@ -1165,24 +1166,24 @@ static DH *uadk_prov_dh_gen_params_ex(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ff
 	/* Use existing params */
 	dh = ossl_dh_new_ex(gctx->libctx);
 	if (dh == NULL) {
-		fprintf(stderr, "failed to new dh by nid\n");
+		UADK_ERR("failed to new dh by nid\n");
 		return NULL;
 	}
 
 	*ffc = ossl_dh_get0_params(dh);
 	if (*ffc == NULL) {
-		fprintf(stderr, "failed to get ffc params\n");
+		UADK_ERR("failed to get ffc params\n");
 		goto free_dh;
 	}
 
 	/* Copy the template value if one was passed */
 	if (gctx->ffc_params != NULL && ossl_ffc_params_copy(*ffc, gctx->ffc_params) == 0) {
-		fprintf(stderr, "failed to copy params\n");
+		UADK_ERR("failed to copy params\n");
 		goto free_dh;
 	}
 
 	if (ossl_ffc_params_set_seed(*ffc, gctx->seed, gctx->seedlen) == 0) {
-		fprintf(stderr, "failed to set seed\n");
+		UADK_ERR("failed to set seed\n");
 		goto free_dh;
 	}
 
@@ -1196,7 +1197,7 @@ static DH *uadk_prov_dh_gen_params_ex(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ff
 
 	if (gctx->mdname) {
 		if (ossl_ffc_set_digest(*ffc, gctx->mdname, gctx->mdprops) == 0) {
-			fprintf(stderr, "failed to set digest\n");
+			UADK_ERR("failed to set digest\n");
 			goto free_dh;
 		}
 	}
@@ -1216,7 +1217,7 @@ static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
 	BN_GENCB *gencb;
 
 	if (cb == NULL || cb_params == NULL) {
-		fprintf(stderr, "invalid: cb function or param is NULL\n");
+		UADK_ERR("invalid: cb function or param is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1241,7 +1242,7 @@ static int uadk_prov_dh_gen_params_cb(PROV_DH_KEYMGMT_CTX *gctx, DH *dh,
 							      gctx->pbits,
 							      gctx->qbits, gencb);
 		if (ret <= 0) {
-			fprintf(stderr, "failed to generate ffc parameters\n");
+			UADK_ERR("failed to generate ffc parameters\n");
 			ret = UADK_P_FAIL;
 		}
 	}
@@ -1298,7 +1299,7 @@ static void *uadk_dh_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params)
 	if (!enable_sw_offload || !get_default_dh_keymgmt().gen)
 		return NULL;
 
-	fprintf(stderr, "switch to openssl software calculation in dh generation.\n");
+	UADK_INFO("switch to openssl software calculation in dh generation.\n");
 	return get_default_dh_keymgmt().gen(genctx, cb, cb_params);
 }
 
@@ -1310,7 +1311,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 	int ret;
 
 	if (gctx == NULL) {
-		fprintf(stderr, "invalid: keygen ctx is NULL\n");
+		UADK_ERR("invalid: keygen ctx is NULL\n");
 		return NULL;
 	}
 
@@ -1330,7 +1331,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 	/* DH key generation */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
 		if (ffc->p == NULL || ffc->g == NULL) {
-			fprintf(stderr, "invalid: ffc->p or ffc->g is NULL\n");
+			UADK_ERR("invalid: ffc->p or ffc->g is NULL\n");
 			goto free_gen_params;
 		}
 
@@ -1342,7 +1343,7 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 
 		ret = uadk_prov_dh_generate_key(dh);
 		if (ret != UADK_P_SUCCESS) {
-			fprintf(stderr, "failed to do dh generation key\n");
+			UADK_ERR("failed to do dh generation key\n");
 			goto free_gen_params;
 		}
 	}
@@ -1387,7 +1388,7 @@ static void *uadk_keyexch_dh_newctx(void *provctx)
 
 	pdhctx = OPENSSL_zalloc(sizeof(PROV_DH_KEYEXCH_CTX));
 	if (pdhctx == NULL) {
-		fprintf(stderr, "failed to alloc pdhctx\n");
+		UADK_ERR("failed to alloc pdhctx\n");
 		return NULL;
 	}
 
@@ -1438,12 +1439,12 @@ static int uadk_keyexch_dh_init(void *dhctx, void *dh, const OSSL_PARAM params[]
 	PROV_DH_KEYEXCH_CTX *pdhctx = (PROV_DH_KEYEXCH_CTX *)dhctx;
 
 	if (pdhctx == NULL) {
-		fprintf(stderr, "invalid: dhctx is NULL\n");
+		UADK_ERR("invalid: dhctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (dh == NULL || !DH_up_ref(dh)) {
-		fprintf(stderr, "invalid: dh is NULL\n");
+		UADK_ERR("invalid: dh is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1468,13 +1469,13 @@ static int uadk_keyexch_dh_match_params(DH *priv, DH *peer)
 	int ret;
 
 	if (dhparams_priv == NULL || dhparams_peer == NULL) {
-		fprintf(stderr, "failed to get dh params\n");
+		UADK_ERR("failed to get dh params\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = ossl_ffc_params_cmp(dhparams_priv, dhparams_peer, IGNORE_Q);
 	if (ret == UADK_P_FAIL)
-		fprintf(stderr, "invalid: domain parameters of both parties do not match\n");
+		UADK_ERR("invalid: domain parameters of both parties do not match\n");
 
 	return ret;
 }
@@ -1484,13 +1485,13 @@ static int uadk_keyexch_dh_set_peer(void *dhctx, void *dh)
 	PROV_DH_KEYEXCH_CTX *pdhctx = (PROV_DH_KEYEXCH_CTX *)dhctx;
 
 	if (pdhctx == NULL || dh == NULL) {
-		fprintf(stderr, "invalid: dh ctx or object is NULL\n");
+		UADK_ERR("invalid: dh ctx or object is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (uadk_keyexch_dh_match_params(dh, pdhctx->dh) == UADK_P_FAIL ||
 	    DH_up_ref(dh) == UADK_P_FAIL) {
-		fprintf(stderr, "failed to match dh params\n");
+		UADK_ERR("failed to match dh params\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1512,14 +1513,14 @@ static int uadk_prov_dh_fill_compkey_req(const BIGNUM *g, const BIGNUM *p,
 
 	g_bin = OPENSSL_zalloc(key_size);
 	if (g_bin == NULL) {
-		fprintf(stderr, "failed to alloc g\n");
+		UADK_ERR("failed to alloc g\n");
 		return UADK_P_FAIL;
 	}
 
 	/* x is private key, x and p will be treated together in uadk */
 	x_bin = OPENSSL_zalloc(key_size * DH_PARAMS_CNT);
 	if (x_bin == NULL) {
-		fprintf(stderr, "failed to alloc x_bin\n");
+		UADK_ERR("failed to alloc x_bin\n");
 		goto free_g;
 	}
 
@@ -1577,37 +1578,37 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 	int ret;
 
 	if (!dh || !key || !pubkey || !uadk_DH_get0_priv_key(dh)) {
-		fprintf(stderr, "failed to check key params\n");
+		UADK_ERR("failed to check key params\n");
 		return UADK_P_FAIL;
 	}
 
 	uadk_DH_get0_pqg(dh, &p, NULL, &g);
 	if (!p || !g) {
-		fprintf(stderr, "failed to get p/q/g param\n");
+		UADK_ERR("failed to get p/q/g param\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_dh_init();
 	if (ret) {
-		fprintf(stderr, "failed to init\n");
+		UADK_ERR("failed to init\n");
 		return UADK_DO_SOFT;
 	}
 
 	ret = uadk_prov_dh_prepare_data(g, dh, &dh_sess, &prikey);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to prepare dh data\n");
+		UADK_ERR("failed to prepare dh data\n");
 		return ret;
 	}
 
 	ret = uadk_prov_dh_fill_compkey_req(g, p, prikey, pubkey, dh_sess);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to fill req\n");
+		UADK_ERR("failed to fill req\n");
 		goto free_data;
 	}
 
 	ret = uadk_prov_dh_do_crypto(dh_sess);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to generate DH shared key\n");
+		UADK_ERR("failed to generate DH shared key\n");
 		ret = UADK_DO_SOFT;
 		goto free_req;
 	}
@@ -1647,7 +1648,7 @@ static int uadk_dh_compute_key_padded(unsigned char *key, const BIGNUM *pub_key,
 	}
 
 	if (pad < 0) {
-		fprintf(stderr, "invalid: recv key size(%d) > dhsize(%zu)", rv, dhsize);
+		UADK_ERR("invalid: recv key size(%d) > dhsize(%zu)", rv, dhsize);
 		return UADK_P_FAIL;
 	}
 
@@ -1663,13 +1664,13 @@ static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char 
 
 	/* pdhctx has been checked when the function is called */
 	if (pdhctx->dh == NULL) {
-		fprintf(stderr, "invalid: dh is NULL\n");
+		UADK_ERR("invalid: dh is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	dhsize = (size_t)uadk_DH_size(pdhctx->dh);
 	if (dhsize == 0) {
-		fprintf(stderr, "invalid: dhszie is zero\n");
+		UADK_ERR("invalid: dhszie is zero\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1679,12 +1680,12 @@ static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char 
 	}
 
 	if (outlen < dhsize) {
-		fprintf(stderr, "invalid: outlen(%zu) < dhsize(%zu)\n", outlen, dhsize);
+		UADK_ERR("invalid: outlen(%zu) < dhsize(%zu)\n", outlen, dhsize);
 		return UADK_P_FAIL;
 	}
 
 	if (pdhctx->dhpeer == NULL) {
-		fprintf(stderr, "invalid: dhpeer is NULL\n");
+		UADK_ERR("invalid: dhpeer is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1695,7 +1696,7 @@ static int uadk_prov_dh_plain_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned char 
 	else
 		ret = uadk_dh_compute_key(secret, pubkey, pdhctx->dh);
 	if (ret <= 0) {
-		fprintf(stderr, "failed to do dh compute, pad(%u)\n", pad);
+		UADK_ERR("failed to do dh compute, pad(%u)\n", pad);
 		return ret;
 	}
 
@@ -1764,7 +1765,7 @@ static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned c
 	}
 
 	if (outlen < pdhctx->kdf_outlen) {
-		fprintf(stderr, "invalid: outlen(%zu) < kdf_outlen(%zu)\n",
+		UADK_ERR("invalid: outlen(%zu) < kdf_outlen(%zu)\n",
 			outlen, pdhctx->kdf_outlen);
 		return UADK_P_FAIL;
 	}
@@ -1774,7 +1775,7 @@ static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned c
 
 	stmp = OPENSSL_secure_malloc(stmplen);
 	if (stmp == NULL) {
-		fprintf(stderr, "failed to do OPENSSL_secure_malloc\n");
+		UADK_ERR("failed to do OPENSSL_secure_malloc\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1786,7 +1787,7 @@ static int uadk_prov_dh_X9_42_kdf_derive(PROV_DH_KEYEXCH_CTX *pdhctx, unsigned c
 	if (pdhctx->kdf_type == PROV_DH_KDF_X9_42_ASN1) {
 		if (ossl_dh_kdf_X9_42_asn1(secret, pdhctx, stmp, stmplen, NULL) == UADK_P_FAIL) {
 			ret = UADK_P_FAIL;
-			fprintf(stderr, "failed to do ossl_dh_kdf_X9_42_asn1\n");
+			UADK_ERR("failed to do ossl_dh_kdf_X9_42_asn1\n");
 			goto end;
 		}
 	}
@@ -1806,7 +1807,7 @@ static int uadk_dh_sw_derive(void *dhctx, unsigned char *secret,
 	if (!enable_sw_offload || !get_default_dh_keyexch().derive)
 		return UADK_P_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in dh derivation.\n");
+	UADK_INFO("switch to openssl software calculation in dh derivation.\n");
 	return get_default_dh_keyexch().derive(dhctx, secret, psecretlen, outlen);
 }
 
@@ -1817,7 +1818,7 @@ static int uadk_keyexch_dh_derive(void *dhctx, unsigned char *secret,
 	int ret = UADK_P_FAIL;
 
 	if (pdhctx == NULL) {
-		fprintf(stderr, "invalid: pdhctx is NULL\n");
+		UADK_ERR("invalid: pdhctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1829,7 +1830,7 @@ static int uadk_keyexch_dh_derive(void *dhctx, unsigned char *secret,
 		ret = uadk_prov_dh_X9_42_kdf_derive(pdhctx, secret, psecretlen, outlen);
 		break;
 	default:
-		fprintf(stderr, "invalid: unsupport kdf type\n");
+		UADK_ERR("invalid: unsupport kdf type\n");
 		ret = UADK_DO_SOFT;
 		break;
 	}
@@ -1847,13 +1848,13 @@ static void *uadk_keyexch_dh_dupctx(void *dhctx)
 	PROV_DH_KEYEXCH_CTX *dstctx;
 
 	if (srcctx == NULL) {
-		fprintf(stderr, "invalid: src ctx is NULL\n");
+		UADK_ERR("invalid: src ctx is NULL\n");
 		return NULL;
 	}
 
 	dstctx = OPENSSL_zalloc(sizeof(*dstctx));
 	if (dstctx == NULL) {
-		fprintf(stderr, "failed to alloc dst ctx\n");
+		UADK_ERR("failed to alloc dst ctx\n");
 		return NULL;
 	}
 
@@ -2018,7 +2019,7 @@ static int uadk_keyexch_dh_set_ctx_params(void *dhctx, const OSSL_PARAM params[]
 	int ret = UADK_P_FAIL;
 
 	if (pdhctx == NULL) {
-		fprintf(stderr, "invalid: dh ctx is NULL\n");
+		UADK_ERR("invalid: dh ctx is NULL\n");
 		return ret;
 	}
 
@@ -2029,31 +2030,31 @@ static int uadk_keyexch_dh_set_ctx_params(void *dhctx, const OSSL_PARAM params[]
 	pthread_mutex_lock(&dh_mutex);
 	ret = uadk_prov_dh_locate_kdf_type(pdhctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to locate kdf type\n");
+		UADK_ERR("failed to locate kdf type\n");
 		goto end;
 	}
 
 	ret = uadk_prov_dh_locate_kdf_digest(pdhctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to locate kdf digest\n");
+		UADK_ERR("failed to locate kdf digest\n");
 		goto end;
 	}
 
 	ret = uadk_prov_dh_locate_kdf_outlen(pdhctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to locate kdf outlen\n");
+		UADK_ERR("failed to locate kdf outlen\n");
 		goto end;
 	}
 
 	ret = uadk_prov_dh_locate_kdf_ukm(pdhctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to locate kdf ukm\n");
+		UADK_ERR("failed to locate kdf ukm\n");
 		goto end;
 	}
 
 	ret = uadk_prov_dh_locate_kdf_pad(pdhctx, params);
 	if (ret == UADK_P_FAIL)
-		fprintf(stderr, "failed to locate kdf pad\n");
+		UADK_ERR("failed to locate kdf pad\n");
 
 end:
 	pthread_mutex_unlock(&dh_mutex);
@@ -2099,7 +2100,7 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 	OSSL_PARAM *p;
 
 	if (pdhctx == NULL) {
-		fprintf(stderr, "invalid: dh ctx is NULL\n");
+		UADK_ERR("invalid: dh ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2113,12 +2114,12 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 			kdf_type = OSSL_KDF_NAME_X942KDF_ASN1;
 			break;
 		default:
-			fprintf(stderr, "invalid kdf_type\n");
+			UADK_ERR("invalid kdf_type\n");
 			return UADK_P_FAIL;
 		}
 
 		if (!OSSL_PARAM_set_utf8_string(p, kdf_type)) {
-			fprintf(stderr, "failed to set utf8 string for kdf_type\n");
+			UADK_ERR("failed to set utf8 string for kdf_type\n");
 			return UADK_P_FAIL;
 		}
 	}
@@ -2127,19 +2128,19 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 	if (p != NULL &&
 	    !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_md == NULL ?
 					   "" : EVP_MD_get0_name(pdhctx->kdf_md))) {
-		fprintf(stderr, "failed to set kdf_md\n");
+		UADK_ERR("failed to set kdf_md\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_EXCHANGE_PARAM_KDF_OUTLEN);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, pdhctx->kdf_outlen)) {
-		fprintf(stderr, "failed to set kdf_outlen\n");
+		UADK_ERR("failed to set kdf_outlen\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_EXCHANGE_PARAM_KDF_UKM);
 	if (p != NULL && !OSSL_PARAM_set_octet_ptr(p, pdhctx->kdf_ukm, pdhctx->kdf_ukmlen)) {
-		fprintf(stderr, "failed to set kdf_ukm\n");
+		UADK_ERR("failed to set kdf_ukm\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2147,7 +2148,7 @@ static int uadk_keyexch_dh_get_ctx_params(void *dhctx, OSSL_PARAM params[])
 	if (p != NULL &&
 	    !OSSL_PARAM_set_utf8_string(p, pdhctx->kdf_cekalg == NULL ?
 					   "" : pdhctx->kdf_cekalg)) {
-		fprintf(stderr, "failed to set kdf_cekalg\n");
+		UADK_ERR("failed to set kdf_cekalg\n");
 		return UADK_P_FAIL;
 	}
 
