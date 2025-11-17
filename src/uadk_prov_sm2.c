@@ -3141,7 +3141,7 @@ static void *uadk_asym_cipher_sm2_dupctx(void *vpsm2ctx)
 	dstctx->sm2_pctx = NULL;
 	memset(&dstctx->md, 0, sizeof(dstctx->md));
 
-	ret = ossl_prov_digest_copy(&srcctx->md, &dstctx->md);
+	ret = ossl_prov_digest_copy(&dstctx->md, &srcctx->md);
 	if (!ret)
 		goto free_ctx;
 

@@ -82,16 +82,16 @@ UADK_PKEY_KEYEXCH_DESCR(x25519, X25519);
 static UADK_PKEY_KEYEXCH get_default_x25519_keyexch(void)
 {
 	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initilazed;
+	static int initialized;
 
 	pthread_mutex_lock(&x25519_mutex);
-	if (!initilazed) {
+	if (!initialized) {
 		UADK_PKEY_KEYEXCH *keyexch =
 			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
 		if (keyexch) {
 			s_keyexch = *keyexch;
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initilazed = 1;
+			initialized = 1;
 		} else {
 			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X25519 provider\n");
 		}
@@ -551,7 +551,7 @@ static ECX_KEY *uadk_prov_ecx_create_prikey(PROV_ECX_KEYMGMT_CTX *gctx)
 	ecx_key = uadk_prov_ecx_key_new(gctx->libctx, gctx->type, 0, gctx->propq);
 	if (ecx_key == NULL) {
 		fprintf(stderr, "failed to new ecx_key\n");
-		return UADK_P_FAIL;
+		return NULL;
 	}
 
 	if (gctx->type == ECX_KEY_TYPE_X448)
