@@ -45,9 +45,6 @@
 #define UADK_P_SUCCESS			1
 #define UADK_P_FAIL			0
 #define UADK_P_INVALID			(-1)
-#define PROV_SEND_MAX_CNT		90000000
-#define PROV_RECV_MAX_CNT		60000000
-#define PROV_ENV_RECV_MAX_CNT		60000
 #define PROV_KEYMGMT_ALG_NUM		7
 #define ECC_POINT_SIZE(n)		((n) << 1)
 #define UADK_OCTET_STRING		0x04
