@@ -64,16 +64,16 @@ static pthread_mutex_t dh_default_mutex = PTHREAD_MUTEX_INITIALIZER;
 static UADK_PKEY_KEYEXCH get_default_dh_keyexch(void)
 {
 	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initilazed;
+	static int initialized;
 
 	pthread_mutex_lock(&dh_default_mutex);
-	if (!initilazed) {
+	if (!initialized) {
 		UADK_PKEY_KEYEXCH *keyexch =
 			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "dh", "provider=default");
 		if (keyexch) {
 			s_keyexch = *keyexch;
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initilazed = 1;
+			initialized = 1;
 		} else {
 			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default dh provider\n");
 		}
@@ -1428,11 +1428,6 @@ static void uadk_keyexch_dh_freectx(void *dhctx)
 	if (pdhctx->kdf_ukm) {
 		OPENSSL_clear_free(pdhctx->kdf_ukm, pdhctx->kdf_ukmlen);
 		pdhctx->kdf_ukm = NULL;
-	}
-
-	if (pdhctx->kdf_cekalg) {
-		OPENSSL_free(pdhctx->kdf_cekalg);
-		pdhctx->kdf_cekalg = NULL;
 	}
 
 	OPENSSL_free(pdhctx);
