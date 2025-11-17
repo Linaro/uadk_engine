@@ -32,6 +32,7 @@
 #include "uadk_prov_bio.h"
 #include "uadk_prov_pkey.h"
 
+#define ARRAY_SIZE(x)		(sizeof(x) / sizeof((x)[0]))
 static const char UADK_DEFAULT_PROPERTIES[] = "provider=uadk_provider";
 static OSSL_PROVIDER *default_prov;
 
@@ -40,12 +41,113 @@ static OSSL_FUNC_core_gettable_params_fn *c_gettable_params;
 static OSSL_FUNC_core_get_params_fn *c_get_params;
 static OSSL_FUNC_core_get_libctx_fn *c_get_libctx;
 
-struct uadk_provider_params {
+static struct uadk_provider_params {
 	char *enable_sw_flag;
+	char *sm2;
+	char *rsa;
+	char *ecdh;
+	char *ecdsa;
+	char *dh;
+	char *x25519;
+	char *x448;
+	char *hmac;
+	char *aes_ecb;
+	char *aes_cbc;
+	char *aes_xts;
+	char *aes_ctr;
+	char *aes_ofb128;
+	char *aes_cfb128;
+	char *sm4_cbc;
+	char *sm4_ofb128;
+	char *sm4_cfb128;
+	char *sm4_ecb;
+	char *sm4_ctr;
+	char *des_ede3_cbc;
+	char *des_ede3_ecb;
+	char *md5;
+	char *sm3;
+	char *sha1;
+	char *sha224;
+	char *sha256;
+	char *sha384;
+	char *sha512;
+	char *aes_gcm;
 } uadk_params;
+
+static struct uadk_prov_alg_en_info {
+	int sm2_en;
+	int rsa_en;
+	int ecdh_en;
+	int ecdsa_en;
+	int dh_en;
+	int x25519_en;
+	int x448_en;
+	int hmac_en;
+	int aes_ecb_en;
+	int aes_cbc_en;
+	int aes_xts_en;
+	int aes_ctr_en;
+	int aes_ofb128_en;
+	int aes_cfb128_en;
+	int sm4_cbc_en;
+	int sm4_ofb128_en;
+	int sm4_cfb128_en;
+	int sm4_ecb_en;
+	int sm4_ctr_en;
+	int des_ede3_cbc_en;
+	int des_ede3_ecb_en;
+	int md5_en;
+	int sm3_en;
+	int sha1_en;
+	int sha224_en;
+	int sha256_en;
+	int sha384_en;
+	int sha512_en;
+	int aes_gcm_en;
+} uadk_prov_alg_en;
 
 /* offload small packets to sw */
 int enable_sw_offload = 1;
+
+struct uadk_prov_alg_cfg {
+	const char *name;
+	char **param;
+	int *enable;
+};
+
+static struct uadk_prov_alg_cfg uadk_prov_alg_cfg_info[] = {
+	{"sm2", &uadk_params.sm2, &uadk_prov_alg_en.sm2_en},
+	{"rsa", &uadk_params.rsa, &uadk_prov_alg_en.rsa_en},
+	{"ecdh", &uadk_params.ecdh, &uadk_prov_alg_en.ecdh_en},
+	{"ecdsa", &uadk_params.ecdsa, &uadk_prov_alg_en.ecdsa_en},
+	{"dh", &uadk_params.dh, &uadk_prov_alg_en.dh_en},
+	{"x25519", &uadk_params.x25519, &uadk_prov_alg_en.x25519_en},
+	{"x448", &uadk_params.x448, &uadk_prov_alg_en.x448_en},
+	{"hmac", &uadk_params.hmac, &uadk_prov_alg_en.hmac_en},
+	{"aes_ecb", &uadk_params.aes_ecb, &uadk_prov_alg_en.aes_ecb_en},
+	{"aes_cbc", &uadk_params.aes_cbc, &uadk_prov_alg_en.aes_cbc_en},
+	{"aes_xts", &uadk_params.aes_xts, &uadk_prov_alg_en.aes_xts_en},
+	{"aes_ctr", &uadk_params.aes_ctr, &uadk_prov_alg_en.aes_ctr_en},
+	{"aes_ofb128", &uadk_params.aes_ofb128, &uadk_prov_alg_en.aes_ofb128_en},
+	{"aes_cfb128", &uadk_params.aes_cfb128, &uadk_prov_alg_en.aes_cfb128_en},
+	{"sm4_cbc", &uadk_params.sm4_cbc, &uadk_prov_alg_en.sm4_cbc_en},
+	{"sm4_ofb128", &uadk_params.sm4_ofb128, &uadk_prov_alg_en.sm4_ofb128_en},
+	{"sm4_cfb128", &uadk_params.sm4_cfb128, &uadk_prov_alg_en.sm4_cfb128_en},
+	{"sm4_ecb", &uadk_params.sm4_ecb, &uadk_prov_alg_en.sm4_ecb_en},
+	{"sm4_ctr", &uadk_params.sm4_ctr, &uadk_prov_alg_en.sm4_ctr_en},
+	{"des_ede3_cbc", &uadk_params.des_ede3_cbc,
+	 &uadk_prov_alg_en.des_ede3_cbc_en},
+	{"des_ede3_ecb", &uadk_params.des_ede3_ecb,
+	 &uadk_prov_alg_en.des_ede3_ecb_en},
+	{"md5", &uadk_params.md5, &uadk_prov_alg_en.md5_en},
+	{"sm3", &uadk_params.sm3, &uadk_prov_alg_en.sm3_en},
+	{"sha1", &uadk_params.sha1, &uadk_prov_alg_en.sha1_en},
+	{"sha224", &uadk_params.sha224, &uadk_prov_alg_en.sha224_en},
+	{"sha256", &uadk_params.sha256, &uadk_prov_alg_en.sha256_en},
+	{"sha384", &uadk_params.sha384, &uadk_prov_alg_en.sha384_en},
+	{"sha512", &uadk_params.sha512, &uadk_prov_alg_en.sha512_en},
+	{"aes_gcm", &uadk_params.aes_gcm, &uadk_prov_alg_en.aes_gcm_en}
+};
 
 const OSSL_ALGORITHM uadk_prov_digests[] = {
 	{ PROV_NAMES_MD5, UADK_DEFAULT_PROPERTIES,
@@ -66,13 +168,13 @@ const OSSL_ALGORITHM uadk_prov_digests[] = {
 	  uadk_sha512_224_functions, "uadk_provider sha2-512-224" },
 	{ PROV_NAMES_SHA2_512_256, UADK_DEFAULT_PROPERTIES,
 	  uadk_sha512_256_functions, "uadk_provider sha2-512-256" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 const OSSL_ALGORITHM uadk_prov_hmac[] = {
 	{ "HMAC", UADK_DEFAULT_PROPERTIES,
 	  uadk_hmac_functions, "uadk_provider hmac" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 const OSSL_ALGORITHM uadk_prov_ciphers_v2[] = {
@@ -100,7 +202,7 @@ const OSSL_ALGORITHM uadk_prov_ciphers_v2[] = {
 	  uadk_des_ede3_cbc_functions, "uadk_provider des-ede3-cbc" },
 	{ "DES-EDE3-ECB", UADK_DEFAULT_PROPERTIES,
 	  uadk_des_ede3_ecb_functions, "uadk_provider des-ede3-ecb" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
@@ -164,13 +266,13 @@ const OSSL_ALGORITHM uadk_prov_ciphers_v3[] = {
 	  uadk_des_ede3_cbc_functions, "uadk_provider des-ede3-cbc" },
 	{ "DES-EDE3-ECB", UADK_DEFAULT_PROPERTIES,
 	  uadk_des_ede3_ecb_functions, "uadk_provider des-ede3-ecb" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_signature_v2[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_signature_functions, "uadk_provider rsa_signature" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_signature_v3[] = {
@@ -180,14 +282,14 @@ static const OSSL_ALGORITHM uadk_prov_signature_v3[] = {
 	  uadk_sm2_signature_functions, "uadk_provider sm2_signature" },
 	{ "ECDSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_ecdsa_signature_functions, "uadk_provider ecdsa_signature" },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v3[] = {
@@ -202,13 +304,13 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt_v3[] = {
 	  uadk_x448_keymgmt_functions, "uadk X448 Keymgmt implementation."},
 	{ "X25519", UADK_DEFAULT_PROPERTIES,
 	  uadk_x25519_keymgmt_functions, "uadk X25519 Keymgmt implementation."},
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_asym_cipher_v2[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_asym_cipher_functions, "uadk RSA asym cipher implementation." },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_asym_cipher_v3[] = {
@@ -216,13 +318,13 @@ static const OSSL_ALGORITHM uadk_prov_asym_cipher_v3[] = {
 	  uadk_rsa_asym_cipher_functions, "uadk RSA asym cipher implementation." },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_asym_cipher_functions, "uadk SM2 asym cipher implementation." },
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_keyexch_v2[] = {
 	{ "DH", UADK_DEFAULT_PROPERTIES,
 	  uadk_dh_keyexch_functions, "UADK DH keyexch implementation"},
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM uadk_prov_keyexch_v3[] = {
@@ -234,8 +336,332 @@ static const OSSL_ALGORITHM uadk_prov_keyexch_v3[] = {
 	  uadk_x448_keyexch_functions, "uadk X448 keyexch implementation."},
 	{ "X25519", UADK_DEFAULT_PROPERTIES,
 	  uadk_x25519_keyexch_functions, "uadk 25519 keyexch implementation."},
-	{ NULL, NULL, NULL }
+	{ NULL, NULL, NULL, NULL }
 };
+
+static OSSL_ALGORITHM *uadk_generate_digests_array(void)
+{
+	OSSL_ALGORITHM *digests_array;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_digests);
+	digests_array = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!digests_array)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_digests[i].algorithm_names;
+
+		/* The last entry will be terminated by NULL. */
+		if (name == NULL ||
+		    (uadk_prov_alg_en.md5_en && strstr(name, "MD5")) ||
+		    (uadk_prov_alg_en.sm3_en && strstr(name, "SM3")) ||
+		    (uadk_prov_alg_en.sha1_en && strstr(name, "SHA1")) ||
+		    (uadk_prov_alg_en.sha224_en && strstr(name, "SHA2-224")) ||
+		    (uadk_prov_alg_en.sha256_en && strstr(name, "SHA2-256")) ||
+		    (uadk_prov_alg_en.sha384_en && strstr(name, "SHA2-384")) ||
+		    (uadk_prov_alg_en.sha512_en && strstr(name, "SHA2-512")))
+			memcpy(&digests_array[index++],
+			       &uadk_prov_digests[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return digests_array;
+}
+
+static OSSL_ALGORITHM *uadk_generate_hmac_array(void)
+{
+	OSSL_ALGORITHM *hmac_array;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_hmac);
+	hmac_array = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!hmac_array)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_hmac[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.hmac_en && strstr(name, "HMAC")))
+			memcpy(&hmac_array[index++],
+			       &uadk_prov_hmac[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return hmac_array;
+}
+
+static OSSL_ALGORITHM *uadk_generate_cipher_array_v2(void)
+{
+	OSSL_ALGORITHM *ciphers_array_v2;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_ciphers_v2);
+	ciphers_array_v2 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!ciphers_array_v2)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_ciphers_v2[i].algorithm_names;
+
+		if (name == NULL ||
+		    (uadk_prov_alg_en.aes_cbc_en &&
+		     strstr(name, "AES") && strstr(name, "CBC")) ||
+		    (uadk_prov_alg_en.aes_ecb_en &&
+		     strstr(name, "AES") && strstr(name, "ECB")) ||
+		    (uadk_prov_alg_en.aes_xts_en && strstr(name, "XTS")) ||
+		    (uadk_prov_alg_en.sm4_cbc_en && strstr(name, "SM4-CBC")) ||
+		    (uadk_prov_alg_en.sm4_ecb_en && strstr(name, "SM4-ECB")) ||
+		    (uadk_prov_alg_en.des_ede3_cbc_en && strstr(name, "EDE3-CBC")) ||
+		    (uadk_prov_alg_en.des_ede3_ecb_en && strstr(name, "EDE3-ECB")))
+			memcpy(&ciphers_array_v2[index++],
+			       &uadk_prov_ciphers_v2[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return ciphers_array_v2;
+}
+
+static OSSL_ALGORITHM *uadk_generate_cipher_array_v3(void)
+{
+	OSSL_ALGORITHM *ciphers_array_v3;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_ciphers_v3);
+	ciphers_array_v3 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!ciphers_array_v3)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_ciphers_v3[i].algorithm_names;
+
+		if (name == NULL ||
+		    (uadk_prov_alg_en.aes_cbc_en &&
+		     strstr(name, "AES") && strstr(name, "CBC")) ||
+		    (uadk_prov_alg_en.aes_ecb_en &&
+		     strstr(name, "AES") && strstr(name, "ECB")) ||
+		    (uadk_prov_alg_en.aes_ctr_en &&
+		     strstr(name, "AES") && strstr(name, "CTR")) ||
+		    (uadk_prov_alg_en.aes_xts_en && strstr(name, "XTS")) ||
+		    (uadk_prov_alg_en.aes_ofb128_en && strstr(name, "OFB")) ||
+		    (uadk_prov_alg_en.aes_cfb128_en && strstr(name, "CFB")) ||
+		    (uadk_prov_alg_en.aes_gcm_en && strstr(name, "GCM")) ||
+		    (uadk_prov_alg_en.sm4_cbc_en && strstr(name, "SM4-CBC")) ||
+		    (uadk_prov_alg_en.sm4_ecb_en && strstr(name, "SM4-ECB")) ||
+		    (uadk_prov_alg_en.sm4_ofb128_en && strstr(name, "SM4-OFB")) ||
+		    (uadk_prov_alg_en.sm4_cfb128_en && strstr(name, "SM4-CFB")) ||
+		    (uadk_prov_alg_en.sm4_ctr_en && strstr(name, "SM4-CTR")) ||
+		    (uadk_prov_alg_en.des_ede3_cbc_en && strstr(name, "EDE3-CBC")) ||
+		    (uadk_prov_alg_en.des_ede3_ecb_en && strstr(name, "EDE3-ECB")))
+			memcpy(&ciphers_array_v3[index++],
+			       &uadk_prov_ciphers_v3[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return ciphers_array_v3;
+}
+
+static OSSL_ALGORITHM *uadk_generate_signature_array_v2(void)
+{
+	OSSL_ALGORITHM *signature_array_v2;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_signature_v2);
+	signature_array_v2 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!signature_array_v2)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_signature_v2[i].algorithm_names;
+		if (name == NULL || (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")))
+			memcpy(&signature_array_v2[index++],
+			       &uadk_prov_signature_v2[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return signature_array_v2;
+}
+
+static OSSL_ALGORITHM *uadk_generate_signature_array_v3(void)
+{
+	OSSL_ALGORITHM *signature_array_v3;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_signature_v3);
+	signature_array_v3 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!signature_array_v3)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_signature_v3[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.sm2_en && !strcmp(name, "SM2")) ||
+		    (uadk_prov_alg_en.ecdsa_en && !strcmp(name, "ECDSA")))
+			memcpy(&signature_array_v3[index++],
+			       &uadk_prov_signature_v3[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return signature_array_v3;
+}
+
+static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v2(void)
+{
+	OSSL_ALGORITHM *keymgmt_array_v2;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_keymgmt_v2);
+	keymgmt_array_v2 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!keymgmt_array_v2)
+		return NULL;
+
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_keymgmt_v2[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")))
+			memcpy(&keymgmt_array_v2[index++],
+			       &uadk_prov_keymgmt_v2[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return keymgmt_array_v2;
+}
+
+static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v3(void)
+{
+	OSSL_ALGORITHM *keymgmt_array_v3;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_keymgmt_v3);
+	keymgmt_array_v3 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!keymgmt_array_v3)
+		return NULL;
+
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_keymgmt_v3[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")) ||
+		    (uadk_prov_alg_en.sm2_en && !strcmp(name, "SM2")) ||
+		    (uadk_prov_alg_en.ecdh_en && !strcmp(name, "EC")) ||
+		    (uadk_prov_alg_en.x448_en && !strcmp(name, "X448")) ||
+		    (uadk_prov_alg_en.x25519_en && !strcmp(name, "X25519")))
+			memcpy(&keymgmt_array_v3[index++],
+			       &uadk_prov_keymgmt_v3[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return keymgmt_array_v3;
+}
+
+static OSSL_ALGORITHM *uadk_generate_asym_cipher_array_v2(void)
+{
+	OSSL_ALGORITHM *asym_cipher_array_v2;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_asym_cipher_v2);
+	asym_cipher_array_v2 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!asym_cipher_array_v2)
+		return NULL;
+
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_asym_cipher_v2[i].algorithm_names;
+		if (name == NULL || (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")))
+			memcpy(&asym_cipher_array_v2[index++],
+			       &uadk_prov_asym_cipher_v2[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return asym_cipher_array_v2;
+}
+
+static OSSL_ALGORITHM *uadk_generate_asym_cipher_array_v3(void)
+{
+	OSSL_ALGORITHM *asym_cipher_array_v3;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_asym_cipher_v3);
+	asym_cipher_array_v3 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!asym_cipher_array_v3)
+		return NULL;
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_asym_cipher_v3[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.sm2_en && !strcmp(name, "SM2")))
+			memcpy(&asym_cipher_array_v3[index++],
+			       &uadk_prov_asym_cipher_v3[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return asym_cipher_array_v3;
+}
+
+static OSSL_ALGORITHM *uadk_generate_keyexch_array_v2(void)
+{
+	OSSL_ALGORITHM *keyexch_array_v2;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_keyexch_v2);
+	keyexch_array_v2 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!keyexch_array_v2)
+		return NULL;
+
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_keyexch_v2[i].algorithm_names;
+		if (name == NULL || (uadk_prov_alg_en.dh_en && strcmp(name, "DH")))
+			memcpy(&keyexch_array_v2[index++],
+			       &uadk_prov_keyexch_v2[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return keyexch_array_v2;
+}
+
+static OSSL_ALGORITHM *uadk_generate_keyexch_array_v3(void)
+{
+	OSSL_ALGORITHM *keyexch_array_v3;
+	const char *name;
+	int index = 0;
+	int i, size;
+
+	/* The algorithm will not exceed the size of a static array */
+	size = ARRAY_SIZE(uadk_prov_keyexch_v3);
+	keyexch_array_v3 = OPENSSL_zalloc(size * sizeof(OSSL_ALGORITHM));
+	if (!keyexch_array_v3)
+		return NULL;
+
+	for (i = 0; i < size; i++) {
+		name = uadk_prov_keyexch_v3[i].algorithm_names;
+		if (name == NULL ||
+		    (uadk_prov_alg_en.dh_en && strcmp(name, "DH")) ||
+		    (uadk_prov_alg_en.x448_en && strcmp(name, "X448")) ||
+		    (uadk_prov_alg_en.x25519_en && strcmp(name, "X25519")) ||
+		    (uadk_prov_alg_en.ecdh_en && strcmp(name, "ECDH")))
+			memcpy(&keyexch_array_v3[index++],
+			       &uadk_prov_keyexch_v3[i], sizeof(OSSL_ALGORITHM));
+	}
+
+	return keyexch_array_v3;
+}
 
 static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 					int *no_cache)
@@ -273,48 +699,48 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_digest_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		return uadk_prov_digests;
+		return uadk_generate_digests_array();
 	case OSSL_OP_MAC:
-		return uadk_prov_hmac;
+		return uadk_generate_hmac_array();
 	case OSSL_OP_CIPHER:
 		ver = uadk_prov_cipher_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		else if (ver == HW_SEC_V2)
-			return uadk_prov_ciphers_v2;
-		return uadk_prov_ciphers_v3;
+			return uadk_generate_cipher_array_v2();
+		return uadk_generate_cipher_array_v3();
 	case OSSL_OP_SIGNATURE:
 		uadk_prov_signature_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		else if (ver == HW_PKEY_V2)
-			return uadk_prov_signature_v2;
-		return uadk_prov_signature_v3;
+			return uadk_generate_signature_array_v2();
+		return uadk_generate_signature_array_v3();
 	case OSSL_OP_KEYMGMT:
 		uadk_prov_keymgmt_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		else if (ver == HW_PKEY_V2)
-			return uadk_prov_keymgmt_v2;
-		return uadk_prov_keymgmt_v3;
+			return uadk_generate_keymgmt_array_v2();
+		return uadk_generate_keymgmt_array_v3();
 	case OSSL_OP_ASYM_CIPHER:
 		uadk_prov_asym_cipher_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		else if (ver == HW_PKEY_V2)
-			return uadk_prov_asym_cipher_v2;
-		return uadk_prov_asym_cipher_v3;
+			return uadk_generate_asym_cipher_array_v2();
+		return uadk_generate_asym_cipher_array_v3();
 	case OSSL_OP_KEYEXCH:
 		uadk_prov_keyexch_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
 		else if (ver == HW_PKEY_V2)
-			return uadk_prov_keyexch_v2;
-		return uadk_prov_keyexch_v3;
+			return uadk_generate_keyexch_array_v2();
+		return uadk_generate_keyexch_array_v3();
 	default:
 		break;
 	}
@@ -350,10 +776,51 @@ static int uadk_get_params(OSSL_PARAM params[])
 	return UADK_P_SUCCESS;
 }
 
+static void uadk_unquery(void *provctx, int operation_id,
+			 const OSSL_ALGORITHM *algs)
+{
+	int needs_version_check = 0;
+	int ver;
+
+	switch (operation_id) {
+	case OSSL_OP_DIGEST:
+		ver = uadk_prov_digest_version();
+		needs_version_check = 1;
+		break;
+	case OSSL_OP_CIPHER:
+		ver = uadk_prov_cipher_version();
+		needs_version_check = 1;
+		break;
+	case OSSL_OP_SIGNATURE:
+	case OSSL_OP_KEYMGMT:
+	case OSSL_OP_ASYM_CIPHER:
+	case OSSL_OP_KEYEXCH:
+		ver = uadk_prov_pkey_version();
+		needs_version_check = 1;
+		break;
+	case OSSL_OP_MAC:
+		if (algs)
+			OPENSSL_free((void *)algs);
+		return;
+	default:
+		break;
+	}
+
+	if (needs_version_check && (ver || !uadk_get_sw_offload_state())) {
+		if (algs)
+			OPENSSL_free((void *)algs);
+		return;
+	}
+
+	if (default_prov)
+		OSSL_PROVIDER_unquery_operation(default_prov, operation_id, algs);
+}
+
 static const OSSL_DISPATCH uadk_dispatch_table[] = {
 	{ OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))uadk_query },
 	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))uadk_teardown },
 	{ OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))uadk_get_params },
+	{ OSSL_FUNC_PROVIDER_UNQUERY_OPERATION, (void (*)(void))uadk_unquery },
 	{ 0, NULL }
 };
 
@@ -362,25 +829,81 @@ int uadk_get_sw_offload_state(void)
 	return enable_sw_offload;
 }
 
+static void uadk_set_alg_sel_state(void)
+{
+	int size, i;
+
+	if (uadk_params.enable_sw_flag)
+		uadk_set_sw_offload_state(atoi(uadk_params.enable_sw_flag));
+
+	size = ARRAY_SIZE(uadk_prov_alg_cfg_info);
+	for (i = 0; i < size; ++i) {
+		if (*uadk_prov_alg_cfg_info[i].param == NULL) {
+			*(uadk_prov_alg_cfg_info[i].enable) = 1;
+			continue;
+		}
+
+		if (strcmp(*uadk_prov_alg_cfg_info[i].param, "1") == 0)
+			*(uadk_prov_alg_cfg_info[i].enable) = 1;
+		else if (strcmp(*uadk_prov_alg_cfg_info[i].param, "0") == 0)
+			*(uadk_prov_alg_cfg_info[i].enable) = 0;
+		else {
+			*(uadk_prov_alg_cfg_info[i].enable) = 1;
+			fprintf(stderr, "invalid: %s en param(%s) is error, default to enabled\n",
+				 uadk_prov_alg_cfg_info[i].name,
+				 *uadk_prov_alg_cfg_info[i].param);
+		}
+	}
+}
+
 /* enable = 0 means disable sw offload, enable = 1 means enable sw offload */
 void uadk_set_sw_offload_state(int enable)
 {
 	enable_sw_offload = enable;
 }
 
-int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
+static int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 {
-	OSSL_PARAM core_params[2], *p = core_params;
+	OSSL_PARAM core_params[31], *p = core_params;
 
 	if (handle == NULL) {
 		fprintf(stderr, "invalid: OSSL_CORE_HANDLE is NULL\n");
 		return UADK_P_FAIL;
 	}
 
-	*p++ = OSSL_PARAM_construct_utf8_ptr(
-			"enable_sw_offload",
-			(char **)&uadk_params.enable_sw_flag,
-			0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("enable_sw_offload",
+					     (char **)&uadk_params.enable_sw_flag, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM2", (char **)&uadk_params.sm2, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("RSA", (char **)&uadk_params.rsa, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("ECDH", (char **)&uadk_params.ecdh, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("ECDSA", (char **)&uadk_params.ecdsa, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("DH", (char **)&uadk_params.dh, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("X25519", (char **)&uadk_params.x25519, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("X448", (char **)&uadk_params.x448, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("HMAC", (char **)&uadk_params.hmac, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_ECB", (char **)&uadk_params.aes_ecb, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_CBC", (char **)&uadk_params.aes_cbc, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_XTS", (char **)&uadk_params.aes_xts, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_CTR", (char **)&uadk_params.aes_ctr, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_OFB128", (char **)&uadk_params.aes_ofb128, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_CFB128", (char **)&uadk_params.aes_cfb128, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM4_CBC", (char **)&uadk_params.sm4_cbc, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM4_OFB128", (char **)&uadk_params.sm4_ofb128, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM4_CFB128", (char **)&uadk_params.sm4_cfb128, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM4_ECB", (char **)&uadk_params.sm4_ecb, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM4_CTR", (char **)&uadk_params.sm4_ctr, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("MD5", (char **)&uadk_params.md5, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SM3", (char **)&uadk_params.sm3, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SHA1", (char **)&uadk_params.sha1, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SHA224", (char **)&uadk_params.sha224, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SHA256", (char **)&uadk_params.sha256, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SHA384", (char **)&uadk_params.sha384, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("SHA512", (char **)&uadk_params.sha512, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("AES_GCM", (char **)&uadk_params.aes_gcm, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("DES_EDE3_CBC",
+					     (char **)&uadk_params.des_ede3_cbc, 0);
+	*p++ = OSSL_PARAM_construct_utf8_ptr("DES_EDE3_ECB",
+					     (char **)&uadk_params.des_ede3_ecb, 0);
 	*p = OSSL_PARAM_construct_end();
 
 	if (!c_get_params(handle, core_params)) {
@@ -388,8 +911,7 @@ int uadk_get_params_from_core(const OSSL_CORE_HANDLE *handle)
 		return UADK_P_FAIL;
 	}
 
-	if (uadk_params.enable_sw_flag)
-		uadk_set_sw_offload_state(atoi(uadk_params.enable_sw_flag));
+	uadk_set_alg_sel_state();
 
 	return UADK_P_SUCCESS;
 }
