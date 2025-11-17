@@ -449,8 +449,10 @@ static OSSL_ALGORITHM *uadk_generate_cipher_array_v3(void)
 		    (uadk_prov_alg_en.aes_ctr_en &&
 		     strstr(name, "AES") && strstr(name, "CTR")) ||
 		    (uadk_prov_alg_en.aes_xts_en && strstr(name, "XTS")) ||
-		    (uadk_prov_alg_en.aes_ofb128_en && strstr(name, "OFB")) ||
-		    (uadk_prov_alg_en.aes_cfb128_en && strstr(name, "CFB")) ||
+		    (uadk_prov_alg_en.aes_ofb128_en &&
+		     strstr(name, "AES") && strstr(name, "OFB")) ||
+		    (uadk_prov_alg_en.aes_cfb128_en &&
+		     strstr(name, "AES") && strstr(name, "CFB")) ||
 		    (uadk_prov_alg_en.aes_gcm_en && strstr(name, "GCM")) ||
 		    (uadk_prov_alg_en.sm4_cbc_en && strstr(name, "SM4-CBC")) ||
 		    (uadk_prov_alg_en.sm4_ecb_en && strstr(name, "SM4-ECB")) ||
@@ -629,7 +631,7 @@ static OSSL_ALGORITHM *uadk_generate_keyexch_array_v2(void)
 
 	for (i = 0; i < size; i++) {
 		name = uadk_prov_keyexch_v2[i].algorithm_names;
-		if (name == NULL || (uadk_prov_alg_en.dh_en && strcmp(name, "DH")))
+		if (name == NULL || (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")))
 			memcpy(&keyexch_array_v2[index++],
 			       &uadk_prov_keyexch_v2[i], sizeof(OSSL_ALGORITHM));
 	}
@@ -653,10 +655,10 @@ static OSSL_ALGORITHM *uadk_generate_keyexch_array_v3(void)
 	for (i = 0; i < size; i++) {
 		name = uadk_prov_keyexch_v3[i].algorithm_names;
 		if (name == NULL ||
-		    (uadk_prov_alg_en.dh_en && strcmp(name, "DH")) ||
-		    (uadk_prov_alg_en.x448_en && strcmp(name, "X448")) ||
-		    (uadk_prov_alg_en.x25519_en && strcmp(name, "X25519")) ||
-		    (uadk_prov_alg_en.ecdh_en && strcmp(name, "ECDH")))
+		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")) ||
+		    (uadk_prov_alg_en.x448_en && !strcmp(name, "X448")) ||
+		    (uadk_prov_alg_en.x25519_en && !strcmp(name, "X25519")) ||
+		    (uadk_prov_alg_en.ecdh_en && !strcmp(name, "ECDH")))
 			memcpy(&keyexch_array_v3[index++],
 			       &uadk_prov_keyexch_v3[i], sizeof(OSSL_ALGORITHM));
 	}
