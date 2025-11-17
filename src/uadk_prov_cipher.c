@@ -390,7 +390,7 @@ static int uadk_cipher_poll(void *ctx)
 		if (ret < 0 || recv >= expt)
 			return ret;
 		recv_cnt++;
-	} while (recv_cnt < ENGINE_RECV_MAX_CNT);
+	} while (recv_cnt < PROV_SCH_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll provider cipher msg: timeout!\n");
 

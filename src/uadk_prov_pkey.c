@@ -444,7 +444,7 @@ int uadk_prov_ecc_poll(void *ctx)
 		if (ret < 0 || recv == expt)
 			return ret;
 		rx_cnt++;
-	} while (rx_cnt < PROV_RECV_MAX_CNT);
+	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
 

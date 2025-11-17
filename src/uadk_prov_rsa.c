@@ -1016,7 +1016,7 @@ static int uadk_rsa_env_poll(void *ctx)
 		if (ret < 0 || recv == expt)
 			return ret;
 		rx_cnt++;
-	} while (rx_cnt < PROV_RECV_MAX_CNT);
+	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to poll msg: timeout!\n");
 
