@@ -512,7 +512,7 @@ static int uadk_e_init_digest(void)
 			return 1;
 		}
 
-		dev = wd_get_accel_dev("digest");
+		dev = uadk_get_accel_dev("digest");
 		if (!dev) {
 			pthread_spin_unlock(&g_digest_engine.lock);
 			fprintf(stderr, "failed to get device for digest.\n");

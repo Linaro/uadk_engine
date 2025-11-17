@@ -15,6 +15,7 @@
  *
  */
 #include "uadk_utils.h"
+#include <uadk/wd.h>
 
 #if defined(__AARCH64_CMODEL_SMALL__) && __AARCH64_CMODEL_SMALL__
 
@@ -72,3 +73,16 @@ void *uadk_memcpy(void *dstpp, const void *srcpp, size_t len)
 }
 
 #endif
+
+struct uacce_dev *uadk_get_accel_dev(const char *alg_name)
+{
+	struct uacce_dev *dev;
+
+	dev = wd_get_accel_dev(alg_name);
+	if (dev && !(dev->flags & UACCE_DEV_SVA)) {
+		free(dev);
+		dev = NULL;
+	}
+
+	return dev;
+}
