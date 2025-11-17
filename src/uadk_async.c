@@ -23,6 +23,7 @@
 #include <openssl/async.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_utils.h"
 
 static const char *uadk_async_key = "uadk_async_key";
 static struct async_poll_queue poll_queue;
@@ -259,8 +260,8 @@ int async_pause_job(void *ctx, struct async_op *op, enum task_type type)
 
 		if (read(efd, &buf, sizeof(uint64_t)) == -1) {
 			if (errno != EAGAIN)
-				fprintf(stderr, "failed to read from fd: %d - error: %d\n",
-				       efd, errno);
+				UADK_ERR("failed to read from fd: %d - error: %d\n",
+					 efd, errno);
 			/* Not resumed by the expected async_wake_job() */
 		}
 	} while (!op->done);
@@ -283,7 +284,7 @@ int async_wake_job(ASYNC_JOB *job)
 	ret = ASYNC_WAIT_CTX_get_fd(waitctx, uadk_async_key, &efd, &custom);
 	if (ret > 0) {
 		if (write(efd, &buf, sizeof(uint64_t)) == -1) {
-			fprintf(stderr, "failed to write to fd: %d - error: %d\n", efd, errno);
+			UADK_ERR("failed to write to fd: %d - error: %d\n", efd, errno);
 			return errno;
 		}
 	}
@@ -294,7 +295,7 @@ int async_wake_job(ASYNC_JOB *job)
 void async_register_poll_fn(int type, async_recv_t func)
 {
 	if (type < ASYNC_TASK_CIPHER || type >= ASYNC_TASK_MAX) {
-		fprintf(stderr, "alg type is error, type= %d.\n", type);
+		UADK_ERR("alg type is error, type= %d.\n", type);
 		return;
 	}
 
