@@ -947,13 +947,13 @@ int uadk_prov_pkey_version(void)
 {
 	struct uacce_dev *dev1, *dev2;
 
-	dev1 = wd_get_accel_dev("rsa");
+	dev1 = uadk_get_accel_dev("rsa");
 	if (!dev1) {
 		UADK_ERR("no pkey device available!\n");
 		return HW_PKEY_INVALID;
 	}
 
-	dev2 = wd_get_accel_dev("sm2");
+	dev2 = uadk_get_accel_dev("sm2");
 	if (!dev2) {
 		free(dev1);
 		return HW_PKEY_V2;

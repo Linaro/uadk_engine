@@ -26,6 +26,7 @@
 #include "uadk.h"
 #include "uadk_async.h"
 #include "uadk_cipher_adapter.h"
+#include "uadk_utils.h"
 
 #define UADK_DO_SOFT		(-0xE0)
 #define CTX_SYNC_ENC		0
@@ -436,7 +437,7 @@ static int uadk_e_init_cipher(void)
 			return 1;
 		}
 
-		dev = wd_get_accel_dev("cipher");
+		dev = uadk_get_accel_dev("cipher");
 		if (!dev) {
 			pthread_spin_unlock(&g_cipher_engine.lock);
 			fprintf(stderr, "failed to get device for cipher.\n");

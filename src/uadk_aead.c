@@ -248,7 +248,7 @@ static int uadk_e_init_aead_cipher(void)
 			return UADK_E_SUCCESS;
 		}
 
-		dev = wd_get_accel_dev("aead");
+		dev = uadk_get_accel_dev("aead");
 		if (!dev) {
 			pthread_spin_unlock(&g_aead_engine.lock);
 			fprintf(stderr, "failed to get device for aead.\n");

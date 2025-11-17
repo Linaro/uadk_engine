@@ -23,6 +23,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk_async.h"
 #include "uadk.h"
+#include "uadk_utils.h"
 
 #define UN_SET				0
 #define IS_SET				1
@@ -837,7 +838,7 @@ static int uadk_e_rsa_init(void)
 	if (g_rsa_res.status != UADK_UNINIT)
 		goto unlock;
 
-	dev = wd_get_accel_dev("rsa");
+	dev = uadk_get_accel_dev("rsa");
 	if (!dev) {
 		fprintf(stderr, "no device available, switch to software!\n");
 		goto err_init;

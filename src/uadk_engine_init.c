@@ -28,6 +28,7 @@
 #ifdef KAE
 #include "v1/uadk_v1.h"
 #endif
+#include "uadk_utils.h"
 
 #define UADK_CMD_ENABLE_CIPHER_ENV	ENGINE_CMD_BASE
 #define UADK_CMD_ENABLE_AEAD_ENV	(ENGINE_CMD_BASE + 1)
@@ -342,7 +343,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 {
 	struct uacce_dev *dev;
 
-	dev = wd_get_accel_dev("cipher");
+	dev = uadk_get_accel_dev("cipher");
 	if (dev) {
 		if (!uadk_e_bind_ciphers(e))
 			fprintf(stderr, "uadk bind cipher failed\n");
@@ -351,7 +352,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("digest");
+	dev = uadk_get_accel_dev("digest");
 	if (dev) {
 		if (!uadk_e_bind_digest(e))
 			fprintf(stderr, "uadk bind digest failed\n");
@@ -360,7 +361,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("rsa");
+	dev = uadk_get_accel_dev("rsa");
 	if (dev) {
 		if (!uadk_e_bind_rsa(e))
 			fprintf(stderr, "uadk bind rsa failed\n");
@@ -369,7 +370,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
-	dev = wd_get_accel_dev("dh");
+	dev = uadk_get_accel_dev("dh");
 	if (dev) {
 		if (!uadk_e_bind_dh(e))
 			fprintf(stderr, "uadk bind dh failed\n");
@@ -379,7 +380,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 	}
 
 	/* find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
-	dev = wd_get_accel_dev("ecdsa");
+	dev = uadk_get_accel_dev("ecdsa");
 	if (dev) {
 		if (!uadk_e_bind_ecc(e))
 			fprintf(stderr, "uadk bind ecc failed\n");

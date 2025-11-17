@@ -1344,7 +1344,7 @@ int uadk_prov_cipher_version(void)
 	struct uacce_dev *dev;
 	int ver;
 
-	dev = wd_get_accel_dev("cipher");
+	dev = uadk_get_accel_dev("cipher");
 	if (!dev) {
 		UADK_ERR("no cipher device available!\n");
 		return 0;
