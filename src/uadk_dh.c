@@ -26,6 +26,7 @@
 #include <uadk/wd_sched.h>
 #include "uadk.h"
 #include "uadk_async.h"
+#include "uadk_utils.h"
 
 #define DH768BITS		768
 #define DH1024BITS		1024
@@ -386,7 +387,7 @@ static int uadk_e_dh_init(void)
 	if (g_dh_res.status != UADK_UNINIT)
 		goto unlock;
 
-	dev = wd_get_accel_dev("dh");
+	dev = uadk_get_accel_dev("dh");
 	if (!dev) {
 		fprintf(stderr, "no device available, switch to software!\n");
 		goto err_init;
