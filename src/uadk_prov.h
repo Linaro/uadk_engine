@@ -19,16 +19,19 @@
 #define UADK_PROV_H
 #include <openssl/core_dispatch.h>
 
-#define FUNC_MAX_NUM		32
-#define CTX_ASYNC		1
-#define CTX_SYNC		0
-#define UADK_UNINIT		0
-#define UADK_INIT_SUCCESS	1
-#define UADK_INIT_FAIL		2
-#define UADK_DEVICE_ERROR	3
-#define HW_SEC_V2		2
-#define HW_SEC_V3		3
-#define POLL_ERROR		(-1)
+#define FUNC_MAX_NUM			32
+#define CTX_ASYNC			1
+#define CTX_SYNC			0
+#define UADK_UNINIT			0
+#define UADK_INIT_SUCCESS		1
+#define UADK_INIT_FAIL			2
+#define UADK_DEVICE_ERROR		3
+#define HW_SEC_V2			2
+#define HW_SEC_V3			3
+#define POLL_ERROR			(-1)
+#define PROV_SEND_MAX_CNT		90000000
+#define PROV_RECV_MAX_CNT		60000000
+#define PROV_SCH_RECV_MAX_CNT		60000
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_MD5 "MD5:SSL3-MD5:1.2.840.113549.2.5"
