@@ -76,16 +76,16 @@ static pthread_mutex_t ecdh_mutex = PTHREAD_MUTEX_INITIALIZER;
 static UADK_PKEY_KEYEXCH get_default_ecdh_keyexch(void)
 {
 	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initilazed;
+	static int initialized;
 
 	pthread_mutex_lock(&ecdh_mutex);
-	if (!initilazed) {
+	if (!initialized) {
 		UADK_PKEY_KEYEXCH *keyexch =
 			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "ecdh", "provider=default");
 		if (keyexch) {
 			s_keyexch = *keyexch;
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initilazed = 1;
+			initialized = 1;
 		} else {
 			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X448 provider\n");
 		}
@@ -468,7 +468,7 @@ static int uadk_keyexch_ecdh_derive(void *vpecdhctx, unsigned char *secret,
 				    size_t *psecretlen, size_t outlen)
 {
 	struct ecdh_ctx *pecdhctx = vpecdhctx;
-	int ret;
+	int ret = UADK_P_FAIL;
 
 	if (!pecdhctx) {
 		fprintf(stderr, "invalid: vpecdhctx is NULL to derive!\n");

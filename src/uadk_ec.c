@@ -292,7 +292,7 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 	int ret;
 
 	if (!dgst) {
-		fprintf(stderr, "eckey or dgst NULL\n");
+		fprintf(stderr, "dgst NULL\n");
 		return -1;
 	}
 

@@ -18,7 +18,6 @@
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
-#include <openssl/err.h>
 #include <openssl/bn.h>
 #include <uadk/wd_ecc.h>
 #include "uadk_async.h"
