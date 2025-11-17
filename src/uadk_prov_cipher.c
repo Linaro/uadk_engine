@@ -1149,7 +1149,8 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 			return UADK_P_FAIL;
 		}
 		priv->pad = pad ? 1 : 0;
-		EVP_CIPHER_CTX_set_padding(priv->sw_ctx, pad);
+		if (priv->sw_ctx)
+			EVP_CIPHER_CTX_set_padding(priv->sw_ctx, pad);
 	}
 
 	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_KEYLEN);
