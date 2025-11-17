@@ -21,6 +21,7 @@
 #include "uadk_async.h"
 #include "uadk.h"
 #include "uadk_pkey.h"
+#include "uadk_utils.h"
 
 #define ECC_MAX_DEV_NUM		16
 #define CTX_ASYNC		1
@@ -583,7 +584,7 @@ int uadk_init_ecc(void)
 		goto unlock;
 
 	/* Find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
-	dev = wd_get_accel_dev("ecdsa");
+	dev = uadk_get_accel_dev("ecdsa");
 	if (!dev) {
 		fprintf(stderr, "no device available, switch to software!\n");
 		goto err_init;

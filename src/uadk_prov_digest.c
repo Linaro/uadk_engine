@@ -1043,7 +1043,7 @@ int uadk_prov_digest_version(void)
 {
 	struct uacce_dev *dev;
 
-	dev = wd_get_accel_dev("digest");
+	dev = uadk_get_accel_dev("digest");
 	if (!dev) {
 		UADK_ERR("no digest device available!\n");
 		return UADK_DIGEST_FAIL;

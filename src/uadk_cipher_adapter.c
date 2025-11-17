@@ -15,6 +15,7 @@
  *
  */
 #include "uadk_cipher_adapter.h"
+#include "uadk_utils.h"
 
 #define HW_SEC_V2	2
 #define HW_SEC_V3	3
@@ -182,7 +183,7 @@ int uadk_e_bind_ciphers(ENGINE *e)
 {
 	struct uacce_dev *dev;
 
-	dev = wd_get_accel_dev("cipher");
+	dev = uadk_get_accel_dev("cipher");
 	if (!dev) {
 		fprintf(stderr, "no device available, switch to software!\n");
 		return 0;
