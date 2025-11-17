@@ -23,6 +23,7 @@
 #include "uadk_prov.h"
 #include "uadk_prov_der_writer.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define DIGEST_MAX_NAME_SIZE		50
 #define MAX_ALGORITHM_ID_SIZE		256
@@ -93,7 +94,7 @@ static void *uadk_signature_ecdsa_newctx(void *provctx, const char *propq)
 	if (propq) {
 		ctx->propq = OPENSSL_strdup(propq);
 		if (!ctx->propq) {
-			fprintf(stderr, "failed to strdup propq!\n");
+			UADK_ERR("failed to strdup propq!\n");
 			OPENSSL_free(ctx);
 			ctx = NULL;
 		}
@@ -124,13 +125,13 @@ static void *uadk_signature_ecdsa_dupctx(void *vctx)
 	struct ecdsa_ctx *dst_ctx;
 
 	if (!src_ctx) {
-		fprintf(stderr, "invalid: src ctx is NULL to dupctx!\n");
+		UADK_ERR("invalid: src ctx is NULL to dupctx!\n");
 		return NULL;
 	}
 
 	/* Test KATS should not need to be supported */
 	if (src_ctx->kinv || src_ctx->r) {
-		fprintf(stderr, "invalid: src ctx kinv or r is not NULL!\n");
+		UADK_ERR("invalid: src ctx kinv or r is not NULL!\n");
 		return NULL;
 	}
 
@@ -253,8 +254,8 @@ static int ecdsa_setup_md(struct ecdsa_ctx *ctx, const char *mdname, const char 
 
 	mdname_len = strlen(mdname);
 	if (mdname_len >= DIGEST_MAX_NAME_SIZE) {
-		fprintf(stderr, "invalid: %s size %zu exceeds name buffer length %d!\n",
-			mdname, mdname_len, DIGEST_MAX_NAME_SIZE);
+		UADK_ERR("invalid: %s size %zu exceeds name buffer length %d!\n",
+			 mdname, mdname_len, DIGEST_MAX_NAME_SIZE);
 		return UADK_P_FAIL;
 	}
 
@@ -263,20 +264,20 @@ static int ecdsa_setup_md(struct ecdsa_ctx *ctx, const char *mdname, const char 
 
 	md = EVP_MD_fetch(ctx->libctx, mdname, mdprops);
 	if (!md) {
-		fprintf(stderr, "failed to fetch %s!\n", mdname);
+		UADK_ERR("failed to fetch %s!\n", mdname);
 		return UADK_P_FAIL;
 	}
 
 	md_nid = ecdsa_digest_get_approved_nid(ctx, md);
 	if (md_nid < 0) {
-		fprintf(stderr, "digest %s not allowed!\n", mdname);
+		UADK_ERR("digest %s not allowed!\n", mdname);
 		goto err;
 	}
 
 	if (!ctx->flag_allow_md) {
 		if (ctx->mdname[0] != '\0' && !EVP_MD_is_a(md, ctx->mdname)) {
-			fprintf(stderr, "digest %s is not same ctx digest %s!\n",
-				mdname, ctx->mdname);
+			UADK_ERR("digest %s is not same ctx digest %s!\n",
+				 mdname, ctx->mdname);
 			goto err;
 		}
 		EVP_MD_free(md);
@@ -309,7 +310,7 @@ static int ecdsa_signverify_init(void *vctx, void *ec,
 	int ret;
 
 	if (!ctx || (!ec && !ctx->ec)) {
-		fprintf(stderr, "invalid: ctx or ec is NULL to digest init!\n");
+		UADK_ERR("invalid: ctx or ec is NULL to digest init!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -352,7 +353,7 @@ static int ecdsa_soft_sign(struct ecdsa_ctx *ctx, unsigned char *sig, size_t *si
 	if (!enable_sw_offload)
 		return UADK_P_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecdsa signature.\n");
+	UADK_INFO("switch to openssl software calculation in ecdsa signature.\n");
 
 	ret = ECDSA_sign_ex(0, tbs, tbslen, sig, &tmplen, ctx->kinv, ctx->r, ctx->ec);
 	if (ret <= 0)
@@ -369,7 +370,7 @@ static int ecdsa_soft_verify(struct ecdsa_ctx *ctx, const unsigned char *sig, si
 	if (!enable_sw_offload)
 		return UADK_P_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecdsa verification.\n");
+	UADK_INFO("switch to openssl software calculation in ecdsa verification.\n");
 
 	return ECDSA_verify(0, tbs, tbslen, sig, siglen, ctx->ec);
 }
@@ -381,26 +382,26 @@ static int ecdsa_common_params_check(struct ecdsa_ctx *ctx,
 	int type;
 
 	if (unlikely(!opdata->tbs || !opdata->tbslen)) {
-		fprintf(stderr, "invalid: tbs is NULL or tbslen %zu error!\n", opdata->tbslen);
+		UADK_ERR("invalid: tbs is NULL or tbslen %zu error!\n", opdata->tbslen);
 		return UADK_P_FAIL;
 	}
 
 	if (ctx->mdsize && opdata->tbslen != ctx->mdsize) {
-		fprintf(stderr, "invalid: ctx->mdsize %zu not equal tbslen %zu!\n",
-			ctx->mdsize, opdata->tbslen);
+		UADK_ERR("invalid: ctx->mdsize %zu not equal tbslen %zu!\n",
+			 ctx->mdsize, opdata->tbslen);
 		return UADK_P_FAIL;
 	}
 
 	group = EC_KEY_get0_group(ctx->ec);
 	if (unlikely(!group)) {
-		fprintf(stderr, "invalid: group is NULL!\n");
+		UADK_ERR("invalid: group is NULL!\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Field GF(2m) is not supported by uadk */
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
-		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
+		UADK_ERR("invalid: uadk unsupport Field GF(2m)!\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -415,13 +416,13 @@ static handle_t ecdsa_alloc_sess(EC_KEY *ec)
 
 	ret = uadk_prov_signature_get_support_state(SIGNATURE_ECDSA);
 	if (!ret) {
-		fprintf(stderr, "failed to get hardware ecdsa support!\n");
+		UADK_ERR("failed to get hardware ecdsa support!\n");
 		return ret;
 	}
 
 	ret = uadk_prov_ecc_init(UADK_PROV_ECDSA);
 	if (!ret) {
-		fprintf(stderr, "failed to init ecdsa!\n");
+		UADK_ERR("failed to init ecdsa!\n");
 		return ret;
 	}
 
@@ -455,7 +456,7 @@ static int ecdsa_set_digest(struct ecdsa_opdata *opdata, struct wd_dtb *e)
 	if (BYTES_TO_BITS(data_len) > order_bits) {
 		m = BN_new();
 		if (!m) {
-			fprintf(stderr, "failed to BN_new m!\n");
+			UADK_ERR("failed to BN_new m!\n");
 			return UADK_P_FAIL;
 		}
 
@@ -465,7 +466,7 @@ static int ecdsa_set_digest(struct ecdsa_opdata *opdata, struct wd_dtb *e)
 		 */
 		data_len = BITS_TO_BYTES(order_bits);
 		if (!BN_bin2bn(opdata->tbs, data_len, m)) {
-			fprintf(stderr, "failed to BN_bin2bn tbs!\n");
+			UADK_ERR("failed to BN_bin2bn tbs!\n");
 			BN_free(m);
 			return UADK_P_FAIL;
 		}
@@ -477,7 +478,7 @@ static int ecdsa_set_digest(struct ecdsa_opdata *opdata, struct wd_dtb *e)
 		 */
 		if (BYTES_TO_BITS(data_len) > order_bits &&
 		    !BN_rshift(m, m, DGST_SHIFT_NUM(order_bits))) {
-			fprintf(stderr, "failed to truncate input tbs!\n");
+			UADK_ERR("failed to truncate input tbs!\n");
 			BN_free(m);
 			return UADK_P_FAIL;
 		}
@@ -512,13 +513,13 @@ static int ecdsa_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_in = wd_ecdsa_new_sign_in(sess, &e, NULL);
 	if (unlikely(!ecc_in)) {
-		fprintf(stderr, "failed to new ecdsa sign in!\n");
+		UADK_ERR("failed to new ecdsa sign in!\n");
 		return UADK_P_FAIL;
 	}
 
 	ecc_out = wd_ecdsa_new_sign_out(sess);
 	if (unlikely(!ecc_out)) {
-		fprintf(stderr, "failed to new ecdsa sign out!\n");
+		UADK_ERR("failed to new ecdsa sign out!\n");
 		wd_ecc_del_in(sess, ecc_in);
 		return UADK_P_FAIL;
 	}
@@ -547,31 +548,31 @@ static ECDSA_SIG *ecdsa_get_sign_data(struct wd_ecc_req *req)
 	br = BN_new();
 	bs = BN_new();
 	if (unlikely(!br || !bs)) {
-		fprintf(stderr, "failed to new br or bs!\n");
+		UADK_ERR("failed to new br or bs!\n");
 		goto free_bn;
 	}
 
 	wd_ecdsa_get_sign_out_params(req->dst, &r, &s);
 	if (unlikely(!r || !s)) {
-		fprintf(stderr, "failed to get r or s\n");
+		UADK_ERR("failed to get r or s\n");
 		goto free_bn;
 	}
 
 	if (!BN_bin2bn((void *)r->data, r->dsize, br) ||
 	    !BN_bin2bn((void *)s->data, s->dsize, bs)) {
-		fprintf(stderr, "failed to BN_bin2bn r or s\n");
+		UADK_ERR("failed to BN_bin2bn r or s\n");
 		goto free_bn;
 	}
 
 	sig = ECDSA_SIG_new();
 	if (unlikely(!sig)) {
-		fprintf(stderr, "failed to new sig!\n");
+		UADK_ERR("failed to new sig!\n");
 		goto free_bn;
 	}
 
 	ret = ECDSA_SIG_set0(sig, br, bs);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to set br or bs to sig!\n");
+		UADK_ERR("failed to set br or bs to sig!\n");
 		goto free_sig;
 	}
 
@@ -592,25 +593,25 @@ static int ecdsa_hw_sign(struct ecdsa_opdata *opdata)
 
 	sess = ecdsa_alloc_sess(opdata->ec);
 	if (unlikely(!sess)) {
-		fprintf(stderr, "failed to alloc ecdsa sess!\n");
+		UADK_ERR("failed to alloc ecdsa sess!\n");
 		return UADK_DO_SOFT;
 	}
 
 	ret = ecdsa_sign_init_iot(sess, &req, opdata);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to ecdsa_sign_init_iot!\n");
+		UADK_ERR("failed to ecdsa_sign_init_iot!\n");
 		goto free_sess;
 	}
 
 	ret = uadk_prov_ecc_set_private_key(sess, opdata->ec);
 	if (unlikely(!ret)) {
-		fprintf(stderr, "failed to set private key!\n");
+		UADK_ERR("failed to set private key!\n");
 		goto free_iot;
 	}
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
 	if (unlikely(!ret || req.status)) {
-		fprintf(stderr, "failed to hardware sign!\n");
+		UADK_ERR("failed to hardware sign!\n");
 		ret = UADK_DO_SOFT;
 		goto free_iot;
 	}
@@ -634,12 +635,12 @@ static int ecdsa_sign_params_check(struct ecdsa_ctx *ctx,
 	size_t ecsize;
 
 	if (unlikely(!siglen)) {
-		fprintf(stderr, "invalid: siglen is NULL to sign!\n");
+		UADK_ERR("invalid: siglen is NULL to sign!\n");
 		return UADK_P_FAIL;
 	}
 
 	if (unlikely(!ctx || !ctx->ec)) {
-		fprintf(stderr, "invalid: ctx or ec is NULL to sign!\n");
+		UADK_ERR("invalid: ctx or ec is NULL to sign!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -650,8 +651,8 @@ static int ecdsa_sign_params_check(struct ecdsa_ctx *ctx,
 	}
 
 	if (unlikely(sigsize < ecsize)) {
-		fprintf(stderr, "invalid: sigsize %zu is less than ecsize %zu!\n",
-			sigsize, ecsize);
+		UADK_ERR("invalid: sigsize %zu is less than ecsize %zu!\n",
+			 sigsize, ecsize);
 		return UADK_P_FAIL;
 	}
 
@@ -671,7 +672,7 @@ static int uadk_signature_ecdsa_sign(void *vctx, unsigned char *sig, size_t *sig
 	if (ret == UADK_SIGN_SIG_NULL) {
 		return UADK_P_SUCCESS;
 	} else if (unlikely(ret != UADK_P_SUCCESS)) {
-		fprintf(stderr, "failed to check params to sign!\n");
+		UADK_ERR("failed to check params to sign!\n");
 		goto err;
 	}
 
@@ -725,7 +726,7 @@ static int ecdsa_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	s.dsize = BN_bn2bin(sig_s, (void *)s.data);
 	ecc_in = wd_ecdsa_new_verf_in(sess, &e, &r, &s);
 	if (unlikely(!ecc_in)) {
-		fprintf(stderr, "failed to new ecdsa verf in\n");
+		UADK_ERR("failed to new ecdsa verf in\n");
 		return UADK_P_FAIL;
 	}
 
@@ -742,7 +743,7 @@ static int ecdsa_hw_verify(struct ecdsa_opdata *opdata)
 
 	sess = ecdsa_alloc_sess(opdata->ec);
 	if (unlikely(!sess)) {
-		fprintf(stderr, "failed to alloc ecdsa sess!\n");
+		UADK_ERR("failed to alloc ecdsa sess!\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -756,7 +757,7 @@ static int ecdsa_hw_verify(struct ecdsa_opdata *opdata)
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
 	if (unlikely(ret != UADK_P_SUCCESS || req.status)) {
-		fprintf(stderr, "failed to hardware verify!\n");
+		UADK_ERR("failed to hardware verify!\n");
 		ret = UADK_DO_SOFT;
 	}
 
@@ -771,12 +772,12 @@ static int ecdsa_verify_params_check(struct ecdsa_ctx *ctx, struct ecdsa_opdata 
 				     const unsigned char *sig, size_t siglen)
 {
 	if (!ctx || !ctx->ec) {
-		fprintf(stderr, "invalid: ctx or ec is NULL to verify!\n");
+		UADK_ERR("invalid: ctx or ec is NULL to verify!\n");
 		return UADK_P_FAIL;
 	}
 
 	if (!sig || !siglen) {
-		fprintf(stderr, "invalid: sig is NULL or siglen %zu error!\n", siglen);
+		UADK_ERR("invalid: sig is NULL or siglen %zu error!\n", siglen);
 		return UADK_P_FAIL;
 	}
 
@@ -792,20 +793,20 @@ static ECDSA_SIG *ecdsa_create_sig(const unsigned char *sig, size_t siglen)
 
 	s = ECDSA_SIG_new();
 	if (!s) {
-		fprintf(stderr, "failed to new s to verify!\n");
+		UADK_ERR("failed to new s to verify!\n");
 		return NULL;
 	}
 
 	if (!d2i_ECDSA_SIG(&s, &p, siglen)) {
-		fprintf(stderr, "failed to d2i_ECDSA_SIG: siglen = %zu!\n",
-			siglen);
+		UADK_ERR("failed to d2i_ECDSA_SIG: siglen = %zu!\n",
+			 siglen);
 		goto err;
 	}
 
 	/* Ensure signature uses DER and doesn't have trailing garbage */
 	derlen = i2d_ECDSA_SIG(s, &der);
 	if (derlen != siglen || memcmp(sig, der, derlen) != 0) {
-		fprintf(stderr, "sig have trailing garbage, derlen %d!\n", derlen);
+		UADK_ERR("sig have trailing garbage, derlen %d!\n", derlen);
 		OPENSSL_free(der);
 		goto err;
 	}
@@ -831,13 +832,13 @@ static int uadk_signature_ecdsa_verify(void *vctx, const unsigned char *sig,
 	opdata.tbslen = tbslen;
 	ret = ecdsa_verify_params_check(ctx, &opdata, sig, siglen);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to check params to sign!\n");
+		UADK_ERR("failed to check params to sign!\n");
 		goto err;
 	}
 
 	opdata.sig = ecdsa_create_sig(sig, siglen);
 	if (!opdata.sig) {
-		fprintf(stderr, "failed to create s to verify!\n");
+		UADK_ERR("failed to create s to verify!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -897,7 +898,7 @@ static int ecdsa_digest_signverify_update(void *vctx, const unsigned char *data,
 	struct ecdsa_ctx *ctx = (struct ecdsa_ctx *)vctx;
 
 	if (!ctx || !ctx->mdctx) {
-		fprintf(stderr, "invalid: ctx or mdctx is NULL to digest update!\n");
+		UADK_ERR("invalid: ctx or mdctx is NULL to digest update!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -918,7 +919,7 @@ static int uadk_signature_ecdsa_digest_sign_final(void *vctx, unsigned char *sig
 	unsigned int dlen = 0;
 
 	if (!ctx || !ctx->mdctx) {
-		fprintf(stderr, "invalid: ctx or mdctx is NULL to sign digest final!\n");
+		UADK_ERR("invalid: ctx or mdctx is NULL to sign digest final!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -954,7 +955,7 @@ static int uadk_signature_ecdsa_digest_verify_final(void *vctx, const unsigned c
 	unsigned int dlen = 0;
 
 	if (!ctx || !ctx->mdctx) {
-		fprintf(stderr, "invalid: ctx or mdctx is NULL to verify digest final!\n");
+		UADK_ERR("invalid: ctx or mdctx is NULL to verify digest final!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1008,7 +1009,7 @@ static int uadk_signature_ecdsa_get_ctx_params(void *vctx, OSSL_PARAM *params)
 	int ret;
 
 	if (!ctx) {
-		fprintf(stderr, "invalid: ctx is NULL to get_ctx_params!\n");
+		UADK_ERR("invalid: ctx is NULL to get_ctx_params!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1095,7 +1096,7 @@ static int uadk_signature_ecdsa_set_ctx_params(void *vctx, const OSSL_PARAM para
 	int ret;
 
 	if (!ctx) {
-		fprintf(stderr, "invalid: ctx is NULL to set_ctx_params!\n");
+		UADK_ERR("invalid: ctx is NULL to set_ctx_params!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1138,7 +1139,7 @@ static int uadk_signature_ecdsa_get_ctx_md_params(void *vctx, OSSL_PARAM *params
 	struct ecdsa_ctx *ctx = (struct ecdsa_ctx *)vctx;
 
 	if (!ctx || !ctx->mdctx) {
-		fprintf(stderr, "invalid: ctx or md ctx is NULL to get_ctx_md_params!\n");
+		UADK_ERR("invalid: ctx or md ctx is NULL to get_ctx_md_params!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1150,7 +1151,7 @@ static const OSSL_PARAM *uadk_signature_ecdsa_gettable_ctx_md_params(void *vctx)
 	struct ecdsa_ctx *ctx = (struct ecdsa_ctx *)vctx;
 
 	if (!ctx || !ctx->md) {
-		fprintf(stderr, "invalid: ctx or md is NULL to gettable_ctx_md_params!\n");
+		UADK_ERR("invalid: ctx or md is NULL to gettable_ctx_md_params!\n");
 		return NULL;
 	}
 
@@ -1162,7 +1163,7 @@ static int uadk_signature_ecdsa_set_ctx_md_params(void *vctx, const OSSL_PARAM p
 	struct ecdsa_ctx *ctx = (struct ecdsa_ctx *)vctx;
 
 	if (!ctx || !ctx->mdctx) {
-		fprintf(stderr, "invalid: ctx or md ctx is NULL to set_ctx_md_params!\n");
+		UADK_ERR("invalid: ctx or md ctx is NULL to set_ctx_md_params!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1174,7 +1175,7 @@ static const OSSL_PARAM *uadk_signature_ecdsa_settable_ctx_md_params(void *vctx)
 	struct ecdsa_ctx *ctx = (struct ecdsa_ctx *)vctx;
 
 	if (!ctx || !ctx->md) {
-		fprintf(stderr, "invalid: ctx or md is NULL to settable_ctx_md_params!\n");
+		UADK_ERR("invalid: ctx or md is NULL to settable_ctx_md_params!\n");
 		return NULL;
 	}
 

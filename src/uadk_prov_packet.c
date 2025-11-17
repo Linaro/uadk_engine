@@ -9,6 +9,7 @@
  */
 #include <openssl/err.h>
 #include "uadk_prov_packet.h"
+#include "uadk_utils.h"
 
 #define DEFAULT_BUF_SIZE		256
 #define REF_SIZE_LIMIT			2
@@ -106,7 +107,7 @@ static int wpacket_intern_init_len(WPACKET *pkt, size_t lenbytes)
 
 	pkt->subs = OPENSSL_zalloc(sizeof(*pkt->subs));
 	if (pkt->subs == NULL) {
-		ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to zalloc pkt subs!\n");
 		return 0;
 	}
 
@@ -351,7 +352,7 @@ int WPACKET_start_sub_packet_len__(WPACKET *pkt, size_t lenbytes)
 
 	sub = OPENSSL_zalloc(sizeof(*sub));
 	if (sub == NULL) {
-		ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to zalloc sub!\n");
 		return 0;
 	}
 

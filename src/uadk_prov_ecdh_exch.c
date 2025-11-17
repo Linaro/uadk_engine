@@ -26,6 +26,7 @@
 #include "uadk_prov.h"
 #include "uadk_prov_der_writer.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define UADK_PROV_MAX_PARAM_LEN		80
 
@@ -87,7 +88,7 @@ static UADK_PKEY_KEYEXCH get_default_ecdh_keyexch(void)
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
 			initialized = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X448 provider\n");
+			UADK_ERR("failed to EVP_KEYEXCH_fetch default X448 provider\n");
 		}
 	}
 	pthread_mutex_unlock(&ecdh_mutex);
@@ -110,32 +111,32 @@ static int ecdh_param_check(struct ecdh_ctx *pecdhctx, struct ecdh_sess_ctx *ses
 	int type;
 
 	if (!pecdhctx->k || !pecdhctx->peerk) {
-		fprintf(stderr, "invalid: k or peerk is NULL.\n");
+		UADK_ERR("invalid: k or peerk is NULL.\n");
 		return UADK_P_FAIL;
 	}
 
 	sess_ctx->pub_key = EC_KEY_get0_public_key(pecdhctx->peerk);
 	if (!sess_ctx->pub_key) {
-		fprintf(stderr, "invalid: public key is NULL.\n");
+		UADK_ERR("invalid: public key is NULL.\n");
 		return UADK_P_FAIL;
 	}
 
 	group = EC_KEY_get0_group(pecdhctx->k);
 	if (!group) {
-		fprintf(stderr, "invalid: group is 0.\n");
+		UADK_ERR("invalid: group is 0.\n");
 		return UADK_P_FAIL;
 	}
 
 	sess_ctx->cofactor = EC_GROUP_get0_cofactor(group);
 	if (!sess_ctx->cofactor) {
-		fprintf(stderr, "invalid: cofactor is NULL!\n");
+		UADK_ERR("invalid: cofactor is NULL!\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Field GF(2m) is not supported by uadk */
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
-		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
+		UADK_ERR("invalid: uadk unsupport Field GF(2m)!\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -190,13 +191,13 @@ static handle_t ecdh_alloc_sess(EC_KEY *privk)
 
 	ret = uadk_prov_keyexch_get_support_state(KEYEXCH_ECDH);
 	if (!ret) {
-		fprintf(stderr, "invalid: hardware not support ecdh!\n");
+		UADK_ERR("invalid: hardware not support ecdh!\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_ecc_init("ecdh");
 	if (!ret) {
-		fprintf(stderr, "failed to init ecdh to compute key!\n");
+		UADK_ERR("failed to init ecdh to compute key!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -242,13 +243,13 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);
 	if (!ecdh_in) {
-		fprintf(stderr, "failed to new ecxdh in\n");
+		UADK_ERR("failed to new ecxdh in\n");
 		goto free_ctx;
 	}
 
 	ecdh_out = wd_ecxdh_new_out(sess);
 	if (!ecdh_out) {
-		fprintf(stderr, "failed to new ecxdh out\n");
+		UADK_ERR("failed to new ecxdh out\n");
 		wd_ecc_del_in(sess, ecdh_in);
 		goto free_ctx;
 	}
@@ -279,7 +280,7 @@ static int ecdh_get_shared_key(unsigned char *secret,
 
 	wd_ecxdh_get_out_params(req->dst, &shared_key);
 	if (!shared_key) {
-		fprintf(stderr, "failed to get ecdh shared key\n");
+		UADK_ERR("failed to get ecdh shared key\n");
 		return UADK_P_FAIL;
 	}
 
@@ -303,25 +304,25 @@ static int ecdh_compute_key(struct ecdh_sess_ctx *sess_ctx,
 
 	sess = ecdh_alloc_sess(sess_ctx->privk);
 	if (!sess) {
-		fprintf(stderr, "failed to alloc sess to compute key!\n");
+		UADK_ERR("failed to alloc sess to compute key!\n");
 		return UADK_DO_SOFT;
 	}
 
 	ret = uadk_prov_ecc_set_private_key(sess, sess_ctx->privk);
 	if (!ret) {
-		fprintf(stderr, "failed to set private key!\n");
+		UADK_ERR("failed to set private key!\n");
 		goto free_sess;
 	}
 
 	ret = ecdh_init_req(sess_ctx, &req, sess);
 	if (!ret) {
-		fprintf(stderr, "failed to init req!\n");
+		UADK_ERR("failed to init req!\n");
 		goto free_sess;
 	}
 
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to calculate shared key!\n");
+		UADK_ERR("failed to calculate shared key!\n");
 		ret = UADK_DO_SOFT;
 		goto uninit_req;
 	}
@@ -355,7 +356,7 @@ static int ecdh_plain_derive(struct ecdh_ctx *pecdhctx,
 
 	ret = ecdh_set_privk(pecdhctx, &sess_ctx);
 	if (!ret) {
-		fprintf(stderr, "failed to set private key!\n");
+		UADK_ERR("failed to set private key!\n");
 		return ret;
 	}
 
@@ -379,14 +380,14 @@ static int ecdh_kdf_X9_63(unsigned char *out, struct ecdh_ctx *pecdhctx,
 
 	kdf = EVP_KDF_fetch(pecdhctx->libctx, OSSL_KDF_NAME_X963KDF, NULL);
 	if (!kdf) {
-		fprintf(stderr, "failed to fetch kdf!\n");
+		UADK_ERR("failed to fetch kdf!\n");
 		return ret;
 	}
 
 	mdname = EVP_MD_get0_name(pecdhctx->kdf_md);
 	kctx = EVP_KDF_CTX_new(kdf);
 	if (!kctx) {
-		fprintf(stderr, "failed to new kctx!\n");
+		UADK_ERR("failed to new kctx!\n");
 		goto free_kdf;
 	}
 
@@ -423,8 +424,8 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 	}
 
 	if (outlen < pecdhctx->kdf_outlen) {
-		fprintf(stderr, "invalid: outlen %zu is less than kdf_outlen %zu!\n",
-			outlen, pecdhctx->kdf_outlen);
+		UADK_ERR("invalid: outlen %zu is less than kdf_outlen %zu!\n",
+			 outlen, pecdhctx->kdf_outlen);
 		return UADK_P_FAIL;
 	}
 
@@ -434,7 +435,7 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 
 	stmp = OPENSSL_secure_malloc(stmplen);
 	if (!stmp) {
-		fprintf(stderr, "failed to alloc stmp!\n");
+		UADK_ERR("failed to alloc stmp!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -459,7 +460,7 @@ static int uadk_ecdh_sw_derive(void *vpecdhctx, unsigned char *secret,
 	if (!enable_sw_offload || !get_default_ecdh_keyexch().derive)
 		return UADK_P_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecdh derivation.\n");
+	UADK_INFO("switch to openssl software calculation in ecdh derivation.\n");
 
 	return get_default_ecdh_keyexch().derive(vpecdhctx, secret, psecretlen, outlen);
 }
@@ -471,7 +472,7 @@ static int uadk_keyexch_ecdh_derive(void *vpecdhctx, unsigned char *secret,
 	int ret = UADK_P_FAIL;
 
 	if (!pecdhctx) {
-		fprintf(stderr, "invalid: vpecdhctx is NULL to derive!\n");
+		UADK_ERR("invalid: vpecdhctx is NULL to derive!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -529,7 +530,7 @@ static int uadk_keyexch_ecdh_init(void *vpecdhctx, void *vecdh, const OSSL_PARAM
 	int ret;
 
 	if (!pecdhctx || !vecdh) {
-		fprintf(stderr, "invalid: pecdhctx or vecdh is to init!\n");
+		UADK_ERR("invalid: pecdhctx or vecdh is to init!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -543,7 +544,7 @@ static int uadk_keyexch_ecdh_init(void *vpecdhctx, void *vecdh, const OSSL_PARAM
 
 	ret = uadk_keyexch_ecdh_set_ctx_params(pecdhctx, params);
 	if (!ret) {
-		fprintf(stderr, "failed to set_ctx_params!\n");
+		UADK_ERR("failed to set_ctx_params!\n");
 		return ret;
 	}
 
@@ -559,13 +560,13 @@ static int ecdh_match_params(const EC_KEY *privk, const EC_KEY *pubk)
 
 	ctx = BN_CTX_new_ex(privk->libctx);
 	if (!ctx) {
-		fprintf(stderr, "failed to new ctx!\n");
+		UADK_ERR("failed to new ctx!\n");
 		return UADK_P_FAIL;
 	}
 
 	if (group_privk && group_pubk) {
 		if (EC_GROUP_cmp(group_privk, group_pubk, ctx)) {
-			fprintf(stderr, "invalid: privk is not match pubk!\n");
+			UADK_ERR("invalid: privk is not match pubk!\n");
 			ret = UADK_P_FAIL;
 		}
 	}
@@ -581,7 +582,7 @@ static int uadk_keyexch_ecdh_set_peer(void *vpecdhctx, void *vecdh)
 	int ret;
 
 	if (!pecdhctx || !vecdh) {
-		fprintf(stderr, "invalid: vpecdhctx or vecdh is NULL to set_peer!\n");
+		UADK_ERR("invalid: vpecdhctx or vecdh is NULL to set_peer!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -608,13 +609,13 @@ static void *uadk_keyexch_ecdh_dupctx(void *vpecdhctx)
 	struct ecdh_ctx *dstctx;
 
 	if (!srcctx) {
-		fprintf(stderr, "invalid: source ecdh ctx is NULL!\n");
+		UADK_ERR("invalid: source ecdh ctx is NULL!\n");
 		return NULL;
 	}
 
 	dstctx = OPENSSL_zalloc(sizeof(*srcctx));
 	if (!dstctx) {
-		fprintf(stderr, "failed to alloc dst ctx!\n");
+		UADK_ERR("failed to alloc dst ctx!\n");
 		return NULL;
 	}
 
@@ -849,7 +850,7 @@ static int uadk_keyexch_ecdh_set_ctx_params(void *vpecdhctx, const OSSL_PARAM pa
 	int ret;
 
 	if (!pectx) {
-		fprintf(stderr, "invalid: pectx is NULL to set_ctx_params!\n");
+		UADK_ERR("invalid: pectx is NULL to set_ctx_params!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -881,7 +882,7 @@ static int uadk_keyexch_ecdh_get_ctx_params(void *vpecdhctx, OSSL_PARAM params[]
 	int ret;
 
 	if (!pectx) {
-		fprintf(stderr, "invalid: pectx is NULL to get_ctx_params!\n");
+		UADK_ERR("invalid: pectx is NULL to get_ctx_params!\n");
 		return UADK_P_FAIL;
 	}
 

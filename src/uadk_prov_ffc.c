@@ -14,6 +14,7 @@
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include "uadk_prov_ffc.h"
+#include "uadk_utils.h"
 
 #if BN_BITS2 == 64
 #define BN_DEF(lo, hi) (BN_ULONG)hi << 32 | lo
@@ -1020,7 +1021,7 @@ static int ffc_validate_LN(size_t L, size_t N, int type, int verify)
 		if (L == L_P_2048BITS && (N == N_Q_224BITS || N == N_Q_256BITS))
 			return SECURITY_STR_112BITS;
 # ifndef OPENSSL_NO_DH
-		ERR_raise(ERR_LIB_DH, DH_R_BAD_FFC_PARAMETERS);
+		UADK_ERR("dh bad ffc parameters.\n");
 # endif
 	} else if (type == FFC_PARAM_TYPE_DSA) {
 		/* Valid DSA L,N parameters from FIPS 186-4 Section 4.2 */
@@ -1032,7 +1033,7 @@ static int ffc_validate_LN(size_t L, size_t N, int type, int verify)
 		if (L == L_P_3072BITS && N == N_Q_256BITS)
 			return SECURITY_STR_128BITS;
 # ifndef OPENSSL_NO_DSA
-		ERR_raise(ERR_LIB_DSA, DSA_R_BAD_FFC_PARAMETERS);
+		UADK_ERR("dsa bad ffc parameters.\n");
 # endif
 	}
 
@@ -1049,7 +1050,7 @@ static int ffc_validate_LN(size_t L, size_t N, int type, int verify)
 		if (L == L_P_2048BITS && (N == N_Q_224BITS || N == N_Q_256BITS))
 			return SECURITY_STR_112BITS;
 # ifndef OPENSSL_NO_DH
-		ERR_raise(ERR_LIB_DH, DH_R_BAD_FFC_PARAMETERS);
+		UADK_ERR("dh bad ffc parameters.\n");
 # endif
 	} else if (type == FFC_PARAM_TYPE_DSA) {
 		if (L >= L_P_3072BITS && N >= N_Q_256BITS)
@@ -1059,7 +1060,7 @@ static int ffc_validate_LN(size_t L, size_t N, int type, int verify)
 		if (L >= L_P_1024BITS && N >= N_Q_160BITS)
 			return SECURITY_STR_80BITS;
 # ifndef OPENSSL_NO_DSA
-		ERR_raise(ERR_LIB_DSA, DSA_R_BAD_FFC_PARAMETERS);
+		UADK_ERR("dsa bad ffc parameters.\n");
 # endif
 	}
 
