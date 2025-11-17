@@ -28,6 +28,7 @@
 #include "uadk_prov_der_writer.h"
 #include "uadk_prov_packet.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define SM2_KEY_BYTES		32
 #define SM2_GET_SIGNLEN		1
@@ -223,7 +224,7 @@ IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
 static const char *uadk_keymgmt_sm2_query_operation_name(int operation_id)
 {
 	if (!get_default_sm2_keymgmt().query_operation_name) {
-		fprintf(stderr, "failed to get keymgmt query_operation_name function\n");
+		UADK_ERR("failed to get keymgmt query_operation_name function\n");
 		return NULL;
 	}
 
@@ -239,7 +240,7 @@ static const char *uadk_keymgmt_sm2_query_operation_name(int operation_id)
 static void *uadk_keymgmt_sm2_new(void *provctx)
 {
 	if (!get_default_sm2_keymgmt().new_fun) {
-		fprintf(stderr, "failed to get keymgmt new function\n");
+		UADK_ERR("failed to get keymgmt new function\n");
 		return NULL;
 	}
 
@@ -254,7 +255,7 @@ static void *uadk_keymgmt_sm2_new(void *provctx)
 static void uadk_keymgmt_sm2_free(void *keydata)
 {
 	if (!get_default_sm2_keymgmt().free) {
-		fprintf(stderr, "failed to get keymgmt free function\n");
+		UADK_ERR("failed to get keymgmt free function\n");
 		return;
 	}
 
@@ -264,7 +265,7 @@ static void uadk_keymgmt_sm2_free(void *keydata)
 static int uadk_keymgmt_sm2_get_params(void *key, OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().get_params) {
-		fprintf(stderr, "failed to get keymgmt get_params function\n");
+		UADK_ERR("failed to get keymgmt get_params function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -274,7 +275,7 @@ static int uadk_keymgmt_sm2_get_params(void *key, OSSL_PARAM params[])
 static const OSSL_PARAM *uadk_keymgmt_sm2_gettable_params(void *provctx)
 {
 	if (!get_default_sm2_keymgmt().gettable_params) {
-		fprintf(stderr, "failed to get keymgmt gettable_params function\n");
+		UADK_ERR("failed to get keymgmt gettable_params function\n");
 		return NULL;
 	}
 
@@ -284,7 +285,7 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_gettable_params(void *provctx)
 static int uadk_keymgmt_sm2_set_params(void *key, const OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().set_params) {
-		fprintf(stderr, "failed to get keymgmt set_params function\n");
+		UADK_ERR("failed to get keymgmt set_params function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -294,7 +295,7 @@ static int uadk_keymgmt_sm2_set_params(void *key, const OSSL_PARAM params[])
 static int uadk_keymgmt_sm2_gen_set_template(void *genctx, void *templates)
 {
 	if (!get_default_sm2_keymgmt().gen_set_template) {
-		fprintf(stderr, "failed to get keymgmt gen_set_template function\n");
+		UADK_ERR("failed to get keymgmt gen_set_template function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -304,7 +305,7 @@ static int uadk_keymgmt_sm2_gen_set_template(void *genctx, void *templates)
 static void uadk_keymgmt_sm2_gen_cleanup(void *genctx)
 {
 	if (!get_default_sm2_keymgmt().gen_cleanup) {
-		fprintf(stderr, "failed to get keymgmt gen_cleanup function\n");
+		UADK_ERR("failed to get keymgmt gen_cleanup function\n");
 		return;
 	}
 
@@ -314,7 +315,7 @@ static void uadk_keymgmt_sm2_gen_cleanup(void *genctx)
 static void *uadk_keymgmt_sm2_load(const void *reference, size_t reference_sz)
 {
 	if (!get_default_sm2_keymgmt().load) {
-		fprintf(stderr, "failed to get keymgmt load function\n");
+		UADK_ERR("failed to get keymgmt load function\n");
 		return NULL;
 	}
 
@@ -324,7 +325,7 @@ static void *uadk_keymgmt_sm2_load(const void *reference, size_t reference_sz)
 static int uadk_keymgmt_sm2_validate(const void *keydata, int selection, int checktype)
 {
 	if (!get_default_sm2_keymgmt().validate) {
-		fprintf(stderr, "failed to get keymgmt validate function\n");
+		UADK_ERR("failed to get keymgmt validate function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -334,7 +335,7 @@ static int uadk_keymgmt_sm2_validate(const void *keydata, int selection, int che
 static int uadk_keymgmt_sm2_match(const void *keydata1, const void *keydata2, int selection)
 {
 	if (!get_default_sm2_keymgmt().match) {
-		fprintf(stderr, "failed to get keymgmt validate function\n");
+		UADK_ERR("failed to get keymgmt validate function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -352,7 +353,7 @@ static int uadk_keymgmt_sm2_match(const void *keydata1, const void *keydata2, in
 static int uadk_keymgmt_sm2_has(const void *keydata, int selection)
 {
 	if (!get_default_sm2_keymgmt().has) {
-		fprintf(stderr, "failed to get keymgmt has function\n");
+		UADK_ERR("failed to get keymgmt has function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -370,7 +371,7 @@ static int uadk_keymgmt_sm2_has(const void *keydata, int selection)
 static int uadk_keymgmt_sm2_import(void *keydata, int selection, const OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().import) {
-		fprintf(stderr, "failed to get keymgmt import function\n");
+		UADK_ERR("failed to get keymgmt import function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -386,7 +387,7 @@ static int uadk_keymgmt_sm2_import(void *keydata, int selection, const OSSL_PARA
 static const OSSL_PARAM *uadk_keymgmt_sm2_import_types(int selection)
 {
 	if (!get_default_sm2_keymgmt().import_types) {
-		fprintf(stderr, "failed to get keymgmt import_types function\n");
+		UADK_ERR("failed to get keymgmt import_types function\n");
 		return NULL;
 	}
 
@@ -397,7 +398,7 @@ static int uadk_keymgmt_sm2_export(void *keydata, int selection,
 				   OSSL_CALLBACK *param_callback, void *cbarg)
 {
 	if (!get_default_sm2_keymgmt().export_fun) {
-		fprintf(stderr, "failed to get keymgmt export function\n");
+		UADK_ERR("failed to get keymgmt export function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -407,7 +408,7 @@ static int uadk_keymgmt_sm2_export(void *keydata, int selection,
 static const OSSL_PARAM *uadk_keymgmt_sm2_export_types(int selection)
 {
 	if (!get_default_sm2_keymgmt().export_types) {
-		fprintf(stderr, "failed to get keymgmt export_types function\n");
+		UADK_ERR("failed to get keymgmt export_types function\n");
 		return NULL;
 	}
 
@@ -417,7 +418,7 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_export_types(int selection)
 static void *uadk_keymgmt_sm2_dup(const void *keydata_from, int selection)
 {
 	if (!get_default_sm2_keymgmt().dup) {
-		fprintf(stderr, "failed to get keymgmt dup function\n");
+		UADK_ERR("failed to get keymgmt dup function\n");
 		return NULL;
 	}
 
@@ -436,7 +437,7 @@ static void *uadk_keymgmt_sm2_gen_init(void *provctx, int selection,
 				       const OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().gen_init) {
-		fprintf(stderr, "failed to get keymgmt gen_init function\n");
+		UADK_ERR("failed to get keymgmt gen_init function\n");
 		return NULL;
 	}
 
@@ -453,7 +454,7 @@ static void *uadk_keymgmt_sm2_gen_init(void *provctx, int selection,
 static int uadk_keymgmt_sm2_gen_set_params(void *genctx, const OSSL_PARAM params[])
 {
 	if (!get_default_sm2_keymgmt().gen_set_params) {
-		fprintf(stderr, "failed to get keymgmt gen_set_params function\n");
+		UADK_ERR("failed to get keymgmt gen_set_params function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -463,7 +464,7 @@ static int uadk_keymgmt_sm2_gen_set_params(void *genctx, const OSSL_PARAM params
 static const OSSL_PARAM *uadk_keymgmt_sm2_settable_params(ossl_unused void *provctx)
 {
 	if (!get_default_sm2_keymgmt().settable_params) {
-		fprintf(stderr, "failed to get keymgmt settable_params function\n");
+		UADK_ERR("failed to get keymgmt settable_params function\n");
 		return NULL;
 	}
 
@@ -481,7 +482,7 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_gen_settable_params(ossl_unused void *
 							      ossl_unused void *provctx)
 {
 	if (!get_default_sm2_keymgmt().gen_settable_params) {
-		fprintf(stderr, "failed to get keymgmt gen_settable_params function\n");
+		UADK_ERR("failed to get keymgmt gen_settable_params function\n");
 		return NULL;
 	}
 
@@ -493,7 +494,7 @@ static int uadk_prov_sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 	struct wd_ecc_out *ecc_out = wd_sm2_new_kg_out(sess);
 
 	if (ecc_out == NULL) {
-		fprintf(stderr, "failed to new sign out\n");
+		UADK_ERR("failed to new sign out\n");
 		return UADK_P_FAIL;
 	}
 
@@ -514,12 +515,12 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 
 	wd_sm2_get_kg_out_params(req->dst, &privkey, &pubkey);
 	if (privkey == NULL || pubkey == NULL) {
-		fprintf(stderr, "failed to get privkey or pubkey\n");
+		UADK_ERR("failed to get privkey or pubkey\n");
 		return UADK_P_FAIL;
 	}
 
 	if (pubkey->x.dsize > SM2_KEY_BYTES || pubkey->y.dsize > SM2_KEY_BYTES) {
-		fprintf(stderr, "invalid pubkey size: %u, %u\n", pubkey->x.dsize, pubkey->y.dsize);
+		UADK_ERR("invalid pubkey size: %u, %u\n", pubkey->x.dsize, pubkey->y.dsize);
 		return UADK_P_FAIL;
 	}
 
@@ -527,14 +528,14 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	ret = EC_KEY_set_private_key(ec, bn_key);
 	BN_free(bn_key);
 	if (ret == 0) {
-		fprintf(stderr, "failed to EC KEY set private key\n");
+		UADK_ERR("failed to EC KEY set private key\n");
 		return UADK_P_FAIL;
 	}
 
 	group = EC_KEY_get0_group(ec);
 	point = EC_POINT_new(group);
 	if (point == NULL) {
-		fprintf(stderr, "failed to EC POINT new\n");
+		UADK_ERR("failed to EC POINT new\n");
 		return UADK_P_FAIL;
 	}
 
@@ -548,7 +549,7 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	ptr = EC_POINT_bn2point(group, bn_key, point, NULL);
 	BN_free(bn_key);
 	if (ptr == NULL) {
-		fprintf(stderr, "failed to EC_POINT_bn2point\n");
+		UADK_ERR("failed to EC_POINT_bn2point\n");
 		EC_POINT_free(point);
 		return UADK_P_FAIL;
 	}
@@ -556,7 +557,7 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	ret = EC_KEY_set_public_key(ec, point);
 	EC_POINT_free(point);
 	if (ret == 0) {
-		fprintf(stderr, "failed to EC_KEY_set_public_key\n");
+		UADK_ERR("failed to EC_KEY_set_public_key\n");
 		return UADK_P_FAIL;
 	}
 
@@ -574,13 +575,13 @@ static int uadk_prov_sm2_check_priv_key(EC_KEY *eckey)
 
 	priv_key = BN_new();
 	if (priv_key == NULL) {
-		fprintf(stderr, "failed to BN_new priv_key\n");
+		UADK_ERR("failed to BN_new priv_key\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = EC_KEY_set_private_key(eckey, priv_key);
 	if (ret == 0)
-		fprintf(stderr, "failed to set private key\n");
+		UADK_ERR("failed to set private key\n");
 
 	BN_free(priv_key);
 
@@ -632,11 +633,11 @@ static void *uadk_keymgmt_sm2_gen_sw(void *genctx, OSSL_CALLBACK *osslcb, void *
 		return NULL;
 
 	if (!get_default_sm2_keymgmt().gen) {
-		fprintf(stderr, "failed to get keymgmt gen function\n");
+		UADK_ERR("failed to get keymgmt gen function\n");
 		return NULL;
 	}
 
-	fprintf(stderr, "switch to software sm2 keygen.\n");
+	UADK_INFO("switch to software sm2 keygen.\n");
 	return get_default_sm2_keymgmt().gen(genctx, osslcb, cbarg);
 }
 
@@ -656,44 +657,44 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	int ret;
 
 	if (gctx == NULL) {
-		fprintf(stderr, "invalid: the generation context is NULL\n");
+		UADK_ERR("invalid: the generation context is NULL\n");
 		return NULL;
 	}
 
 	ec = EC_KEY_new_ex(gctx->libctx, NULL);
 	if (ec == NULL) {
-		fprintf(stderr, "failed to EC_KEY_new_ex\n");
+		UADK_ERR("failed to EC_KEY_new_ex\n");
 		return NULL;
 	}
 
 	ret = uadk_prov_ecc_genctx_check(genctx, ec);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to check genctx\n");
+		UADK_ERR("failed to check genctx\n");
 		goto free_ec_key;
 	}
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_SM2);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware sm2 keygen support\n");
+		UADK_ERR("failed to get hardware sm2 keygen support\n");
 		goto do_soft;
 	}
 
 	/* SM2 hardware init */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to init sm2\n");
+		UADK_ERR("failed to init sm2\n");
 		goto do_soft;
 	}
 
 	/* Do sm2 keygen with hardware */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) == 0) {
-		fprintf(stderr, "invalid keymgmt keypair selection\n");
+		UADK_ERR("invalid keymgmt keypair selection\n");
 		goto free_ec_key;
 	}
 
 	ret = uadk_prov_sm2_keygen(ec);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to generate sm2 key\n");
+		UADK_ERR("failed to generate sm2 key\n");
 		goto do_soft;
 	}
 
@@ -722,7 +723,7 @@ static UADK_PKEY_SIGNATURE get_default_sm2_signature(void)
 			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
 			initilazed = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default SM2 provider\n");
+			UADK_ERR("failed to EVP_SIGNATURE_fetch default SM2 provider\n");
 		}
 	}
 	pthread_mutex_unlock(&sign_mutex);
@@ -736,7 +737,7 @@ static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
 	SM2_PROV_CTX *smctx;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "failed to alloc sm2 signature ctx\n");
+		UADK_ERR("failed to alloc sm2 signature ctx\n");
 		return NULL;
 	}
 	/* The libctx maybe NULL, if libctx is NULL, will use default ctx. */
@@ -744,19 +745,19 @@ static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
 
 	smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
 	if (smctx == NULL) {
-		fprintf(stderr, "failed to alloc sm2 prov ctx\n");
+		UADK_ERR("failed to alloc sm2 prov ctx\n");
 		goto free_ctx;
 	}
 
 	smctx->sm2_pd = OPENSSL_zalloc(sizeof(SM2_PKEY_DATA));
 	if (smctx->sm2_pd == NULL) {
-		fprintf(stderr, "failed to alloc sm2 pkey data\n");
+		UADK_ERR("failed to alloc sm2 pkey data\n");
 		goto free_smctx;
 	}
 
 	smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
 	if (smctx->sm2_md == NULL) {
-		fprintf(stderr, "failed to alloc sm2 md data\n");
+		UADK_ERR("failed to alloc sm2 md data\n");
 		goto free_pd;
 	}
 
@@ -770,7 +771,7 @@ static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
 	strcpy(psm2ctx->mdname, OSSL_DIGEST_NAME_SM3);
 	smctx->sm2_md->mdctx = EVP_MD_CTX_new();
 	if (smctx->sm2_md->mdctx == NULL) {
-		fprintf(stderr, "failed to alloc sm2 mdctx\n");
+		UADK_ERR("failed to alloc sm2 mdctx\n");
 		goto free_md;
 	}
 
@@ -779,7 +780,7 @@ static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
 	if (propq) {
 		psm2ctx->propq = OPENSSL_strdup(propq);
 		if (psm2ctx->propq == NULL) {
-			fprintf(stderr, "failed to dup propq\n");
+			UADK_ERR("failed to dup propq\n");
 			goto free_mdctx;
 		}
 	}
@@ -840,17 +841,17 @@ static void uadk_signature_sm2_freectx(void *vpsm2ctx)
 static int uadk_prov_sm2_check_md_params(SM2_PROV_CTX *smctx)
 {
 	if (smctx->sm2_md == NULL) {
-		fprintf(stderr, "invalid: sm2_md is NULL\n");
+		UADK_ERR("invalid: sm2_md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->md == NULL) {
-		fprintf(stderr, "invalid: md is NULL\n");
+		UADK_ERR("invalid: md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->mdctx == NULL) {
-		fprintf(stderr, "invalid: mdctx is NULL\n");
+		UADK_ERR("invalid: mdctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -868,12 +869,12 @@ static int uadk_prov_sm2_sig_set_mdname(PROV_SM2_SIGN_CTX *psm2ctx, const char *
 	/* 'psm2ctx' has already been checked when call this function, no need to check again */
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md == NULL) {
-		fprintf(stderr, "invalid: smctx->sm2_md is NULL\n");
+		UADK_ERR("invalid: smctx->sm2_md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -881,14 +882,14 @@ static int uadk_prov_sm2_sig_set_mdname(PROV_SM2_SIGN_CTX *psm2ctx, const char *
 		smctx->sm2_md->md = EVP_MD_fetch(psm2ctx->libctx,
 						 psm2ctx->mdname, psm2ctx->propq);
 		if (smctx->sm2_md->md == NULL) {
-			fprintf(stderr, "failed to fetch digest method\n");
+			UADK_ERR("failed to fetch digest method\n");
 			return UADK_P_FAIL;
 		}
 	}
 
 	if (strlen(mdname) >= sizeof(psm2ctx->mdname) ||
 	    !EVP_MD_is_a(smctx->sm2_md->md, mdname)) {
-		fprintf(stderr, "failed to check mdname, digest=%s\n", mdname);
+		UADK_ERR("failed to check mdname, digest=%s\n", mdname);
 		return UADK_P_FAIL;
 	}
 
@@ -911,7 +912,7 @@ static int uadk_prov_compute_hash(const char *in, size_t in_len,
 	if (EVP_DigestInit(hash, digest) == 0 ||
 	    EVP_DigestUpdate(hash, in, in_len) == 0 ||
 	    EVP_DigestFinal(hash, (void *)out, NULL) == 0) {
-		fprintf(stderr, "compute hash failed\n");
+		UADK_ERR("compute hash failed\n");
 		ret = -WD_EINVAL;
 	}
 
@@ -958,7 +959,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 	int type;
 
 	if (smctx->sm2_pd == NULL) {
-		fprintf(stderr, "invalid: sm2 pd is NULL\n");
+		UADK_ERR("invalid: sm2 pd is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -966,7 +967,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 	if (smctx->sm2_pd->order == NULL) {
 		smctx->sm2_pd->order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
 		if (smctx->sm2_pd->order == NULL) {
-			fprintf(stderr, "failed to BN_bin2bn order\n");
+			UADK_ERR("failed to BN_bin2bn order\n");
 			return UADK_P_FAIL;
 		}
 	}
@@ -978,8 +979,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 		setup.hash.usr = (void *)smctx->sm2_md->md;
 		type = uadk_prov_get_hash_type(smctx->sm2_md->md_nid);
 		if (type < 0) {
-			fprintf(stderr, "uadk not support hash nid %d\n",
-				smctx->sm2_md->md_nid);
+			UADK_ERR("uadk not support hash nid %d\n", smctx->sm2_md->md_nid);
 			return UADK_P_FAIL;
 		}
 		setup.hash.type = type;
@@ -992,7 +992,7 @@ static int uadk_prov_sm2_update_sess(SM2_PROV_CTX *smctx)
 	setup.rand.cb = uadk_prov_ecc_get_rand;
 	sess = wd_ecc_alloc_sess(&setup);
 	if (sess == (handle_t)0) {
-		fprintf(stderr, "failed to alloc sess\n");
+		UADK_ERR("failed to alloc sess\n");
 		smctx->init_status = CTX_INIT_FAIL;
 		return UADK_P_FAIL;
 	}
@@ -1012,7 +1012,7 @@ static int uadk_signature_sm2_sign_init_sw(void *vpsm2ctx, void *ec,
 					   const OSSL_PARAM params[])
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().sign_init) {
-		fprintf(stderr, "switch to software sm2 sign_init.\n");
+		UADK_INFO("switch to software sm2 sign_init.\n");
 		return get_default_sm2_signature().sign_init(vpsm2ctx, ec, params);
 	}
 
@@ -1026,18 +1026,18 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: vpsm2ctx is NULL\n");
+		UADK_ERR("invalid: vpsm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ec == NULL && psm2ctx->key == NULL) {
-		fprintf(stderr, "invalid: sm2 key is NULL\n");
+		UADK_ERR("invalid: sm2 key is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ec) {
 		if (!EC_KEY_up_ref(ec)) {
-			fprintf(stderr, "failed to EC_KEY_up_ref\n");
+			UADK_ERR("failed to EC_KEY_up_ref\n");
 			return UADK_P_FAIL;
 		}
 		EC_KEY_free(psm2ctx->key);
@@ -1045,7 +1045,7 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 	}
 
 	if (psm2ctx->sm2_pctx == NULL) {
-		fprintf(stderr, "failed to get smctx\n");
+		UADK_ERR("failed to get smctx\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1055,20 +1055,20 @@ static int uadk_signature_sm2_sign_init(void *vpsm2ctx, void *ec,
 
 	ret = uadk_signature_sm2_set_ctx_params((void *)psm2ctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to set sm2 sig ctx params\n");
+		UADK_ERR("failed to set sm2 sig ctx params\n");
 		goto do_soft;
 	}
 
 	ret = uadk_prov_signature_get_support_state(SIGNATURE_SM2);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware sm2 signature support\n");
+		UADK_ERR("failed to get hardware sm2 signature support\n");
 		goto do_soft;
 	}
 
 	/* Init with UADK */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to init sm2\n");
+		UADK_ERR("failed to init sm2\n");
 		goto do_soft;
 	}
 
@@ -1092,33 +1092,33 @@ static int uadk_prov_sm2_check_tbs_params(PROV_SM2_SIGN_CTX *psm2ctx,
 	SM2_PROV_CTX *smctx = psm2ctx->sm2_pctx;
 
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: ctx is NULL\n");
+		UADK_ERR("invalid: ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init did not init\n");
+		UADK_ERR("sm2 ctx init did not init\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md == NULL) {
-		fprintf(stderr, "invalid: sm2_md is NULL\n");
+		UADK_ERR("invalid: sm2_md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->mdsize != 0 && tbslen != smctx->sm2_md->mdsize) {
-		fprintf(stderr, "invalid: tbslen(%zu) != mdsize(%zu)\n",
-			tbslen, smctx->sm2_md->mdsize);
+		UADK_ERR("invalid: tbslen(%zu) != mdsize(%zu)\n",
+			 tbslen, smctx->sm2_md->mdsize);
 		return UADK_P_FAIL;
 	}
 
 	if (tbslen > SM2_KEY_BYTES) {
-		fprintf(stderr, "invalid: tbslen(%zu) > SM2_KEY_BYTES(32)\n", tbslen);
+		UADK_ERR("invalid: tbslen(%zu) > SM2_KEY_BYTES(32)\n", tbslen);
 		return UADK_P_FAIL;
 	}
 
 	if (uadk_prov_is_all_zero(tbs, tbslen)) {
-		fprintf(stderr, "invalid: tbs all zero\n");
+		UADK_ERR("invalid: tbs all zero\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1134,7 +1134,7 @@ static int uadk_prov_sm2_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_out = wd_sm2_new_sign_out(sess);
 	if (ecc_out == NULL) {
-		fprintf(stderr, "failed to new sign out\n");
+		UADK_ERR("failed to new sign out\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1142,7 +1142,7 @@ static int uadk_prov_sm2_sign_init_iot(handle_t sess, struct wd_ecc_req *req,
 	e.dsize = digest_len;
 	ecc_in = wd_sm2_new_sign_in(sess, &e, NULL, NULL, 1);
 	if (ecc_in == NULL) {
-		fprintf(stderr, "failed to new sign in\n");
+		UADK_ERR("failed to new sign in\n");
 		wd_ecc_del_out(sess, ecc_out);
 		return UADK_P_FAIL;
 	}
@@ -1159,17 +1159,17 @@ static int uadk_prov_sm2_update_private_key(SM2_PROV_CTX *smctx, EC_KEY *eckey)
 
 	d = EC_KEY_get0_private_key(eckey);
 	if (d == NULL) {
-		fprintf(stderr, "failed to set private key\n");
+		UADK_ERR("failed to set private key\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_pd == NULL) {
-		fprintf(stderr, "invalid: sm2_pd is NULL\n");
+		UADK_ERR("invalid: sm2_pd is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_pd->prikey && !BN_cmp(d, smctx->sm2_pd->prikey)) {
-		fprintf(stderr, "invalid: private key mismatch\n");
+		UADK_ERR("invalid: private key mismatch\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1191,31 +1191,31 @@ static int uadk_prov_sm2_sign_bin_to_ber(struct wd_dtb *r, struct wd_dtb *s,
 
 	e_sig = ECDSA_SIG_new();
 	if (e_sig == NULL) {
-		fprintf(stderr, "failed to ECDSA_SIG_new\n");
+		UADK_ERR("failed to ECDSA_SIG_new\n");
 		return UADK_P_FAIL;
 	}
 
 	bn_r = BN_bin2bn((void *)r->data, r->dsize, NULL);
 	if (bn_r == NULL) {
-		fprintf(stderr, "failed to BN_bin2bn r\n");
+		UADK_ERR("failed to BN_bin2bn r\n");
 		goto free_sig;
 	}
 
 	bn_s = BN_bin2bn((void *)s->data, s->dsize, NULL);
 	if (bn_s == NULL) {
-		fprintf(stderr, "failed to BN_bin2bn s\n");
+		UADK_ERR("failed to BN_bin2bn s\n");
 		goto free_r;
 	}
 
 	ret = ECDSA_SIG_set0(e_sig, bn_r, bn_s);
 	if (ret == 0) {
-		fprintf(stderr, "failed to ECDSA_SIG_set0\n");
+		UADK_ERR("failed to ECDSA_SIG_set0\n");
 		goto free_s;
 	}
 
 	sltmp = i2d_ECDSA_SIG(e_sig, &sig);
 	if (sltmp < 0) {
-		fprintf(stderr, "failed to i2d_ECDSA_SIG\n");
+		UADK_ERR("failed to i2d_ECDSA_SIG\n");
 		/* bs and br set to e_sig, use unified interface to prevent double release. */
 		goto free_sig;
 	}
@@ -1245,39 +1245,39 @@ static int uadk_prov_sm2_sign_ber_to_bin(unsigned char *sig, size_t sig_len,
 
 	e_sig = ECDSA_SIG_new();
 	if (e_sig == NULL) {
-		fprintf(stderr, "failed to ECDSA_SIG_new\n");
+		UADK_ERR("failed to ECDSA_SIG_new\n");
 		return UADK_P_FAIL;
 	}
 
 	if (d2i_ECDSA_SIG(&e_sig, &p, sig_len) == NULL) {
-		fprintf(stderr, "d2i_ECDSA_SIG error\n");
+		UADK_ERR("d2i_ECDSA_SIG error\n");
 		goto free_sig;
 	}
 
 	/* Ensure signature uses DER and doesn't have trailing garbage */
 	len1 = i2d_ECDSA_SIG(e_sig, &der);
 	if (len1 != sig_len || memcmp(sig, der, len1) != 0) {
-		fprintf(stderr, "sig data error, der_len(%d), sig_len(%zu)\n",
-		len1, sig_len);
+		UADK_ERR("sig data error, der_len(%d), sig_len(%zu)\n",
+			 len1, sig_len);
 		goto free_der;
 	}
 
 	bn_r = (void *)ECDSA_SIG_get0_r((const ECDSA_SIG *)e_sig);
 	if (bn_r == NULL) {
-		fprintf(stderr, "failed to get r\n");
+		UADK_ERR("failed to get r\n");
 		goto free_der;
 	}
 
 	bn_s = (void *)ECDSA_SIG_get0_s((const ECDSA_SIG *)e_sig);
 	if (bn_s == NULL) {
-		fprintf(stderr, "failed to get s\n");
+		UADK_ERR("failed to get s\n");
 		goto free_der;
 	}
 
 	len1 = BN_num_bytes(bn_r);
 	len2 = BN_num_bytes(bn_s);
 	if (len1 > UADK_ECC_MAX_KEY_BYTES || len2 > UADK_ECC_MAX_KEY_BYTES) {
-		fprintf(stderr, "r or s bytes = (%d, %d) error\n", len1, len2);
+		UADK_ERR("r or s bytes = (%d, %d) error\n", len1, len2);
 		goto free_der;
 	}
 	r->dsize = BN_bn2bin(bn_r, (void *)r->data);
@@ -1310,7 +1310,7 @@ static int uadk_prov_sm2_sign(PROV_SM2_SIGN_CTX *psm2ctx,
 	if (smctx->sess == (handle_t)0) {
 		ret = uadk_prov_sm2_update_sess(smctx);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to alloc sess in sign\n");
+			UADK_ERR("failed to alloc sess in sign\n");
 			return ret;
 		}
 	}
@@ -1325,13 +1325,13 @@ static int uadk_prov_sm2_sign(PROV_SM2_SIGN_CTX *psm2ctx,
 
 	ret = uadk_prov_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
+		UADK_ERR("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
 	wd_sm2_get_sign_out_params(req.dst, &r, &s);
 	if (r == NULL || s == NULL) {
-		fprintf(stderr, "failed to get sign result\n");
+		UADK_ERR("failed to get sign result\n");
 		ret = UADK_P_FAIL;
 		goto uninit_iot;
 	}
@@ -1349,7 +1349,7 @@ static int uadk_signature_sm2_sign_sw(void *vpsm2ctx, unsigned char *sig, size_t
 				      size_t sigsize, const unsigned char *tbs, size_t tbslen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().sign) {
-		fprintf(stderr, "switch to soft sm2 sign\n");
+		UADK_INFO("switch to soft sm2 sign\n");
 		return get_default_sm2_signature().sign(vpsm2ctx, sig, siglen, sigsize,
 							tbs, tbslen);
 	}
@@ -1365,18 +1365,18 @@ static int uadk_signature_sm2_sign(void *vpsm2ctx, unsigned char *sig, size_t *s
 	size_t sltmp;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (psm2ctx->key == NULL) {
-		fprintf(stderr, "invalid: sm2 ec is NULL\n");
+		UADK_ERR("invalid: sm2 ec is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	ecsize = ECDSA_size(psm2ctx->key);
 	if (ecsize <= 0) {
-		fprintf(stderr, "ecsize error %d\n", ecsize);
+		UADK_ERR("ecsize error %d\n", ecsize);
 		return UADK_P_FAIL;
 	}
 
@@ -1391,19 +1391,19 @@ static int uadk_signature_sm2_sign(void *vpsm2ctx, unsigned char *sig, size_t *s
 	}
 
 	if (sigsize < (size_t)ecsize) {
-		fprintf(stderr, "sigsize(%zu) < ecsize(%d)\n", sigsize, ecsize);
+		UADK_ERR("sigsize(%zu) < ecsize(%d)\n", sigsize, ecsize);
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_sm2_check_tbs_params(psm2ctx, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to check sm2 signature params\n");
+		UADK_ERR("failed to check sm2 signature params\n");
 		goto do_soft;
 	}
 
 	ret = uadk_prov_sm2_sign(psm2ctx, sig, &sltmp, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to do sm2 sign\n");
+		UADK_ERR("failed to do sm2 sign\n");
 		goto do_soft;
 	}
 
@@ -1423,7 +1423,7 @@ static int uadk_prov_sm2_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_in = wd_sm2_new_verf_in(sess, e, r, s, NULL, 1);
 	if (ecc_in == NULL) {
-		fprintf(stderr, "failed to new verf in\n");
+		UADK_ERR("failed to new verf in\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1441,25 +1441,25 @@ static int uadk_prov_sm2_update_public_key(SM2_PROV_CTX *smctx, EC_KEY *eckey)
 
 	point = EC_KEY_get0_public_key(eckey);
 	if (point == NULL) {
-		fprintf(stderr, "pubkey not set!\n");
+		UADK_ERR("pubkey not set!\n");
 		return UADK_E_FAIL;
 	}
 
 	if (spd == NULL) {
-		fprintf(stderr, "invalid: sm2_pd is NULL\n");
+		UADK_ERR("invalid: sm2_pd is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (spd->pubkey) {
 		group = EC_KEY_get0_group(eckey);
 		if (group == NULL) {
-			fprintf(stderr, "failed to get group\n");
+			UADK_ERR("failed to get group\n");
 			return UADK_E_FAIL;
 		}
 
 		ret = EC_POINT_cmp(group, (void *)spd->pubkey, point, NULL);
 		if (ret == UADK_E_FAIL) {
-			fprintf(stderr, "failed to do EC_POINT_cmp\n");
+			UADK_ERR("failed to do EC_POINT_cmp\n");
 			return ret;
 		}
 	}
@@ -1491,7 +1491,7 @@ static int uadk_prov_sm2_verify(PROV_SM2_SIGN_CTX *psm2ctx,
 	if (smctx->sess == (handle_t)0) {
 		ret = uadk_prov_sm2_update_sess(smctx);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to alloc sess in verify\n");
+			UADK_ERR("failed to alloc sess in verify\n");
 			return ret;
 		}
 	}
@@ -1502,7 +1502,7 @@ static int uadk_prov_sm2_verify(PROV_SM2_SIGN_CTX *psm2ctx,
 	s.bsize = UADK_ECC_MAX_KEY_BYTES;
 	ret = uadk_prov_sm2_sign_ber_to_bin((void *)sig, siglen, &r, &s);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_prov_sm2_sign_ber_to_bin\n");
+		UADK_ERR("failed to uadk_prov_sm2_sign_ber_to_bin\n");
 		return ret;
 	}
 
@@ -1510,19 +1510,19 @@ static int uadk_prov_sm2_verify(PROV_SM2_SIGN_CTX *psm2ctx,
 	e.dsize = tbslen;
 	ret = uadk_prov_sm2_verify_init_iot(smctx->sess, &req, &e, &r, &s);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_prov_sm2_verify_init_iot\n");
+		UADK_ERR("failed to uadk_prov_sm2_verify_init_iot\n");
 		return ret;
 	}
 
 	ret = uadk_prov_sm2_update_public_key(smctx, ec);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_prov_sm2_update_public_key\n");
+		UADK_ERR("failed to uadk_prov_sm2_update_public_key\n");
 		goto uninit_iot;
 	}
 
 	ret = uadk_prov_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
+		UADK_ERR("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
@@ -1540,7 +1540,7 @@ static int uadk_signature_sm2_verify_sw(void *vpsm2ctx, const unsigned char *sig
 					const unsigned char *tbs, size_t tbslen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_signature().verify) {
-		fprintf(stderr, "switch to soft sm2 verify\n");
+		UADK_INFO("switch to soft sm2 verify\n");
 		return get_default_sm2_signature().verify(vpsm2ctx, sig, siglen, tbs, tbslen);
 	}
 
@@ -1554,19 +1554,19 @@ static int uadk_signature_sm2_verify(void *vpsm2ctx, const unsigned char *sig, s
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_sm2_check_tbs_params(psm2ctx, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to check sm2 verify params\n");
+		UADK_ERR("failed to check sm2 verify params\n");
 		goto do_soft;
 	}
 
 	ret = uadk_prov_sm2_verify(psm2ctx, sig, siglen, tbs, tbslen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to do sm2 verify\n");
+		UADK_ERR("failed to do sm2 verify\n");
 		goto do_soft;
 	}
 
@@ -1593,7 +1593,7 @@ static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdnam
 	if (smctx->sm2_md->mdctx == NULL) {
 		smctx->sm2_md->mdctx = EVP_MD_CTX_new();
 		if (unlikely(smctx->sm2_md->mdctx == NULL)) {
-			fprintf(stderr, "failed to EVP_MD_CTX_new\n");
+			UADK_ERR("failed to EVP_MD_CTX_new\n");
 			return UADK_P_FAIL;
 		}
 	}
@@ -1617,7 +1617,7 @@ static int uadk_signature_sm2_digest_sign_init(void *vpsm2ctx, const char *mdnam
 	WPACKET_cleanup(&pkt);
 
 	if (!EVP_DigestInit_ex2(smctx->sm2_md->mdctx, smctx->sm2_md->md, params)) {
-		fprintf(stderr, "failed to do digest init\n");
+		UADK_ERR("failed to do digest init\n");
 		EVP_MD_CTX_free(smctx->sm2_md->mdctx);
 		return UADK_P_FAIL;
 	}
@@ -1634,7 +1634,7 @@ static int uadk_prov_check_equation_param(struct sm2_param *param, EVP_MD_CTX *h
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
 	    BN_bn2binpad(param->b, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes)) {
-		fprintf(stderr, "failed to check equation param\n");
+		UADK_ERR("failed to check equation param\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1649,7 +1649,7 @@ static int uadk_prov_check_base_point_group_param(struct sm2_param *param, BN_CT
 	if (!EC_POINT_get_affine_coordinates(group,
 					     EC_GROUP_get0_generator(group),
 					     param->xG, param->yG, ctx)) {
-		fprintf(stderr, "failed to check base point group param\n");
+		UADK_ERR("failed to check base point group param\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1663,7 +1663,7 @@ static int uadk_prov_check_base_point_param(struct sm2_param *param, EVP_MD_CTX 
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
 	    BN_bn2binpad(param->yG, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes)) {
-		fprintf(stderr, "failed to check base point param\n");
+		UADK_ERR("failed to check base point param\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1678,7 +1678,7 @@ static int uadk_prov_check_pkey_point_group_param(struct sm2_param *param, BN_CT
 	if (!EC_POINT_get_affine_coordinates(group,
 					     EC_KEY_get0_public_key(key),
 					     param->xA, param->yA, ctx)) {
-		fprintf(stderr, "failed to check pkey point group param\n");
+		UADK_ERR("failed to check pkey point group param\n");
 		return UADK_P_FAIL;
 	}
 	return UADK_P_SUCCESS;
@@ -1692,7 +1692,7 @@ static int uadk_prov_check_pkey_point_param(struct sm2_param *param, EVP_MD_CTX 
 	    BN_bn2binpad(param->yA, buf, p_bytes) < 0 ||
 	    !EVP_DigestUpdate(hash, buf, p_bytes) ||
 	    !EVP_DigestFinal(hash, out, NULL)) {
-		fprintf(stderr, "failed to check pkey point param\n");
+		UADK_ERR("failed to check pkey point param\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1732,7 +1732,7 @@ static int uadk_prov_get_sm2_param(struct sm2_param *params, BN_CTX *ctx)
 	return UADK_P_SUCCESS;
 
 end:
-	fprintf(stderr, "failed to get bn ctx for sm2 params\n");
+	UADK_ERR("failed to get bn ctx for sm2 params\n");
 	return UADK_P_FAIL;
 }
 
@@ -1743,13 +1743,13 @@ static int uadk_prov_check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash
 	uint16_t entl;
 
 	if (!EVP_DigestInit(hash, digest)) {
-		fprintf(stderr, "error evp lib\n");
+		UADK_ERR("error evp lib\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Z = h(ENTL || ID || a || b || xG || yG || xA || yA) */
 	if (id_len >= (UINT16_MAX >> TRANS_BITS_BYTES_SHIFT)) {
-		fprintf(stderr, "invalid: id too large\n");
+		UADK_ERR("invalid: id too large\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1758,19 +1758,19 @@ static int uadk_prov_check_digest_evp_lib(const EVP_MD *digest, EVP_MD_CTX *hash
 	/* Update the most significant (first) byte of 'entl' */
 	e_byte = GET_MS_BYTE(entl);
 	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
-		fprintf(stderr, "failed to do EVP_DigestUpdate for e_byte's first byte\n");
+		UADK_ERR("failed to do EVP_DigestUpdate for e_byte's first byte\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Update the least significant (second) byte of 'entl' */
 	e_byte = GET_LS_BYTE(entl);
 	if (!EVP_DigestUpdate(hash, &e_byte, 1)) {
-		fprintf(stderr, "failed to do EVP_DigestUpdate for e_byte's second byte\n");
+		UADK_ERR("failed to do EVP_DigestUpdate for e_byte's second byte\n");
 		return UADK_P_FAIL;
 	}
 
 	if (id_len > 0 && !EVP_DigestUpdate(hash, id, id_len)) {
-		fprintf(stderr, "failed to do EVP_DigestUpdate for id\n");
+		UADK_ERR("failed to do EVP_DigestUpdate for id\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1799,7 +1799,7 @@ static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
 
 	params = OPENSSL_zalloc(sizeof(struct sm2_param));
 	if (params == NULL) {
-		fprintf(stderr, "failed to malloc sm2 param\n");
+		UADK_ERR("failed to malloc sm2 param\n");
 		goto free_ctx;
 	}
 
@@ -1810,14 +1810,14 @@ static int uadk_prov_sm2_compute_z_digest(uint8_t *out, const EVP_MD *digest,
 		goto free_params;
 
 	if (EC_GROUP_get_curve(group, params->p, params->a, params->b, ctx) == 0) {
-		fprintf(stderr, "failed to EC_GROUP_get_curve\n");
+		UADK_ERR("failed to EC_GROUP_get_curve\n");
 		goto free_params;
 	}
 
 	p_bytes = BN_num_bytes(params->p);
 	buf = OPENSSL_zalloc(p_bytes);
 	if (buf == NULL) {
-		fprintf(stderr, "failed to alloc buffer\n");
+		UADK_ERR("failed to alloc buffer\n");
 		goto free_params;
 	}
 
@@ -1853,7 +1853,7 @@ static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 
 		z = OPENSSL_zalloc(smctx->sm2_md->mdsize);
 		if (z == NULL) {
-			fprintf(stderr, "failed to alloc z\n");
+			UADK_ERR("failed to alloc z\n");
 			return UADK_P_FAIL;
 		}
 
@@ -1862,7 +1862,7 @@ static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 			/* psm2ctx id will be freed in uadk_signature_sm2_freectx, not here */
 			psm2ctx->id = OPENSSL_memdup(SM2_DEFAULT_USERID, SM2_DEFAULT_USERID_LEN);
 			if (psm2ctx->id == NULL) {
-				fprintf(stderr, "failed to memdup psm2ctx id\n");
+				UADK_ERR("failed to memdup psm2ctx id\n");
 				goto free_z;
 			}
 			psm2ctx->id_len = SM2_DEFAULT_USERID_LEN;
@@ -1872,13 +1872,13 @@ static int sm2_sig_compute_z_digest(PROV_SM2_SIGN_CTX *psm2ctx)
 		ret = uadk_prov_sm2_compute_z_digest(z, smctx->sm2_md->md, psm2ctx->id,
 			psm2ctx->id_len, psm2ctx->key);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to uadk_prov_sm2_compute_z_digest\n");
+			UADK_ERR("failed to uadk_prov_sm2_compute_z_digest\n");
 			goto free_z;
 		}
 
 		ret = EVP_DigestUpdate(smctx->sm2_md->mdctx, z, smctx->sm2_md->mdsize);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to EVP_DigestUpdate\n");
+			UADK_ERR("failed to EVP_DigestUpdate\n");
 			goto free_z;
 		}
 		OPENSSL_free(z);
@@ -1899,13 +1899,13 @@ static int uadk_signature_sm2_digest_sign_update(void *vpsm2ctx, const unsigned 
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL in digest sign update\n");
+		UADK_ERR("invalid: psm2ctx is NULL in digest sign update\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL in compute z digest\n");
+		UADK_ERR("invalid: smctx is NULL in compute z digest\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1915,13 +1915,13 @@ static int uadk_signature_sm2_digest_sign_update(void *vpsm2ctx, const unsigned 
 
 	ret = sm2_sig_compute_z_digest(psm2ctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to compute z digest\n");
+		UADK_ERR("failed to compute z digest\n");
 		return ret;
 	}
 
 	ret = EVP_DigestUpdate(smctx->sm2_md->mdctx, data, datalen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to EVP_DigestUpdate\n");
+		UADK_ERR("failed to EVP_DigestUpdate\n");
 		return ret;
 	}
 
@@ -1939,13 +1939,13 @@ static int uadk_signature_sm2_digest_sign_final(void *vpsm2ctx,
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1964,7 +1964,7 @@ static int uadk_signature_sm2_digest_sign_final(void *vpsm2ctx,
 
 		ret = EVP_DigestFinal_ex(smctx->sm2_md->mdctx, digest, &dlen);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to do EVP_DigestFinal_ex\n");
+			UADK_ERR("failed to do EVP_DigestFinal_ex\n");
 			return ret;
 		}
 	}
@@ -1994,13 +1994,13 @@ static int uadk_signature_sm2_digest_verify_final(void *vpsm2ctx, const unsigned
 	int ret, size;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2010,19 +2010,19 @@ static int uadk_signature_sm2_digest_verify_final(void *vpsm2ctx, const unsigned
 
 	size = EVP_MD_get_size(smctx->sm2_md->md);
 	if (size > EVP_MAX_MD_SIZE) {
-		fprintf(stderr, "invalid: md size(%d) > %d\n", size, EVP_MAX_MD_SIZE);
+		UADK_ERR("invalid: md size(%d) > %d\n", size, EVP_MAX_MD_SIZE);
 		return UADK_P_FAIL;
 	}
 
 	ret = sm2_sig_compute_z_digest(psm2ctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to do sm2_sig_compute_z_digest\n");
+		UADK_ERR("failed to do sm2_sig_compute_z_digest\n");
 		return ret;
 	}
 
 	ret = EVP_DigestFinal_ex(smctx->sm2_md->mdctx, digest, &dlen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to do EVP_DigestFinal_ex, dlen = %u\n", dlen);
+		UADK_ERR("failed to do EVP_DigestFinal_ex, dlen = %u\n", dlen);
 		return ret;
 	}
 
@@ -2035,25 +2035,25 @@ static SM2_PROV_CTX *sm2_copy_src_smctx(SM2_PROV_CTX *src_smctx)
 	int ret;
 
 	if (src_smctx == NULL || src_smctx->sm2_md == NULL || src_smctx->sm2_pd == NULL) {
-		fprintf(stderr, "invalid: src_smctx is NULL to dupctx\n");
+		UADK_ERR("invalid: src_smctx is NULL to dupctx\n");
 		return NULL;
 	}
 
 	dst_smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
 	if (dst_smctx == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx\n");
+		UADK_ERR("failed to alloc dst_smctx\n");
 		return NULL;
 	}
 	dst_smctx->init_status = src_smctx->init_status;
 
 	dst_smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
 	if (dst_smctx->sm2_md == NULL) {
-		fprintf(stderr, "failed to alloc dst_smctx->sm2_md\n");
+		UADK_ERR("failed to alloc dst_smctx->sm2_md\n");
 		goto free_dst_smctx;
 	}
 
 	if (src_smctx->sm2_md->md != NULL && !EVP_MD_up_ref(src_smctx->sm2_md->md)) {
-		fprintf(stderr, "failed to check srcctx md reference\n");
+		UADK_ERR("failed to check srcctx md reference\n");
 		goto free_sm2_md;
 	}
 	dst_smctx->sm2_md->md = src_smctx->sm2_md->md;
@@ -2064,14 +2064,14 @@ static SM2_PROV_CTX *sm2_copy_src_smctx(SM2_PROV_CTX *src_smctx)
 		dst_smctx->sm2_md->mdctx = EVP_MD_CTX_new();
 		if (dst_smctx->sm2_md->mdctx == NULL ||
 		    EVP_MD_CTX_copy_ex(dst_smctx->sm2_md->mdctx, src_smctx->sm2_md->mdctx) == 0) {
-			fprintf(stderr, "failed to new dst mdctx or copy src mdctx\n");
+			UADK_ERR("failed to new dst mdctx or copy src mdctx\n");
 			goto free_mdctx;
 		}
 	}
 
 	dst_smctx->sm2_pd = OPENSSL_zalloc(sizeof(SM2_PKEY_DATA));
 	if (dst_smctx->sm2_pd == NULL) {
-		fprintf(stderr, "failed to alloc sm2_pd\n");
+		UADK_ERR("failed to alloc sm2_pd\n");
 		goto free_mdctx;
 	}
 
@@ -2102,13 +2102,13 @@ static void *uadk_signature_sm2_dupctx(void *vpsm2ctx)
 	PROV_SM2_SIGN_CTX *dstctx;
 
 	if (srcctx == NULL) {
-		fprintf(stderr, "invalid: src ctx is NULL to dupctx!\n");
+		UADK_ERR("invalid: src ctx is NULL to dupctx!\n");
 		return NULL;
 	}
 
 	dstctx = OPENSSL_zalloc(sizeof(PROV_SM2_SIGN_CTX));
 	if (dstctx == NULL) {
-		fprintf(stderr, "failed to alloc dst ctx\n");
+		UADK_ERR("failed to alloc dst ctx\n");
 		return NULL;
 	}
 	*dstctx = *srcctx;
@@ -2118,7 +2118,7 @@ static void *uadk_signature_sm2_dupctx(void *vpsm2ctx)
 	dstctx->propq = NULL;
 
 	if (srcctx->key != NULL && !EC_KEY_up_ref(srcctx->key)) {
-		fprintf(stderr, "failed to check srcctx key reference\n");
+		UADK_ERR("failed to check srcctx key reference\n");
 		goto free_ctx;
 	}
 	dstctx->key = srcctx->key;
@@ -2136,7 +2136,7 @@ static void *uadk_signature_sm2_dupctx(void *vpsm2ctx)
 	if (srcctx->id != NULL) {
 		dstctx->id = OPENSSL_malloc(srcctx->id_len);
 		if (dstctx->id == NULL) {
-			fprintf(stderr, "failed to alloc id\n");
+			UADK_ERR("failed to alloc id\n");
 			goto free_ctx;
 		}
 		memcpy(dstctx->id, srcctx->id, srcctx->id_len);
@@ -2161,13 +2161,13 @@ static int uadk_prov_sm2_locate_id_digest(PROV_SM2_SIGN_CTX *psm2ctx,  const OSS
 	if (p) {
 		/*If the 'z' digest has already been computed, the ID is set too late */
 		if (psm2ctx->flag_compute_z_digest == 0) {
-			fprintf(stderr, "invalid: should set ID param before z digest\n");
+			UADK_ERR("invalid: should set ID param before z digest\n");
 			return UADK_P_FAIL;
 		}
 
 		if (p->data_size != 0 &&
 		    !OSSL_PARAM_get_octet_string(p, &tmp_id, 0, &tmp_idlen)) {
-			fprintf(stderr, "failed to OSSL_PARAM_get_octet_string\n");
+			UADK_ERR("failed to OSSL_PARAM_get_octet_string\n");
 			return UADK_P_FAIL;
 		}
 		if (psm2ctx->id != NULL)
@@ -2185,20 +2185,20 @@ static int uadk_prov_sm2_locate_id_digest(PROV_SM2_SIGN_CTX *psm2ctx,  const OSS
 	p = OSSL_PARAM_locate_const(params, OSSL_SIGNATURE_PARAM_DIGEST_SIZE);
 	if (p != NULL && (!OSSL_PARAM_get_size_t(p, &mdsize) ||
 			  mdsize != psm2ctx->sm2_pctx->sm2_md->mdsize)) {
-		fprintf(stderr, "failed to locate digest size\n");
+		UADK_ERR("failed to locate digest size\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate_const(params, OSSL_SIGNATURE_PARAM_DIGEST);
 	if (p) {
 		if (!OSSL_PARAM_get_utf8_string(p, &mdname, 0)) {
-			fprintf(stderr, "failed to OSSL_PARAM_get_utf8_string\n");
+			UADK_ERR("failed to OSSL_PARAM_get_utf8_string\n");
 			return UADK_P_FAIL;
 		}
 
 		if (!uadk_prov_sm2_sig_set_mdname(psm2ctx, mdname)) {
 			OPENSSL_free(mdname);
-			fprintf(stderr, "failed to OSSL_PARAM_get_utf8_string\n");
+			UADK_ERR("failed to OSSL_PARAM_get_utf8_string\n");
 			return UADK_P_FAIL;
 		}
 
@@ -2219,7 +2219,7 @@ static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM pa
 	 * so check 'psm2ctx' again here.
 	 */
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: sm2 ctx is NULL\n");
+		UADK_ERR("invalid: sm2 ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2229,7 +2229,7 @@ static int uadk_signature_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM pa
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2242,26 +2242,26 @@ static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
 	OSSL_PARAM *p;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_SIGNATURE_PARAM_ALGORITHM_ID);
 	if (p != NULL && !OSSL_PARAM_set_octet_string(p, psm2ctx->aid, psm2ctx->aid_len)) {
-		fprintf(stderr, "failed to locate algorithm id\n");
+		UADK_ERR("failed to locate algorithm id\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_SIGNATURE_PARAM_DIGEST_SIZE);
 	if (p != NULL && !OSSL_PARAM_set_size_t(p, psm2ctx->sm2_pctx->sm2_md->mdsize)) {
-		fprintf(stderr, "failed to locate digest size\n");
+		UADK_ERR("failed to locate digest size\n");
 		return UADK_P_FAIL;
 	}
 
 	p = OSSL_PARAM_locate(params, OSSL_SIGNATURE_PARAM_DIGEST);
 	if (p != NULL && !OSSL_PARAM_set_utf8_string(p, psm2ctx->sm2_pctx->sm2_md->md == NULL
 		? psm2ctx->mdname : EVP_MD_get0_name(psm2ctx->sm2_pctx->sm2_md->md))) {
-		fprintf(stderr, "failed to locate digest\n");
+		UADK_ERR("failed to locate digest\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2287,12 +2287,12 @@ static int uadk_signature_sm2_set_ctx_md_params(void *vpsm2ctx, const OSSL_PARAM
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->mdctx == NULL) {
-		fprintf(stderr, "invalid: mdctx is NULL\n");
+		UADK_ERR("invalid: mdctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2306,12 +2306,12 @@ static int uadk_signature_sm2_get_ctx_md_params(void *vpsm2ctx, OSSL_PARAM *para
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->mdctx == NULL) {
-		fprintf(stderr, "invalid: mdctx is NULL\n");
+		UADK_ERR("invalid: mdctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2325,12 +2325,12 @@ static const OSSL_PARAM *uadk_signature_sm2_settable_ctx_md_params(void *vpsm2ct
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->md == NULL) {
-		fprintf(stderr, "invalid: md is NULL\n");
+		UADK_ERR("invalid: md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2344,12 +2344,12 @@ static const OSSL_PARAM *uadk_signature_sm2_gettable_ctx_md_params(void *vpsm2ct
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->sm2_md->md == NULL) {
-		fprintf(stderr, "invalid: md is NULL\n");
+		UADK_ERR("invalid: md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2385,7 +2385,7 @@ static UADK_PKEY_ASYM_CIPHER get_default_sm2_asym_cipher(void)
 			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
 			initilazed = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default SM2 provider\n");
+			UADK_ERR("failed to EVP_ASYM_CIPHER_fetch default SM2 provider\n");
 		}
 	}
 	pthread_mutex_unlock(&asym_mutex);
@@ -2399,7 +2399,7 @@ static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 	SM2_PROV_CTX *smctx;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "failed to alloc PROV_SM2_ASYM_CTX\n");
+		UADK_ERR("failed to alloc PROV_SM2_ASYM_CTX\n");
 		return NULL;
 	}
 
@@ -2407,13 +2407,13 @@ static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 
 	smctx = OPENSSL_zalloc(sizeof(SM2_PROV_CTX));
 	if (smctx == NULL) {
-		fprintf(stderr, "failed to alloc sm2 prov ctx\n");
+		UADK_ERR("failed to alloc sm2 prov ctx\n");
 		goto free_psm2ctx;
 	}
 
 	smctx->sm2_md = OPENSSL_zalloc(sizeof(SM2_MD_DATA));
 	if (smctx->sm2_md == NULL) {
-		fprintf(stderr, "failed to alloc sm2 md data\n");
+		UADK_ERR("failed to alloc sm2 md data\n");
 		goto free_smctx;
 	}
 	/* Use SM3 in default, other digest can be set with set_ctx_params API. */
@@ -2421,7 +2421,7 @@ static void *uadk_asym_cipher_sm2_newctx(void *provctx)
 
 	smctx->sm2_pd = OPENSSL_zalloc(sizeof(SM2_PKEY_DATA));
 	if (smctx->sm2_pd == NULL) {
-		fprintf(stderr, "failed to alloc sm2 pkey data\n");
+		UADK_ERR("failed to alloc sm2 pkey data\n");
 		goto free_sm2_md;
 	}
 
@@ -2497,7 +2497,7 @@ static int uadk_asym_cipher_sm2_encrypt_init_sw(void *vpsm2ctx, void *vkey,
 						const OSSL_PARAM params[])
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().encrypt_init) {
-		fprintf(stderr, "switch to software sm2 encrypt init\n");
+		UADK_INFO("switch to software sm2 encrypt init\n");
 		return get_default_sm2_asym_cipher().encrypt_init(vpsm2ctx, vkey, params);
 	}
 
@@ -2512,18 +2512,18 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (vkey == NULL || !EC_KEY_up_ref(vkey)) {
-		fprintf(stderr, "invalid: vkey is NULL\n");
+		UADK_ERR("invalid: vkey is NULL\n");
 		return UADK_P_FAIL;
 	}
 	EC_KEY_free(psm2ctx->key);
@@ -2534,20 +2534,20 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 
 	ret = uadk_asym_cipher_sm2_set_ctx_params(psm2ctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to set_ctx_params\n");
+		UADK_ERR("failed to set_ctx_params\n");
 		goto do_soft;
 	}
 
 	ret = uadk_prov_asym_cipher_get_support_state(SIGNATURE_SM2);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware sm2 signature support\n");
+		UADK_ERR("failed to get hardware sm2 signature support\n");
 		goto do_soft;
 	}
 
 	/* Init with UADK */
 	ret = uadk_prov_ecc_init("sm2");
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to init sm2\n");
+		UADK_ERR("failed to init sm2\n");
 		goto do_soft;
 	}
 
@@ -2555,7 +2555,7 @@ static int uadk_asym_cipher_sm2_encrypt_init(void *vpsm2ctx, void *vkey,
 
 	ret = uadk_prov_sm2_update_sess(smctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to update sess\n");
+		UADK_ERR("failed to update sess\n");
 		goto do_soft;
 	}
 
@@ -2574,12 +2574,12 @@ static int uadk_prov_sm2_encrypt_check(PROV_SM2_ASYM_CTX *psm2ctx,
 	int c3_size;
 
 	if (smctx == NULL || smctx->sess == (handle_t)0) {
-		fprintf(stderr, "smctx or sess NULL\n");
+		UADK_ERR("smctx or sess NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
+		UADK_ERR("sm2 ctx init failed\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2590,18 +2590,18 @@ static int uadk_prov_sm2_encrypt_check(PROV_SM2_ASYM_CTX *psm2ctx,
 	 */
 	md = smctx->sm2_md->md;
 	if (md == NULL) {
-		fprintf(stderr, "failed to get md method\n");
+		UADK_ERR("failed to get md method\n");
 		return UADK_P_FAIL;
 	}
 
 	c3_size = EVP_MD_size(md);
 	if (c3_size <= 0) {
-		fprintf(stderr, "c3 size error\n");
+		UADK_ERR("c3 size error\n");
 		return UADK_P_FAIL;
 	}
 
 	if (inlen > UINT_MAX) {
-		fprintf(stderr, "invalid: inlen is out of range\n");
+		UADK_ERR("invalid: inlen is out of range\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2617,7 +2617,7 @@ static int uadk_prov_sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_out = wd_sm2_new_enc_out(sess, inlen);
 	if (ecc_out == NULL) {
-		fprintf(stderr, "failed to new enc out\n");
+		UADK_ERR("failed to new enc out\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2625,7 +2625,7 @@ static int uadk_prov_sm2_encrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	e.dsize = inlen;
 	ecc_in = wd_sm2_new_enc_in(sess, NULL, &e);
 	if (ecc_in == NULL) {
-		fprintf(stderr, "failed to new enc in\n");
+		UADK_ERR("failed to new enc in\n");
 		wd_ecc_del_out(sess, ecc_out);
 		return UADK_P_FAIL;
 	}
@@ -2645,13 +2645,13 @@ static int uadk_prov_sm2_asym_bin_to_ber(struct wd_ecc_point *c1,
 
 	x1 = BN_bin2bn((void *)c1->x.data, c1->x.dsize, NULL);
 	if (x1 == NULL) {
-		fprintf(stderr, "failed to BN_bin2bn x1\n");
+		UADK_ERR("failed to BN_bin2bn x1\n");
 		return UADK_P_FAIL;
 	}
 
 	y1 = BN_bin2bn((void *)c1->y.data, c1->y.dsize, NULL);
 	if (y1 == NULL) {
-		fprintf(stderr, "failed to BN_bin2bn y1\n");
+		UADK_ERR("failed to BN_bin2bn y1\n");
 		ret = UADK_P_FAIL;
 		goto free_x1;
 	}
@@ -2704,7 +2704,7 @@ static int uadk_prov_sm2_encrypt_sw(PROV_SM2_ASYM_CTX *vpsm2ctx,
 				    const unsigned char *in, size_t inlen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().encrypt) {
-		fprintf(stderr, "switch to software sm2 encrypt\n");
+		UADK_INFO("switch to software sm2 encrypt\n");
 		return get_default_sm2_asym_cipher().encrypt(vpsm2ctx, out, outlen, 0, in, inlen);
 	}
 
@@ -2733,7 +2733,7 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 
 	ret = uadk_prov_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
+		UADK_ERR("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
@@ -2750,7 +2750,7 @@ static int uadk_prov_sm2_encrypt(PROV_SM2_ASYM_CTX *vpsm2ctx,
 	md = (smctx->sm2_md->md == NULL) ? EVP_sm3() : smctx->sm2_md->md;
 	md_size = EVP_MD_size(md);
 	if (c3->dsize != md_size) {
-		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
+		UADK_ERR("invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
 		ret = UADK_P_FAIL;
 		goto uninit_iot;
 	}
@@ -2776,12 +2776,12 @@ static size_t uadk_prov_ec_field_size(const EC_GROUP *group)
 	size_t p_bits;
 
 	if (p == NULL || a == NULL || b == NULL) {
-		fprintf(stderr, "failed to new bignumber\n");
+		UADK_ERR("failed to new bignumber\n");
 		goto done;
 	}
 
 	if (!EC_GROUP_get_curve(group, p, a, b, NULL)) {
-		fprintf(stderr, "failed to get curve from group\n");
+		UADK_ERR("failed to get curve from group\n");
 		goto done;
 	}
 
@@ -2808,7 +2808,7 @@ static int uadk_prov_sm2_ciphertext_size(const EC_KEY *key,
 		return UADK_P_FAIL;
 
 	if (md_size < 0) {
-		fprintf(stderr, "invalid md_size: %d\n", md_size);
+		UADK_ERR("invalid md_size: %d\n", md_size);
 		return UADK_P_FAIL;
 	}
 
@@ -2835,7 +2835,7 @@ static int uadk_asym_cipher_sm2_encrypt(void *vpsm2ctx, unsigned char *out, size
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2871,12 +2871,12 @@ static int uadk_prov_sm2_decrypt_check(SM2_PROV_CTX *smctx,
 	int hash_size;
 
 	if (smctx == NULL || smctx->sess == (handle_t)0) {
-		fprintf(stderr, "smctx or sess NULL\n");
+		UADK_ERR("smctx or sess NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (smctx->init_status != CTX_INIT_SUCC) {
-		fprintf(stderr, "sm2 ctx init failed\n");
+		UADK_ERR("sm2 ctx init failed\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2887,13 +2887,13 @@ static int uadk_prov_sm2_decrypt_check(SM2_PROV_CTX *smctx,
 	 */
 	md = smctx->sm2_md->md;
 	if (md == NULL) {
-		fprintf(stderr, "failed to get md method\n");
+		UADK_ERR("failed to get md method\n");
 		return UADK_P_FAIL;
 	}
 
 	hash_size = EVP_MD_size(md);
 	if (hash_size <= 0) {
-		fprintf(stderr, "hash size = %d error\n", hash_size);
+		UADK_ERR("hash size = %d error\n", hash_size);
 		return UADK_P_FAIL;
 	}
 
@@ -2907,7 +2907,7 @@ static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext
 	int c1x_len, c1y_len, md_size;
 
 	if (md == NULL) {
-		fprintf(stderr, "invalid: md is NULL\n");
+		UADK_ERR("invalid: md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2926,7 +2926,7 @@ static int uadk_prov_sm2_asym_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext
 	c3->dsize = ctext->C3->length;
 	md_size = EVP_MD_size(md);
 	if (c3->dsize != md_size) {
-		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
+		UADK_ERR("invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
 		free(c1->x.data);
 		return UADK_P_FAIL;
 	}
@@ -2946,13 +2946,13 @@ static int uadk_prov_sm2_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 
 	ecc_out = wd_sm2_new_dec_out(sess, c2->dsize);
 	if (ecc_out == NULL) {
-		fprintf(stderr, "failed to new dec out\n");
+		UADK_ERR("failed to new dec out\n");
 		return UADK_P_FAIL;
 	}
 
 	ecc_in = wd_sm2_new_dec_in(sess, c1, c2, c3);
 	if (ecc_in == NULL) {
-		fprintf(stderr, "failed to new dec in\n");
+		UADK_ERR("failed to new dec in\n");
 		wd_ecc_del_out(sess, ecc_out);
 		return UADK_P_FAIL;
 	}
@@ -2969,12 +2969,12 @@ static int uadk_prov_sm2_get_plaintext(struct wd_ecc_req *req,
 
 	wd_sm2_get_dec_out_params(req->dst, &ptext);
 	if (ptext == NULL) {
-		fprintf(stderr, "failed to get ptext\n");
+		UADK_ERR("failed to get ptext\n");
 		return UADK_P_FAIL;
 	}
 
 	if (*outlen < ptext->dsize) {
-		fprintf(stderr, "outlen(%zu) < (%u)\n", *outlen, ptext->dsize);
+		UADK_ERR("outlen(%zu) < (%u)\n", *outlen, ptext->dsize);
 		return UADK_P_FAIL;
 	}
 
@@ -2989,7 +2989,7 @@ static int uadk_prov_sm2_decrypt_sw(PROV_SM2_ASYM_CTX *ctx,
 				    const unsigned char *in, size_t inlen)
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().decrypt) {
-		fprintf(stderr, "switch to software sm2 decrypt\n");
+		UADK_INFO("switch to software sm2 decrypt\n");
 		return get_default_sm2_asym_cipher().decrypt(ctx, out, outlen, 0, in, inlen);
 	}
 
@@ -3032,7 +3032,7 @@ static int uadk_prov_sm2_decrypt(PROV_SM2_ASYM_CTX *ctx,
 
 	ret = uadk_prov_ecc_crypto(smctx->sess, &req, smctx);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to uadk_ecc_crypto, ret = %d\n", ret);
+		UADK_ERR("failed to uadk_ecc_crypto, ret = %d\n", ret);
 		goto uninit_iot;
 	}
 
@@ -3064,7 +3064,7 @@ static int uadk_prov_sm2_plaintext_size(const unsigned char *ct, size_t ct_size,
 
 	sm2_ctext = d2i_SM2_Ciphertext(NULL, &ct, ct_size);
 	if (sm2_ctext == NULL) {
-		fprintf(stderr, "invalid sm2 encoding\n");
+		UADK_ERR("invalid sm2 encoding\n");
 		return UADK_P_FAIL;
 	}
 
@@ -3083,7 +3083,7 @@ static int uadk_asym_cipher_sm2_decrypt(void *vpsm2ctx, unsigned char *out, size
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: psm2ctx is NULL\n");
+		UADK_ERR("invalid: psm2ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -3127,13 +3127,13 @@ static void *uadk_asym_cipher_sm2_dupctx(void *vpsm2ctx)
 	int ret;
 
 	if (srcctx == NULL) {
-		fprintf(stderr, "src ctx is NULL\n");
+		UADK_ERR("src ctx is NULL\n");
 		return NULL;
 	}
 
 	dstctx = OPENSSL_zalloc(sizeof(PROV_SM2_ASYM_CTX));
 	if (dstctx == NULL) {
-		fprintf(stderr, "failed to alloc dst ctx\n");
+		UADK_ERR("failed to alloc dst ctx\n");
 		return NULL;
 	}
 	*dstctx = *srcctx;
@@ -3146,7 +3146,7 @@ static void *uadk_asym_cipher_sm2_dupctx(void *vpsm2ctx)
 		goto free_ctx;
 
 	if (srcctx->key != NULL && !EC_KEY_up_ref(srcctx->key)) {
-		fprintf(stderr, "failed to check dstctx key reference\n");
+		UADK_ERR("failed to check dstctx key reference\n");
 		goto free_ctx;
 	}
 	dstctx->key = srcctx->key;
@@ -3171,24 +3171,24 @@ static int uadk_asym_cipher_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *param
 	EVP_MD *md;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "failed to get psm2ctx\n");
+		UADK_ERR("failed to get psm2ctx\n");
 		return UADK_P_FAIL;
 	}
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "failed to get smctx\n");
+		UADK_ERR("failed to get smctx\n");
 		return UADK_P_FAIL;
 	}
 
 	smd = smctx->sm2_md;
 	if (smd == NULL) {
-		fprintf(stderr, "failed to get sm2 md\n");
+		UADK_ERR("failed to get sm2 md\n");
 		return UADK_P_FAIL;
 	}
 
 	if (params == NULL) {
-		fprintf(stderr, "params is NULL\n");
+		UADK_ERR("params is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -3196,7 +3196,7 @@ static int uadk_asym_cipher_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *param
 	if (p != NULL) {
 		md = smd->md;
 		if (!OSSL_PARAM_set_utf8_string(p, md == NULL ? "" : EVP_MD_get0_name(md))) {
-			fprintf(stderr, "failed to set utf8 string\n");
+			UADK_ERR("failed to set utf8 string\n");
 			return UADK_P_FAIL;
 		}
 		smd->md_nid = EVP_MD_type(md);
@@ -3217,7 +3217,7 @@ static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PA
 	p = OSSL_PARAM_locate_const(params, OSSL_ALG_PARAM_PROPERTIES);
 	if (p) {
 		if (p->data_type != OSSL_PARAM_UTF8_STRING) {
-			fprintf(stderr, "data_type != OSSL_PARAM_UTF8_STRING\n");
+			UADK_ERR("data_type != OSSL_PARAM_UTF8_STRING\n");
 			return NULL;
 		}
 		propquery = p->data;
@@ -3227,7 +3227,7 @@ static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PA
 	p = OSSL_PARAM_locate_const(params, OSSL_ALG_PARAM_DIGEST);
 	if (p) {
 		if (p->data_type != OSSL_PARAM_UTF8_STRING) {
-			fprintf(stderr, "data_type != OSSL_PARAM_UTF8_STRING\n");
+			UADK_ERR("data_type != OSSL_PARAM_UTF8_STRING\n");
 			return NULL;
 		}
 	} else {
@@ -3239,7 +3239,7 @@ static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PA
 	EVP_MD_free(smd->alloc_md);
 	smd->md = smd->alloc_md = EVP_MD_fetch(ctx, p->data, propquery);
 	if (smd->md == NULL) {
-		fprintf(stderr, "failed to fetch MD method\n");
+		UADK_ERR("failed to fetch MD method\n");
 		return NULL;
 	}
 
@@ -3249,7 +3249,7 @@ static EVP_MD *uadk_prov_load_digest_from_params(SM2_MD_DATA *smd, const OSSL_PA
 static int uadk_asym_cipher_sm2_set_ctx_params_sw(void *vpsm2ctx, const OSSL_PARAM params[])
 {
 	if (uadk_get_sw_offload_state() && get_default_sm2_asym_cipher().set_ctx_params) {
-		fprintf(stderr, "switch to software sm2 set ctx params\n");
+		UADK_INFO("switch to software sm2 set ctx params\n");
 		return get_default_sm2_asym_cipher().set_ctx_params(vpsm2ctx, params);
 	}
 
@@ -3264,7 +3264,7 @@ static int uadk_asym_cipher_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM 
 	int ret;
 
 	if (psm2ctx == NULL) {
-		fprintf(stderr, "invalid: sm2 ctx is NULL\n");
+		UADK_ERR("invalid: sm2 ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -3274,20 +3274,20 @@ static int uadk_asym_cipher_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM 
 
 	smctx = psm2ctx->sm2_pctx;
 	if (smctx == NULL) {
-		fprintf(stderr, "invalid: smctx is NULL\n");
+		UADK_ERR("invalid: smctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	/* Set digest method */
 	smd = smctx->sm2_md;
 	if (smd == NULL) {
-		fprintf(stderr, "invalid: sm2 md is NULL\n");
+		UADK_ERR("invalid: sm2 md is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	smd->md = uadk_prov_load_digest_from_params(smctx->sm2_md, params, psm2ctx->libctx);
 	if (smd->md == NULL) {
-		fprintf(stderr, "failed to set digest with set_ctx_params\n");
+		UADK_ERR("failed to set digest with set_ctx_params\n");
 		return UADK_P_FAIL;
 	}
 	smd->md_nid = EVP_MD_type(smd->md);
@@ -3296,7 +3296,7 @@ static int uadk_asym_cipher_sm2_set_ctx_params(void *vpsm2ctx, const OSSL_PARAM 
 	if (smctx->init_status == CTX_INIT_SUCC) {
 		ret = uadk_prov_sm2_update_sess(smctx);
 		if (ret == UADK_P_FAIL) {
-			fprintf(stderr, "failed to update sess\n");
+			UADK_ERR("failed to update sess\n");
 			goto do_soft;
 		}
 	}

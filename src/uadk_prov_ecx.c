@@ -29,6 +29,7 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define X448_KEYLEN		56
 #define X448_KEYBITS		448
@@ -69,7 +70,7 @@ static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
 			initilazed = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X448 provider\n");
+			UADK_ERR("failed to EVP_KEYEXCH_fetch default X448 provider\n");
 		}
 	}
 	pthread_mutex_unlock(&x448_mutex);
@@ -93,7 +94,7 @@ static UADK_PKEY_KEYEXCH get_default_x25519_keyexch(void)
 			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
 			initialized = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_KEYEXCH_fetch default X25519 provider\n");
+			UADK_ERR("failed to EVP_KEYEXCH_fetch default X25519 provider\n");
 		}
 	}
 	pthread_mutex_unlock(&x25519_mutex);
@@ -381,7 +382,7 @@ static int ossl_ecx_gen_set_params(void *genctx, const OSSL_PARAM params[])
 		}
 		if (p->data_type != OSSL_PARAM_UTF8_STRING || groupname == NULL ||
 		    OPENSSL_strcasecmp(p->data, groupname) != 0) {
-			fprintf(stderr, "invalid ecx params\n");
+			UADK_ERR("invalid ecx params\n");
 			return UADK_P_FAIL;
 		}
 	}
@@ -433,7 +434,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 
 	gctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYMGMT_CTX));
 	if (gctx == NULL) {
-		fprintf(stderr, "failed to alloc ecx gctx\n");
+		UADK_ERR("failed to alloc ecx gctx\n");
 		return NULL;
 	}
 
@@ -443,7 +444,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 
 	ret = ossl_ecx_gen_set_params(gctx, params);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to set ecx params\n");
+		UADK_ERR("failed to set ecx params\n");
 		OPENSSL_free(gctx);
 		gctx = NULL;
 	}
@@ -464,7 +465,7 @@ static void *uadk_keymgmt_x448_gen_init(void *provctx, int selection,
 					const OSSL_PARAM params[])
 {
 	if (provctx == NULL) {
-		fprintf(stderr, "invalid: provctx is NULL\n");
+		UADK_ERR("invalid: provctx is NULL\n");
 		return NULL;
 	}
 
@@ -477,7 +478,7 @@ static ECX_KEY *uadk_prov_ecx_key_new(OSSL_LIB_CTX *libctx, ECX_KEY_TYPE type, i
 	ECX_KEY *ecx_key = OPENSSL_zalloc(sizeof(ECX_KEY));
 
 	if (ecx_key == NULL) {
-		fprintf(stderr, "failed to alloc ecx key");
+		UADK_ERR("failed to alloc ecx key");
 		return NULL;
 	}
 
@@ -492,7 +493,7 @@ static ECX_KEY *uadk_prov_ecx_key_new(OSSL_LIB_CTX *libctx, ECX_KEY_TYPE type, i
 		ecx_key->keylen = X25519_KEYLEN;
 		break;
 	default:
-		fprintf(stderr, "invalid: unsupported ecx type\n");
+		UADK_ERR("invalid: unsupported ecx type\n");
 		goto free_ecx_key;
 	}
 
@@ -550,7 +551,7 @@ static ECX_KEY *uadk_prov_ecx_create_prikey(PROV_ECX_KEYMGMT_CTX *gctx)
 
 	ecx_key = uadk_prov_ecx_key_new(gctx->libctx, gctx->type, 0, gctx->propq);
 	if (ecx_key == NULL) {
-		fprintf(stderr, "failed to new ecx_key\n");
+		UADK_ERR("failed to new ecx_key\n");
 		return NULL;
 	}
 
@@ -565,13 +566,13 @@ static ECX_KEY *uadk_prov_ecx_create_prikey(PROV_ECX_KEYMGMT_CTX *gctx)
 
 	prikey = OPENSSL_secure_malloc(ecx_key->keylen);
 	if (prikey == NULL) {
-		fprintf(stderr, "failed to alloc prikey\n");
+		UADK_ERR("failed to alloc prikey\n");
 		goto free_ecx_key;
 	}
 
 	ret = RAND_priv_bytes(prikey, ecx_key->keylen);
 	if (ret <= 0) {
-		fprintf(stderr, "failed to set rand bytes to prikey\n");
+		UADK_ERR("failed to set rand bytes to prikey\n");
 		goto free_pri;
 	}
 	ecx_key->privkey = prikey;
@@ -605,7 +606,7 @@ static int uadk_prov_ecx_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 
 	ecx_out = wd_ecxdh_new_out(sess);
 	if (ecx_out == NULL) {
-		fprintf(stderr, "failed to new sign out\n");
+		UADK_ERR("failed to new sign out\n");
 		return UADK_P_FAIL;
 	}
 
@@ -625,12 +626,12 @@ static int uadk_prov_reverse_bytes(unsigned char *to_buf, __u32 size)
 	unsigned char tmp;
 
 	if (size == 0) {
-		fprintf(stderr, "invalid size, size = %u\n", size);
+		UADK_ERR("invalid size, size = %u\n", size);
 		return UADK_P_FAIL;
 	}
 
 	if (to_buf == NULL) {
-		fprintf(stderr, "to_buf is NULL\n");
+		UADK_ERR("to_buf is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -649,17 +650,17 @@ static int uadk_prov_reverse_bytes_ex(unsigned char *src_buf, unsigned char *dst
 	__u32 i;
 
 	if (size == 0) {
-		fprintf(stderr, "invalid size, size = %u\n", size);
+		UADK_ERR("invalid size, size = %u\n", size);
 		return UADK_P_FAIL;
 	}
 
 	if (src_buf == NULL) {
-		fprintf(stderr, "src_buf is NULL\n");
+		UADK_ERR("src_buf is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (dst_buf == NULL) {
-		fprintf(stderr, "dst_buf is NULL\n");
+		UADK_ERR("dst_buf is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -677,13 +678,12 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 
 	wd_ecxdh_get_out_params(req->dst, &pubkey);
 	if (pubkey == NULL) {
-		fprintf(stderr, "failed to get pubkey\n");
+		UADK_ERR("failed to get pubkey\n");
 		return UADK_P_FAIL;
 	}
 
 	if (pubkey->x.dsize >= ECX_MAX_KEYLEN) {
-		fprintf(stderr, "invalid: pubkey->x.dsize = %u\n",
-			pubkey->x.dsize);
+		UADK_ERR("invalid: pubkey->x.dsize = %u\n", pubkey->x.dsize);
 		return UADK_P_FAIL;
 	}
 
@@ -691,13 +691,13 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 	ret = uadk_prov_reverse_bytes_ex((unsigned char *)pubkey->x.data,
 					 ecx_key->pubkey, pubkey->x.dsize);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to transform pubkey\n");
+		UADK_ERR("failed to transform pubkey\n");
 		return ret;
 	}
 	/* Trans private key from big-endian to little-endian */
 	ret = uadk_prov_reverse_bytes(ecx_key->privkey, gctx->keylen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to transform prikey\n");
+		UADK_ERR("failed to transform prikey\n");
 		return ret;
 	}
 	/*
@@ -721,7 +721,7 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 		/* Set the second MSB of the last byte to 1 */
 		ecx_key->privkey[X25519_KEYLEN - 1] |= 0x40;
 	} else {
-		fprintf(stderr, "invalid: unsupported ecx type\n");
+		UADK_ERR("invalid: unsupported ecx type\n");
 		return UADK_P_FAIL;
 	}
 
@@ -741,7 +741,7 @@ static int uadk_prov_ecx_keygen_set_prikey(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY *
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
-		fprintf(stderr, "failed to set ecc prikey, ret = %d\n", ret);
+		UADK_ERR("failed to set ecc prikey, ret = %d\n", ret);
 		return UADK_P_FAIL;
 	}
 
@@ -798,7 +798,7 @@ static void *uadk_ecx_sw_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_params,
 	if (!enable_sw_offload)
 		return NULL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecx generation.\n");
+	UADK_INFO("switch to openssl software calculation in ecx generation.\n");
 	switch (alg_type) {
 	case ECX_KEY_TYPE_X448:
 		if (!get_default_x448_keymgmt().gen)
@@ -819,7 +819,7 @@ static int uadk_ecx_sw_derive(void *vecxctx, unsigned char *secret, size_t *secr
 	if (!enable_sw_offload)
 		return UADK_P_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecx derivation.\n");
+	UADK_INFO("switch to openssl software calculation in ecx derivation.\n");
 	switch (alg_type) {
 	case ECX_KEY_TYPE_X448:
 		if (!get_default_x448_keyexch().derive)
@@ -841,39 +841,39 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 	int ret;
 
 	if (gctx == NULL) {
-		fprintf(stderr, "invalid: ecx keygen ctx is NULL\n");
+		UADK_ERR("invalid: ecx keygen ctx is NULL\n");
 		return NULL;
 	}
 
 	if (gctx->type != ECX_KEY_TYPE_X448) {
-		fprintf(stderr, "invalid: unsupported ecx type\n");
+		UADK_ERR("invalid: unsupported ecx type\n");
 		return NULL;
 	}
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X448);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware x448 keygen support\n");
+		UADK_ERR("failed to get hardware x448 keygen support\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecc_init("x448");
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to init x448\n");
+		UADK_ERR("failed to init x448\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (gctx->sess == (handle_t)0) {
-		fprintf(stderr, "failed to alloc x448 sess\n");
+		UADK_ERR("failed to alloc x448 sess\n");
 		ret = UADK_P_FAIL;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to generate x448 key\n");
+		UADK_ERR("failed to generate x448 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;
 	}
@@ -894,7 +894,7 @@ static void *uadk_keyexch_x448_newctx(void *provctx)
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("invalid: ecx keyexch ctx is NULL\n");
 		return NULL;
 	}
 
@@ -967,18 +967,18 @@ static int uadk_keyexch_ecx_init(void *vecxctx, void *vkey,
 	ECX_KEY *key = vkey;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ecxctx is NULL\n");
+		UADK_ERR("invalid: ecxctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (key == NULL) {
-		fprintf(stderr, "invalid: key is NULL\n");
+		UADK_ERR("invalid: key is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (key->keylen != ecxctx->keylen || !ossl_ecx_key_up_ref(key)) {
-		fprintf(stderr, "invalid: key->keylen(%zu) != ecxctx->keylen(%zu)\n",
-			key->keylen, ecxctx->keylen);
+		UADK_ERR("invalid: key->keylen(%zu) != ecxctx->keylen(%zu)\n",
+			 key->keylen, ecxctx->keylen);
 		return UADK_P_FAIL;
 	}
 
@@ -1000,18 +1000,18 @@ static int uadk_keyexch_ecx_set_peer(void *vecxctx, void *vkey)
 	ECX_KEY *peerkey = vkey;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ecxctx is NULL\n");
+		UADK_ERR("invalid: ecxctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (peerkey == NULL) {
-		fprintf(stderr, "invalid: key is NULL\n");
+		UADK_ERR("invalid: key is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	if (peerkey->keylen != ecxctx->keylen || !ossl_ecx_key_up_ref(peerkey)) {
-		fprintf(stderr, "invalid: peerkey->keylen(%zu) != ecxctx->keylen(%zu)\n",
-			peerkey->keylen, ecxctx->keylen);
+		UADK_ERR("invalid: peerkey->keylen(%zu) != ecxctx->keylen(%zu)\n",
+			 peerkey->keylen, ecxctx->keylen);
 		return UADK_P_FAIL;
 	}
 
@@ -1038,7 +1038,7 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	/* Trans public key from little-endian to big-endian */
 	ret = uadk_prov_reverse_bytes(ecxctx->peerkey->pubkey, ecxctx->keylen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to trans public key\n");
+		UADK_ERR("failed to trans public key\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1049,13 +1049,13 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 
 	ecx_in = wd_ecxdh_new_in(sess, &in_pubkey);
 	if (ecx_in == NULL) {
-		fprintf(stderr, "failed to new ecxdh in\n");
+		UADK_ERR("failed to new ecxdh in\n");
 		return UADK_P_FAIL;
 	}
 
 	ecx_out = wd_ecxdh_new_out(sess);
 	if (ecx_out == NULL) {
-		fprintf(stderr, "failed to new ecxdh out\n");
+		UADK_ERR("failed to new ecxdh out\n");
 		ret = UADK_P_FAIL;
 		goto del_ecx_in;
 	}
@@ -1065,7 +1065,7 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	/* Trans public key from big-endian to little-endian */
 	ret = uadk_prov_reverse_bytes(ecxctx->peerkey->pubkey, ecxctx->keylen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to trans peer public key\n");
+		UADK_ERR("failed to trans peer public key\n");
 		goto del_ecx_out;
 	}
 
@@ -1095,7 +1095,7 @@ static int uadk_prov_ecx_derive_set_prikey(PROV_ECX_KEYEXCH_CTX *ecxctx)
 	/* Trans private key from little-endian to big-endian */
 	ret = uadk_prov_reverse_bytes(ecxctx->key->privkey, ecxctx->keylen);
 	if (!ret) {
-		fprintf(stderr, "failed to trans private key\n");
+		UADK_ERR("failed to trans private key\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1104,14 +1104,14 @@ static int uadk_prov_ecx_derive_set_prikey(PROV_ECX_KEYEXCH_CTX *ecxctx)
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {
-		fprintf(stderr, "failed to set ecc prikey, ret = %d\n", ret);
+		UADK_ERR("failed to set ecc prikey, ret = %d\n", ret);
 		return UADK_P_FAIL;
 	}
 
 	/* Trans private key from big-endian to little-endian */
 	ret = uadk_prov_reverse_bytes(ecxctx->key->privkey, ecxctx->keylen);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to trans private key\n");
+		UADK_ERR("failed to trans private key\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1155,14 +1155,14 @@ static int uadk_prov_ecx_derive(PROV_ECX_KEYEXCH_CTX *ecxctx, unsigned char *key
 	int ret;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ctx is NULL\n");
+		UADK_ERR("invalid: ctx is NULL\n");
 		return UADK_P_FAIL;
 	}
 
 	peer_ecx_key = ecxctx->peerkey;
 	ecx_key = ecxctx->key;
 	if (peer_ecx_key == NULL || ecx_key == NULL) {
-		fprintf(stderr, "invalid: peer_ecx_key or ecx_key is NULL\n");
+		UADK_ERR("invalid: peer_ecx_key or ecx_key is NULL\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1210,17 +1210,17 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 	int ret;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ecxctx is NULL in x448 derive op\n");
+		UADK_ERR("invalid: ecxctx is NULL in x448 derive op\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ecxctx->key == NULL || ecxctx->key->privkey == NULL || ecxctx->peerkey == NULL) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_KEY);
+		UADK_ERR("invalid: ecxctx key privkey or peerkey is NULL.\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ecxctx->keylen != X448_KEYLEN) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+		UADK_ERR("invalid: ecxctx keylen.\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1230,34 +1230,34 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 	}
 
 	if (outlen < ecxctx->keylen) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		UADK_ERR("invalid: ecxctx outlen is too small.\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_keyexch_get_support_state(KEYEXCH_X448);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware x448 keyexch support\n");
+		UADK_ERR("failed to get hardware x448 keyexch support\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecc_init("x448");
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to init x448\n");
+		UADK_ERR("failed to init x448\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (ecxctx->sess == (handle_t)0) {
-		fprintf(stderr, "failed to alloc sess\n");
+		UADK_ERR("failed to alloc sess\n");
 		ret = UADK_P_FAIL;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecx_derive(ecxctx, secret, &ecxctx->keylen);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to do x448 derive\n");
+		UADK_ERR("failed to do x448 derive\n");
 		uadk_prov_ecx_free_sess(ecxctx->sess);
 		goto exe_soft;
 	}
@@ -1284,19 +1284,19 @@ static void *uadk_keyexch_ecx_dupctx(void *vecxctx)
 
 	dstctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (dstctx == NULL) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("invalid: ecxctx dstctx is NULL.\n");
 		return NULL;
 	}
 
 	*dstctx = *srcctx;
 	if (dstctx->key != NULL && !ossl_ecx_key_up_ref(dstctx->key)) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
+		UADK_ERR("failed to up ref dstctx key.\n");
 		OPENSSL_free(dstctx);
 		return NULL;
 	}
 
 	if (dstctx->peerkey != NULL && !ossl_ecx_key_up_ref(dstctx->peerkey)) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
+		UADK_ERR("failed to up ref dstctx peerkey.\n");
 		uadk_prov_ecx_key_free(dstctx->key);
 		OPENSSL_free(dstctx);
 		return NULL;
@@ -1476,7 +1476,7 @@ static void *uadk_keymgmt_x25519_gen_init(void *provctx, int selection,
 					  const OSSL_PARAM params[])
 {
 	if (provctx == NULL) {
-		fprintf(stderr, "invalid: provctx is NULL\n");
+		UADK_ERR("invalid: provctx is NULL\n");
 		return NULL;
 	}
 
@@ -1490,39 +1490,39 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 	int ret;
 
 	if (gctx == NULL) {
-		fprintf(stderr, "invalid: ecx keygen ctx is NULL\n");
+		UADK_ERR("invalid: ecx keygen ctx is NULL\n");
 		return NULL;
 	}
 
 	if (gctx->type != ECX_KEY_TYPE_X25519) {
-		fprintf(stderr, "invalid: unsupported ecx type\n");
+		UADK_ERR("invalid: unsupported ecx type\n");
 		return NULL;
 	}
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X25519);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware x25519 keygen support\n");
+		UADK_ERR("failed to get hardware x25519 keygen support\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecc_init("x25519");
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to init x25519\n");
+		UADK_ERR("failed to init x25519\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
 	if (gctx->sess == (handle_t)0) {
-		fprintf(stderr, "failed to alloc x25519 sess\n");
+		UADK_ERR("failed to alloc x25519 sess\n");
 		ret = UADK_P_FAIL;
 		return NULL;
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to generate x25519 key\n");
+		UADK_ERR("failed to generate x25519 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;
 	}
@@ -1543,7 +1543,7 @@ static void *uadk_keyexch_x25519_newctx(void *provctx)
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("invalid: x25519 ecxctx is NULL.\n");
 		return NULL;
 	}
 
@@ -1617,17 +1617,17 @@ static int uadk_keyexch_x25519_derive(void *vecxctx, unsigned char *secret, size
 	int ret;
 
 	if (ecxctx == NULL) {
-		fprintf(stderr, "invalid: ecxctx is NULL in x25519 derive op\n");
+		UADK_ERR("invalid: ecxctx is NULL in x25519 derive op\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ecxctx->key == NULL || ecxctx->key->privkey == NULL || ecxctx->peerkey == NULL) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_KEY);
+		UADK_ERR("invalid: x25519 key privkey or peerkey is NULL.\n");
 		return UADK_P_FAIL;
 	}
 
 	if (ecxctx->keylen != X25519_KEYLEN) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+		UADK_ERR("invalid: x25519 keylen.\n");
 		return UADK_P_FAIL;
 	}
 
@@ -1637,34 +1637,34 @@ static int uadk_keyexch_x25519_derive(void *vecxctx, unsigned char *secret, size
 	}
 
 	if (outlen < ecxctx->keylen) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL);
+		UADK_ERR("invalid: x25519 outlen is too small.\n");
 		return UADK_P_FAIL;
 	}
 
 	ret = uadk_prov_keyexch_get_support_state(KEYEXCH_X25519);
 	if (ret == UADK_P_FAIL) {
-		fprintf(stderr, "failed to get hardware x25519 keyexch support\n");
+		UADK_ERR("failed to get hardware x25519 keyexch support\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecc_init("x25519");
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to init x25519\n");
+		UADK_ERR("failed to init x25519\n");
 		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
 	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
 	if (ecxctx->sess == (handle_t)0) {
-		fprintf(stderr, "failed to alloc sess\n");
+		UADK_ERR("failed to alloc sess\n");
 		ret = UADK_P_FAIL;
 		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecx_derive(ecxctx, secret, &ecxctx->keylen);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to do x25519 derive\n");
+		UADK_ERR("failed to do x25519 derive\n");
 		uadk_prov_ecx_free_sess(ecxctx->sess);
 		goto exe_soft;
 	}

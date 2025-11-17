@@ -23,6 +23,7 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define UADK_PROV_ECC_PADDING		7
 #define UADK_PROV_RAND_MAX_CNT		1000
@@ -44,7 +45,7 @@ static int ec_param_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 
 	ret = uadk_prov_ecc_genctx_check(gctx, ec);
 	if (!ret) {
-		fprintf(stderr, "failed to check genctx!\n");
+		UADK_ERR("failed to check genctx!\n");
 		return ret;
 	}
 
@@ -52,7 +53,7 @@ static int ec_param_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 	/* Field GF(2m) is not supported by uadk */
 	type = EC_METHOD_get_field_type(EC_GROUP_method_of(group));
 	if (type != NID_X9_62_prime_field) {
-		fprintf(stderr, "invalid: uadk unsupport Field GF(2m)!\n");
+		UADK_ERR("invalid: uadk unsupport Field GF(2m)!\n");
 		return UADK_DO_SOFT;
 	}
 
@@ -74,14 +75,14 @@ static int ec_set_public_key(EC_KEY *ec, struct wd_ecc_out *ec_out)
 
 	wd_ecxdh_get_out_params(ec_out, &pubkey);
 	if (!pubkey) {
-		fprintf(stderr, "failed to get pubkey!\n");
+		UADK_ERR("failed to get pubkey!\n");
 		return ret;
 	}
 
 	group = EC_KEY_get0_group(ec);
 	point = EC_POINT_new(group);
 	if (!point) {
-		fprintf(stderr, "failed to new ec point!\n");
+		UADK_ERR("failed to new ec point!\n");
 		return ret;
 	}
 
@@ -90,7 +91,7 @@ static int ec_set_public_key(EC_KEY *ec, struct wd_ecc_out *ec_out)
 	key_size_x = pubkey->x.dsize;
 	key_size_y = pubkey->y.dsize;
 	if (key_size_x > key_size_std || key_size_y > key_size_std) {
-		fprintf(stderr, "invalid: key size is error!\n");
+		UADK_ERR("invalid: key size is error!\n");
 		goto free_point;
 	}
 
@@ -105,8 +106,8 @@ static int ec_set_public_key(EC_KEY *ec, struct wd_ecc_out *ec_out)
 	y_shift = buff_size - key_size_y;
 	buff = (unsigned char *)OPENSSL_zalloc(buff_size);
 	if (!buff) {
-		fprintf(stderr, "failed to alloc buf, buff_size = %d!\n",
-			buff_size);
+		UADK_ERR("failed to alloc buf, buff_size = %d!\n",
+			 buff_size);
 		goto free_point;
 	}
 
@@ -116,13 +117,13 @@ static int ec_set_public_key(EC_KEY *ec, struct wd_ecc_out *ec_out)
 
 	ret = EC_POINT_oct2point(group, point, buff, buff_size, NULL);
 	if (!ret) {
-		fprintf(stderr, "failed to do EC_POINT_oct2point!\n");
+		UADK_ERR("failed to do EC_POINT_oct2point!\n");
 		goto free_buf;
 	}
 
 	ret = EC_KEY_set_public_key(ec, point);
 	if (!ret)
-		fprintf(stderr, "failed to do EC_KEY_set_public_key!\n");
+		UADK_ERR("failed to do EC_KEY_set_public_key!\n");
 
 free_buf:
 	OPENSSL_free(buff);
@@ -139,25 +140,25 @@ static handle_t ec_alloc_sess(EC_KEY *ec, struct wd_ecc_out **ec_out)
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_ECDH);
 	if (!ret) {
-		fprintf(stderr, "failed to get hardware ecdh keygen support!\n");
+		UADK_ERR("failed to get hardware ecdh keygen support!\n");
 		return ret;
 	}
 
 	ret = uadk_prov_ecc_init("ecdh");
 	if (!ret) {
-		fprintf(stderr, "failed to init ecdh!\n");
+		UADK_ERR("failed to init ecdh!\n");
 		return ret;
 	}
 
 	sess = uadk_prov_ecc_alloc_sess(ec, "ecdh");
 	if (!sess) {
-		fprintf(stderr, "failed to alloc ec sess!\n");
+		UADK_ERR("failed to alloc ec sess!\n");
 		return ret;
 	}
 
 	*ec_out = wd_ecxdh_new_out(sess);
 	if (!(*ec_out)) {
-		fprintf(stderr, "failed to new sign out\n");
+		UADK_ERR("failed to new sign out\n");
 		wd_ecc_free_sess(sess);
 		return UADK_P_FAIL;
 	}
@@ -184,7 +185,7 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 
 	priv_k = BN_new();
 	if (!priv_k) {
-		fprintf(stderr, "failed to BN_new priv_k!\n");
+		UADK_ERR("failed to BN_new priv_k!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -194,12 +195,12 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 	do {
 		cnt++;
 		if (cnt > UADK_PROV_RAND_MAX_CNT) {
-			fprintf(stderr, "failed to get appropriate prikey, timeout\n");
+			UADK_ERR("failed to get appropriate prikey, timeout\n");
 			goto free_priv_k;
 		}
 
 		if (!BN_priv_rand_range(priv_k, order)) {
-			fprintf(stderr, "failed to get rand data!\n");
+			UADK_ERR("failed to get rand data!\n");
 			goto free_priv_k;
 		}
 	} while (BN_is_zero(priv_k) || BN_is_one(priv_k));
@@ -207,7 +208,7 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 set_key:
 	ret = EC_KEY_set_private_key(ec, priv_k);
 	if (!ret)
-		fprintf(stderr, "failed to set private key!\n");
+		UADK_ERR("failed to set private key!\n");
 
 free_priv_k:
 	if (!priv_key)
@@ -235,20 +236,20 @@ static int ec_hw_keygen(EC_KEY *ec, BIGNUM *priv_key)
 
 	sess = ec_alloc_sess(ec, &ec_out);
 	if (!sess) {
-		fprintf(stderr, "failed to alloc sess!\n");
+		UADK_ERR("failed to alloc sess!\n");
 		return UADK_DO_SOFT;
 	}
 
 	ret = ec_update_private_key(ec, sess, priv_key);
 	if (!ret) {
-		fprintf(stderr, "failed to update private key!\n");
+		UADK_ERR("failed to update private key!\n");
 		goto free_sess;
 	}
 
 	uadk_prov_ecc_fill_req(&req, WD_ECXDH_GEN_KEY, NULL, ec_out);
 	ret = uadk_prov_ecc_crypto(sess, &req, (void *)sess);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to generate key!\n");
+		UADK_ERR("failed to generate key!\n");
 		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
@@ -326,7 +327,7 @@ static void *uadk_ec_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 	if (!enable_sw_offload || !get_default_ec_keymgmt().gen)
 		return NULL;
 
-	fprintf(stderr, "switch to openssl software calculation in ecx generation.\n");
+	UADK_INFO("switch to openssl software calculation in ecx generation.\n");
 
 	return get_default_ec_keymgmt().gen(genctx, osslcb, cbarg);
 }
@@ -338,19 +339,19 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 	int ret;
 
 	if (!gctx) {
-		fprintf(stderr, "invalid: gctx is NULL to ec gen!\n");
+		UADK_ERR("invalid: gctx is NULL to ec gen!\n");
 		return NULL;
 	}
 
 	ec = EC_KEY_new_ex(gctx->libctx, NULL);
 	if (!ec) {
-		fprintf(stderr, "failed to new ec key!\n");
+		UADK_ERR("failed to new ec key!\n");
 		return NULL;
 	}
 
 	ret = ec_param_check(genctx, ec);
 	if (ret != UADK_P_SUCCESS) {
-		fprintf(stderr, "failed to check genctx!\n");
+		UADK_ERR("failed to check genctx!\n");
 		goto free_ec_key;
 	}
 
@@ -358,7 +359,7 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
 		ret = ec_hw_keygen(ec, gctx->priv_key);
 		if (ret != UADK_P_SUCCESS) {
-			fprintf(stderr, "failed to gen public key!\n");
+			UADK_ERR("failed to gen public key!\n");
 			goto free_ec_key;
 		}
 	}
@@ -444,19 +445,19 @@ static int uadk_keymgmt_ec_gen_set_template(void *genctx, void *templ)
 	EC_KEY *ec = templ;
 
 	if (!gctx || !ec) {
-		fprintf(stderr, "invalid: genctx or templ is NULL!\n");
+		UADK_ERR("invalid: genctx or templ is NULL!\n");
 		return UADK_P_FAIL;
 	}
 
 	src_group = EC_KEY_get0_group(ec);
 	if (!src_group) {
-		fprintf(stderr, "failed to get source group!\n");
+		UADK_ERR("failed to get source group!\n");
 		return UADK_P_FAIL;
 	}
 
 	dst_group = EC_GROUP_dup(src_group);
 	if (!dst_group) {
-		fprintf(stderr, "failed to copy group!\n");
+		UADK_ERR("failed to copy group!\n");
 		return UADK_P_FAIL;
 	}
 
@@ -541,7 +542,7 @@ static int uadk_keymgmt_ec_gen_set_params(void *genctx, const OSSL_PARAM params[
 	int ret;
 
 	if (!gctx) {
-		fprintf(stderr, "invalid: gctx is NULL to set params!\n");
+		UADK_ERR("invalid: gctx is NULL to set params!\n");
 		return UADK_P_FAIL;
 	}
 

@@ -30,6 +30,7 @@
 #include "uadk_async.h"
 #include "uadk_prov.h"
 #include "uadk_prov_pkey.h"
+#include "uadk_utils.h"
 
 #define UN_SET				0
 #define IS_SET				1
@@ -302,7 +303,7 @@ static UADK_PKEY_SIGNATURE get_default_rsa_signature(void)
 			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
 			initilazed = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_SIGNATURE_fetch default RSA provider\n");
+			UADK_ERR("failed to EVP_SIGNATURE_fetch default RSA provider\n");
 		}
 	}
 	pthread_mutex_unlock(&sig_mutex);
@@ -324,7 +325,7 @@ static UADK_PKEY_ASYM_CIPHER get_default_rsa_asym_cipher(void)
 			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
 			initilazed = 1;
 		} else {
-			fprintf(stderr, "failed to EVP_ASYM_CIPHER_fetch default RSA provider\n");
+			UADK_ERR("failed to EVP_ASYM_CIPHER_fetch default RSA provider\n");
 		}
 	}
 	pthread_mutex_unlock(&asym_mutex);
@@ -489,7 +490,7 @@ static int setup_tbuf(PROV_RSA_SIG_CTX *ctx)
 
 	ctx->tbuf = OPENSSL_malloc(uadk_rsa_size(ctx->rsa));
 	if (ctx->tbuf == NULL) {
-		ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to zalloc ctx tbuf!\n");
 		return UADK_E_FAIL;
 	}
 
@@ -779,7 +780,7 @@ static int get_rsa_prime_param(struct rsa_prime_param *param, BN_CTX *ctx)
 	return UADK_E_SUCCESS;
 
 error:
-	fprintf(stderr, "failed to allocate rsa prime params\n");
+	UADK_ERR("failed to allocate rsa prime params\n");
 	return -ENOMEM;
 }
 
@@ -854,7 +855,7 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 	int ret;
 
 	if (!buf || !num) {
-		fprintf(stderr, "buf or num is invalid.\n");
+		UADK_ERR("buf or num is invalid.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -862,12 +863,12 @@ static int add_rsa_pubenc_padding(int flen, const unsigned char *from,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_add_PKCS1_type_2(buf, num, from, flen);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_add_PKCS1_OAEP(buf, num, from, flen, NULL, 0);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_OAEP_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -886,13 +887,13 @@ static int check_rsa_pridec_padding(unsigned char *to, int num,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_check_PKCS1_type_2(to, num, buf, flen, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_PKCS1_OAEP_PADDING:
 		ret = RSA_padding_check_PKCS1_OAEP(to, num, buf, flen, num,
 						   NULL, 0);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_OAEP_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_OAEP_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -914,12 +915,12 @@ static int add_rsa_prienc_padding(int flen, const unsigned char *from,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_add_PKCS1_type_1(to_buf, tlen, from, flen);
 		if (!ret)
-			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_add_X931(to_buf, tlen, from, flen);
 		if (ret == -1)
-			fprintf(stderr, "RSA_X931_PADDING err.\n");
+			UADK_ERR("RSA_X931_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -940,12 +941,12 @@ static int check_rsa_pubdec_padding(unsigned char *to, int num,
 	case RSA_PKCS1_PADDING:
 		ret = RSA_padding_check_PKCS1_type_1(to, num, buf, len, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_PKCS1_PADDING err.\n");
+			UADK_ERR("RSA_PKCS1_PADDING err.\n");
 		break;
 	case RSA_X931_PADDING:
 		ret = RSA_padding_check_X931(to, num, buf, len, num);
 		if (ret == CHECK_PADDING_FAIL)
-			fprintf(stderr, "RSA_X931_PADDING err.\n");
+			UADK_ERR("RSA_X931_PADDING err.\n");
 		break;
 	default:
 		ret = UADK_E_FAIL;
@@ -966,7 +967,7 @@ static int check_rsa_input_para(const int flen, const unsigned char *from,
 				unsigned char *to, RSA *rsa)
 {
 	if (!rsa || !to || !from || flen <= 0) {
-		fprintf(stderr, "input param invalid\n");
+		UADK_ERR("input param invalid\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1018,7 +1019,7 @@ static int uadk_rsa_env_poll(void *ctx)
 		rx_cnt++;
 	} while (rx_cnt < PROV_SCH_RECV_MAX_CNT);
 
-	fprintf(stderr, "failed to poll msg: timeout!\n");
+	UADK_ERR("failed to poll msg: timeout!\n");
 
 	return -ETIMEDOUT;
 }
@@ -1300,7 +1301,7 @@ static int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
-		fprintf(stderr, "failed to setup async event notification.\n");
+		UADK_ERR("failed to setup async event notification.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1944,7 +1945,7 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 		priv->pad_mode = RSA_PKCS1_PSS_PADDING;
 		break;
 	default:
-		ERR_raise(ERR_LIB_RSA, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+		UADK_ERR("rsa asym operation not supported this keytype!\n");
 		return UADK_E_FAIL;
 	}
 
@@ -1977,7 +1978,7 @@ static int uadk_rsa_init(void *vprsactx, void *vrsa,
 		ctx->pad_mode = RSA_PKCS1_PSS_PADDING;
 		break;
 	default:
-		ERR_raise(ERR_LIB_RSA, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+		UADK_ERR("rsa init operation not supported this keytype!\n");
 		return UADK_E_FAIL;
 	}
 
@@ -2013,7 +2014,7 @@ static int uadk_rsa_sw_verify(void *vprsactx, const unsigned char *sig,
 	if (!enable_sw_offload || !get_default_rsa_signature().verify)
 		return UADK_E_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in verifaction.\n");
+	UADK_INFO("switch to openssl software calculation in verifaction.\n");
 
 	return get_default_rsa_signature().verify(vprsactx, sig, siglen, tbs, tbslen);
 }
@@ -2060,7 +2061,7 @@ static int uadk_rsa_sw_sign(void *vprsactx, unsigned char *sig,
 	if (!enable_sw_offload || !get_default_rsa_signature().sign)
 		return UADK_E_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in rsa signature.\n");
+	UADK_INFO("switch to openssl software calculation in rsa signature.\n");
 	return get_default_rsa_signature().sign(vprsactx, sig, siglen, sigsize, tbs, tbslen);
 }
 
@@ -2083,8 +2084,8 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	}
 
 	if (sigsize < rsasize) {
-		ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_SIGNATURE_SIZE,
-			       "is %zu, should be at least %zu", sigsize, rsasize);
+		UADK_ERR("invalid signature size is %zu, should be at least %zu!\n",
+			 sigsize, rsasize);
 		return UADK_E_FAIL;
 	}
 
@@ -2130,7 +2131,7 @@ static void *uadk_signature_rsa_newctx(void *provctx, const char *propq)
 
 err:
 	OPENSSL_free(priv);
-	fprintf(stderr, "%s failed.\n", __func__);
+	UADK_ERR("%s failed.\n", __func__);
 	return NULL;
 }
 
@@ -2216,11 +2217,11 @@ static int uadk_rsa_check_padding(const PROV_RSA_SIG_CTX *prsactx,
 {
 	switch (prsactx->pad_mode) {
 	case RSA_NO_PADDING:
-		ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_PADDING_MODE);
+		UADK_ERR("invalid rsa padding mode.\n");
 		return UADK_E_FAIL;
 	case RSA_X931_PADDING:
 		if (RSA_X931_hash_id(mdnid) == -1) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_X931_DIGEST);
+			UADK_ERR("invalid rsa x931 digest.\n");
 			return UADK_E_FAIL;
 		}
 		break;
@@ -2229,7 +2230,7 @@ static int uadk_rsa_check_padding(const PROV_RSA_SIG_CTX *prsactx,
 			if ((mdname != NULL && !EVP_MD_is_a(prsactx->md, mdname)) ||
 			    (mgf1_mdname != NULL &&
 			    !EVP_MD_is_a(prsactx->mgf1_md, mgf1_mdname))) {
-				ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
+				UADK_ERR("rsa digest is not allowed.\n");
 				return UADK_E_FAIL;
 			}
 		}
@@ -2297,14 +2298,11 @@ static int uadk_rsa_setup_md(PROV_RSA_SIG_CTX *ctx, const char *mdname,
 		    !uadk_rsa_check_padding(ctx, mdname, NULL, md_nid) ||
 		    mdname_len >= sizeof(ctx->mdname)) {
 			if (md == NULL)
-				ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
-						"%s could not be fetched", mdname);
+				UADK_ERR("invalid rsa name %s could not be fetched.\n", mdname);
 			if (md_nid <= 0)
-				ERR_raise_data(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED,
-						"digest=%s", mdname);
+				UADK_ERR("digest name is not allowed digest = %s.\n", mdname);
 			if (mdname_len >= sizeof(ctx->mdname))
-				ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
-						"%s exceeds name buffer length", mdname);
+				UADK_ERR("invalid name %s exceeds name buffer length.\n", mdname);
 			if (md)
 				EVP_MD_free(md);
 			return 0;
@@ -2474,19 +2472,18 @@ static int encode_pkcs1(unsigned char **out, size_t *out_len, int type,
 	unsigned char *dig_info;
 
 	if (type == NID_undef) {
-		ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_ALGORITHM_TYPE);
+		UADK_ERR("invalid: rsa unknown algorithm type.\n");
 		return 0;
 	}
 	di_prefix = uadk_rsa_digestinfo_encoding(type, &di_prefix_len);
 	if (di_prefix == NULL) {
-		ERR_raise(ERR_LIB_RSA,
-			  RSA_R_THE_ASN1_OBJECT_IDENTIFIER_IS_NOT_KNOWN_FOR_THIS_MD);
+		UADK_ERR("invalid: rsa di prefix is NULL.\n");
 		return 0;
 	}
 	dig_info_len = di_prefix_len + m_len;
 	dig_info = OPENSSL_malloc(dig_info_len);
 	if (dig_info == NULL) {
-		ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to malloc dig info.\n");
 		return 0;
 	}
 	memcpy(dig_info, di_prefix, di_prefix_len);
@@ -2544,7 +2541,7 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 			 * RSASSA-PKCS1-v1_5.
 			 */
 			if (dlen != SSL_SIG_LENGTH) {
-				ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+				UADK_ERR("invalid: rsa message length.\n");
 				return 0;
 			}
 			encoded_len = SSL_SIG_LENGTH;
@@ -2555,7 +2552,7 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 			encoded = tmps;
 		}
 	} else {
-		fprintf(stderr, "This padding mode is not supported\n");
+		UADK_ERR("This padding mode is not supported\n");
 		return UADK_E_FAIL;
 	}
 
@@ -2616,14 +2613,14 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 
 	if (priv->pad_mode == RSA_PKCS1_PADDING) {
 		if (siglen != (size_t)uadk_rsa_size(priv->rsa)) {
-			ERR_raise(ERR_LIB_RSA, RSA_R_WRONG_SIGNATURE_LENGTH);
+			UADK_ERR("invalid: rsa signature length.\n");
 			return UADK_E_FAIL;
 		}
 
 		/* Recover the encoded digest. */
 		decrypt_buf = OPENSSL_malloc(siglen);
 		if (decrypt_buf == NULL) {
-			ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+			UADK_ERR("failed to malloc decrypt buf.\n");
 			return UADK_E_FAIL;
 		}
 
@@ -2640,19 +2637,19 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 			 * RSASSA-PKCS1-v1_5.
 			 */
 			if (decrypt_len != SSL_SIG_LENGTH) {
-				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				UADK_ERR("invalid: rsa decrypt length.\n");
 				ret = UADK_E_FAIL;
 				goto err;
 			}
 
 			if (siglen != SSL_SIG_LENGTH) {
-				ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_MESSAGE_LENGTH);
+				UADK_ERR("invalid: rsa siglen.\n");
 				ret = UADK_E_FAIL;
 				goto err;
 			}
 
 			if (memcmp(decrypt_buf, digest, SSL_SIG_LENGTH) != 0) {
-				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				UADK_ERR("failed to memcmp decrypt buf and digest.\n");
 				ret = UADK_E_FAIL;
 				goto err;
 			}
@@ -2665,14 +2662,14 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 
 			if (encoded_len != decrypt_len
 					|| memcmp(encoded, decrypt_buf, encoded_len) != 0) {
-				ERR_raise(ERR_LIB_RSA, RSA_R_BAD_SIGNATURE);
+				UADK_ERR("failed to memcmp decrypt buf and encoded.\n");
 				ret = UADK_E_FAIL;
 				goto err;
 			}
 		}
 		ret = UADK_E_SUCCESS;
 	} else {
-		fprintf(stderr, "This padding mode is not supported\n");
+		UADK_ERR("This padding mode is not supported\n");
 		return UADK_E_FAIL;
 	}
 
@@ -2764,7 +2761,7 @@ static int uadk_rsa_sw_encrypt(void *vprsactx, unsigned char *out,
 	if (!enable_sw_offload || !get_default_rsa_asym_cipher().encrypt)
 		return UADK_E_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation	in rsa encryption.\n");
+	UADK_INFO("switch to openssl software calculation in rsa encryption.\n");
 
 	return get_default_rsa_asym_cipher().encrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
@@ -2785,7 +2782,7 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	if (out == NULL) {
 		len = uadk_rsa_size(priv->rsa);
 		if (len == 0) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY);
+			UADK_ERR("invalid: rsa encrypt size.\n");
 			return UADK_E_FAIL;
 		}
 		*outlen = len;
@@ -2812,7 +2809,7 @@ static int uadk_rsa_sw_decrypt(void *vprsactx, unsigned char *out,
 	if (!enable_sw_offload || !get_default_rsa_asym_cipher().decrypt)
 		return UADK_E_FAIL;
 
-	fprintf(stderr, "switch to openssl software calculation in rsa decryption.\n");
+	UADK_INFO("switch to openssl software calculation in rsa decryption.\n");
 	return get_default_rsa_asym_cipher().decrypt(vprsactx, out, outlen, outsize, in, inlen);
 }
 
@@ -2831,7 +2828,7 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 
 	if (out == NULL) {
 		if (len == 0) {
-			ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY);
+			UADK_ERR("invalid: rsa decrypt size.\n");
 			return UADK_E_FAIL;
 		}
 		*outlen = len;
@@ -2839,7 +2836,7 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 	}
 
 	if (outsize < len) {
-		ERR_raise(ERR_LIB_PROV, PROV_R_BAD_LENGTH);
+		UADK_ERR("invalid: rsa decrypt outsize is too small.\n");
 		return UADK_E_FAIL;
 	}
 
@@ -2958,7 +2955,7 @@ static int uadk_keymgmt_rsa_gen_set_params(void *genctx, const OSSL_PARAM params
 static int uadk_keymgmt_rsa_gen_set_template(void *genctx, void *templates)
 {
 	if (!get_default_rsa_keymgmt().gen_set_template) {
-		fprintf(stderr, "failed to get keymgmt gen_set_template function\n");
+		UADK_ERR("failed to get keymgmt gen_set_template function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -2989,14 +2986,14 @@ static RSA *ossl_rsa_new_with_ctx(OSSL_LIB_CTX *libctx)
 	RSA *ret = OPENSSL_zalloc(sizeof(*ret));
 
 	if (ret == NULL) {
-		ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to zalloc rsa ret\n");
 		return NULL;
 	}
 
 	ret->references = 1;
 	ret->lock = CRYPTO_THREAD_lock_new();
 	if (ret->lock == NULL) {
-		ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+		UADK_ERR("failed to malloc thread lock\n");
 		OPENSSL_free(ret);
 		return NULL;
 	}
@@ -3012,7 +3009,7 @@ static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 	if (!enable_sw_offload || !get_default_rsa_keymgmt().gen)
 		return NULL;
 
-	fprintf(stderr, "switch to openssl software calculation in rsa key generation.\n");
+	UADK_INFO("switch to openssl software calculation in rsa key generation.\n");
 	return get_default_rsa_keymgmt().gen(genctx, osslcb, cbarg);
 }
 
@@ -3096,7 +3093,7 @@ static const OSSL_PARAM *uadk_keymgmt_rsa_gettable_params(void *provctx)
 static int uadk_keymgmt_rsa_set_params(void *key, const OSSL_PARAM params[])
 {
 	if (!get_default_rsa_keymgmt().set_params) {
-		fprintf(stderr, "failed to get keymgmt set_params function\n");
+		UADK_ERR("failed to get keymgmt set_params function\n");
 		return UADK_P_FAIL;
 	}
 
@@ -3106,7 +3103,7 @@ static int uadk_keymgmt_rsa_set_params(void *key, const OSSL_PARAM params[])
 static const OSSL_PARAM *uadk_keymgmt_rsa_settable_params(ossl_unused void *provctx)
 {
 	if (!get_default_rsa_keymgmt().settable_params) {
-		fprintf(stderr, "failed to get keymgmt settable_params function\n");
+		UADK_ERR("failed to get keymgmt settable_params function\n");
 		return NULL;
 	}
 
