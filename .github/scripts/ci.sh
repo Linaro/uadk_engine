@@ -14,7 +14,7 @@ lock() {
     pending=0
     while [ "$exit_code" != 0 ]; do
         exit_code=0
-        mkdir ${LOCK_FILE} &> /dev/null || exit_code=$?
+        sudo mkdir ${LOCK_FILE} &> /dev/null || exit_code=$?
         if [ "$exit_code" != 0 ]; then
             if [ "$pending" = 0 ]; then
                 # Some script is accessing hardware
@@ -27,7 +27,7 @@ lock() {
 
 unlock() {
     if [ -d ${LOCK_FILE} ]; then
-        rmdir ${LOCK_FILE}
+        sudo rmdir ${LOCK_FILE}
         echo "Release lock"
     fi
 }
@@ -57,19 +57,27 @@ REPO_TYPE=$(detect_repository)
 echo "repo: $REPO_TYPE"
 
 mkdir -p "$BUILD_DIR"
-sudo chmod 666 /dev/hisi_* 2>/dev/null || echo "/dev/hisi_* do not exist"
+
+sudo chmod 666 /dev/hisi_* 2>/dev/null || {
+    echo "no hisi hardware, only compile"
+    ONLY_COMPILE=1
+}
 
 build_uadk() {
     ./cleanup.sh
     ./autogen.sh
     if [ -n "$1" ]; then
-        ./conf.sh "$1"
+        ./configure --enable-static --disable-shared --with-static_drv
     else
-        ./conf.sh
+        ./configure
     fi
 
     make -j$(nproc)
     sudo make install
+
+    if [ -n "$ONLY_COMPILE" ]; then
+	    exit 0
+    fi
 
     sudo ./test/sanity_test.sh
 }
@@ -80,16 +88,19 @@ build_uadk_engine() {
     echo "OpenSSL major version is "$major_version
 
     if (( major_version >= 3 )); then
-        dir="/usr/local/lib/ossl-modules/"
+        dir="/usr/lib64/ossl-modules/"
     else
         dir="/usr/local/lib/engines-1.1/"
     fi
 
     autoreconf -i
     ./configure --libdir="$dir" CFLAGS=-Wall
-
     make -j$(nproc)
     sudo make install
+
+    if [ -n "$ONLY_COMPILE" ]; then
+	    exit 0
+    fi
 
     ./test/sanity_test.sh
 }
