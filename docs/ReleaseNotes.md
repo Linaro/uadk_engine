@@ -1,4 +1,34 @@
 
+# UADK engine Release v1.7 Dec 2025
+
+## New Features
+- Provider: Added log configuration functionality with three levels
+            (err, debug, info), configurable to output to a specified file.
+- Provider: Supports dynamic enabling/disabling of algorithms via
+            configuration file (dynamic algorithm cropping).
+- Provider: Add support for multiple RSA padding modes
+  - RSA_X931_PADDING and RSA_PKCS1_PSS_PADDING for signing and verification
+  - RSA_PKCS1_OAEP_PADDING and RSA_PKCS1_WITH_TLS_PADDING for encryption
+    and decryption.
+- Added CI configuration.
+
+## Fixes
+- Engine: Fixed incorrect use of V2 interface in no-sva mode
+- Provider: Fixed potential segmentation fault during encryption
+            when ctx is not null-checked.
+- Provider/sm2: Resolved SM2 authentication failure by ensuring
+                the default ID is used in hardware calculations.
+- Engine: Fixed DH shared secret key comparison failure
+          by correctly padding high-order zeros.
+- Engine: Optimized sec cipher and digest initialization to
+          reduce redundant calls.
+
+## Working combination
+
+- UADK v2.10
+- OpenSSL 1.1.1f & OpenSSL 3.0+
+
+
 # UADK engine Release v1.6 June 2025
 
 ## New Features
