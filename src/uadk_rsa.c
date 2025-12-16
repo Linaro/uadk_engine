@@ -656,11 +656,9 @@ static int rsa_get_sign_res(int padding, BIGNUM *to_bn, const BIGNUM *n,
 
 static int rsa_get_verify_res(int padding, const BIGNUM *n, BIGNUM *ret_bn)
 {
-	BIGNUM *to_bn = NULL;
-
 	if ((padding == RSA_X931_PADDING) && ((bn_get_words(ret_bn)[0] & 0xf)
 	    != 0x0c)) {
-		if (!BN_sub(to_bn, n, ret_bn))
+		if (!BN_sub(ret_bn, n, ret_bn))
 			return UADK_E_FAIL;
 	}
 
