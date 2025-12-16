@@ -32,7 +32,6 @@
 #include "uadk_prov.h"
 #include "uadk_utils.h"
 
-#define UADK_DO_SOFT		(-0xE0)
 #define CTX_SYNC		0
 #define CTX_ASYNC		1
 #define CTX_NUM			2

@@ -45,7 +45,6 @@
 #define CTX_ASYNC			1
 #define CTX_SYNC			0
 #define CTX_NUM				2
-#define UADK_DO_SOFT			(-0xE0)
 #define UADK_P_INIT_SUCCESS		0
 #define ENV_ENABLED			1
 #define KEY_GEN_BY_PROV			1

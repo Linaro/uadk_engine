@@ -30,7 +30,6 @@
 #include "uadk_prov.h"
 #include "uadk_utils.h"
 
-#define UADK_DO_SOFT		(-0xE0)
 #define UADK_DO_HW		(-0xF0)
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
@@ -41,9 +40,6 @@
 #define MAX_KEY_LEN		64
 #define ALG_NAME_SIZE		128
 #define GENERIC_BLOCK_SIZE	16
-
-#define UADK_P_SUCCESS		1
-#define UADK_P_FAIL		0
 
 /* Internal flags that can be queried */
 #define PROV_CIPHER_FLAG_AEAD			0x0001

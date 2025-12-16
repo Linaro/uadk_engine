@@ -41,9 +41,6 @@
 #define UADK_ECC_MAX_KEY_BITS		521
 #define UADK_ECC_MAX_KEY_BYTES		66
 #define UADK_ECC_CV_PARAM_NUM		6
-#define UADK_DO_SOFT			(-0xE0)
-#define UADK_P_SUCCESS			1
-#define UADK_P_FAIL			0
 #define UADK_P_INVALID			(-1)
 #define PROV_KEYMGMT_ALG_NUM		7
 #define ECC_POINT_SIZE(n)		((n) << 1)

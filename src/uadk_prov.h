@@ -30,6 +30,9 @@
 #define PROV_SEND_MAX_CNT		90000000
 #define PROV_RECV_MAX_CNT		60000000
 #define PROV_SCH_RECV_MAX_CNT		60000
+#define UADK_P_SUCCESS			1
+#define UADK_P_FAIL			0
+#define UADK_DO_SOFT			(-0xE0)
 
 /* Copy openssl/providers/implementations/include/prov/names.h */
 #define PROV_NAMES_MD5 "MD5:SSL3-MD5:1.2.840.113549.2.5"
