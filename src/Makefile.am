@@ -77,3 +77,5 @@ uadk_provider_la_LDFLAGS=-module -version-number $(VERSION)
 uadk_provider_la_LIBADD=$(WD_LIBS) -lpthread
 uadk_provider_la_CFLAGS=$(WD_CFLAGS) $(libcrypto_CFLAGS)
 uadk_provider_la_CFLAGS+=-DOPENSSL_SUPPRESS_DEPRECATED
+uadk_provider_la_CFLAGS+=-fPIC -fPIE -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+			-O2 -ftrapv -Wl,-z,relro,-z,now -Wl,-s
