@@ -9,6 +9,19 @@ WORKSPACE="$(pwd)"
 BUILD_DIR="$(pwd)/deps"
 LOCK_FILE="/var/lock/uadk-lock"
 
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig/:/usr/lib/pkgconfig/
+export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
+
+version=$(openssl version)
+major_version=$(echo $version | awk -F'[ .]' '{print $2}')
+echo "OpenSSL major version is "$major_version
+
+if (( major_version >= 3 )); then
+    dir="/usr/lib64/ossl-modules/"
+else
+    dir="/usr/local/lib/engines-1.1/"
+fi
+
 lock() {
     exit_code=1
     pending=0
@@ -37,6 +50,7 @@ trap 'unlock' EXIT
 clean_previous_installations() {
     sudo rm -f /usr/local/lib/libwd*
     sudo rm -rf /usr/local/lib/uadk/
+    sudo rm -f $dir/uadk_provider.*
 }
 
 detect_repository() {
@@ -79,20 +93,10 @@ build_uadk() {
 	    exit 0
     fi
 
-    sudo ./test/sanity_test.sh
+    sudo -E ./test/sanity_test.sh
 }
 
 build_uadk_engine() {
-    version=$(openssl version)
-    major_version=$(echo $version | awk -F'[ .]' '{print $2}')
-    echo "OpenSSL major version is "$major_version
-
-    if (( major_version >= 3 )); then
-        dir="/usr/lib64/ossl-modules/"
-    else
-        dir="/usr/local/lib/engines-1.1/"
-    fi
-
     autoreconf -i
     ./configure --libdir="$dir" CFLAGS=-Wall
     make -j$(nproc)
