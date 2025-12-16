@@ -91,8 +91,8 @@ static int uadk_rsa_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
 	 * parameters MUST be non-NULL for n and e.  d may be
 	 * left NULL (in case only the public key is used).
 	 */
-	if ((r->n == NULL && n == NULL)
-			|| (r->e == NULL && e == NULL))
+	if ((!r->n && !n)
+			|| (!r->e && !e))
 		return UADK_P_FAIL;
 
 	if (n != NULL) {
@@ -119,7 +119,7 @@ static int uadk_rsa_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q)
 	 * If the fields p and q in r are NULL, the corresponding input
 	 * parameters MUST be non-NULL.
 	 */
-	if ((r->p == NULL && p == NULL) || (r->q == NULL && q == NULL))
+	if ((!r->p && !p) || (!r->q && !q))
 		return UADK_P_FAIL;
 
 	if (p != NULL) {
@@ -145,9 +145,9 @@ static int uadk_rsa_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *
 	 * If the fields dmp1, dmq1 and iqmp in r are NULL, the corresponding input
 	 * parameters MUST be non-NULL.
 	 */
-	if ((r->dmp1 == NULL && dmp1 == NULL)
-	    || (r->dmq1 == NULL && dmq1 == NULL)
-	    || (r->iqmp == NULL && iqmp == NULL))
+	if ((!r->dmp1 && !dmp1)
+	    || (!r->dmq1 && !dmq1)
+	    || (!r->iqmp && !iqmp))
 		return UADK_P_FAIL;
 
 	if (dmp1 != NULL) {
@@ -516,14 +516,14 @@ static RSA *ossl_rsa_new_with_ctx(OSSL_LIB_CTX *libctx)
 {
 	RSA *rsa = OPENSSL_zalloc(sizeof(*rsa));
 
-	if (rsa == NULL) {
+	if (!rsa) {
 		UADK_ERR("failed to zalloc rsa ret\n");
 		return NULL;
 	}
 
 	rsa->references = 1;
 	rsa->lock = CRYPTO_THREAD_lock_new();
-	if (rsa->lock == NULL) {
+	if (!rsa->lock) {
 		UADK_ERR("failed to malloc thread lock\n");
 		OPENSSL_free(rsa);
 		return NULL;
@@ -843,7 +843,7 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	RSA *rsa;
 	int ret;
 
-	if (gctx == NULL)
+	if (!gctx)
 		return NULL;
 
 	ret = uadk_prov_rsa_init();
@@ -853,7 +853,7 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	}
 
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
-	if (rsa == NULL)
+	if (!rsa)
 		return NULL;
 
 	gctx->cb = osslcb;
