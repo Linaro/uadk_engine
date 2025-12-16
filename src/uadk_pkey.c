@@ -34,7 +34,9 @@ static int g_ecc_support_state[ECC_TYPE];
 
 static int pkey_nids[] = {
 	EVP_PKEY_EC,
+#if OPENSSL_VERSION_NUMBER < 0x30000000
 	EVP_PKEY_SM2,
+#endif
 	EVP_PKEY_X25519,
 	EVP_PKEY_X448
 };
