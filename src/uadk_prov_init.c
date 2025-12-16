@@ -709,7 +709,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_cipher_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_SEC_V2)
+		else if (ver == HW_SYMM_ENC_V2)
 			return uadk_generate_cipher_array_v2();
 		return uadk_generate_cipher_array_v3();
 	case OSSL_OP_SIGNATURE:
@@ -717,7 +717,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V2)
+		else if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_signature_array_v2();
 		return uadk_generate_signature_array_v3();
 	case OSSL_OP_KEYMGMT:
@@ -725,7 +725,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V2)
+		else if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_keymgmt_array_v2();
 		return uadk_generate_keymgmt_array_v3();
 	case OSSL_OP_ASYM_CIPHER:
@@ -733,7 +733,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V2)
+		else if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_asym_cipher_array_v2();
 		return uadk_generate_asym_cipher_array_v3();
 	case OSSL_OP_KEYEXCH:
@@ -741,7 +741,7 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_PKEY_V2)
+		else if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_keyexch_array_v2();
 		return uadk_generate_keyexch_array_v3();
 	default:

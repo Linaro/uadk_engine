@@ -104,6 +104,7 @@ struct cipher_prov {
 	int pid;
 };
 static struct cipher_prov prov;
+static enum HW_SYMM_ENC_DEV g_hw_symm_enc_dev;
 static pthread_mutex_t cipher_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct cipher_priv_ctx {
@@ -1342,22 +1343,25 @@ static void uadk_prov_cipher_freectx(void *ctx)
 int uadk_prov_cipher_version(void)
 {
 	struct uacce_dev *dev;
-	int ver;
+
+	if (g_hw_symm_enc_dev != HW_SYMM_ENC_INVALID)
+		return g_hw_symm_enc_dev;
 
 	dev = uadk_get_accel_dev("cipher");
 	if (!dev) {
 		UADK_ERR("no cipher device available!\n");
-		return 0;
+		g_hw_symm_enc_dev = HW_SYMM_ENC_INVALID;
+		return g_hw_symm_enc_dev;
 	}
 
 	if (!strcmp(dev->api, "hisi_qm_v2"))
-		ver = HW_SEC_V2;
+		g_hw_symm_enc_dev = HW_SYMM_ENC_V2;
 	else
-		ver = HW_SEC_V3;
+		g_hw_symm_enc_dev = HW_SYMM_ENC_V3;
 
 	free(dev);
 
-	return ver;
+	return g_hw_symm_enc_dev;
 }
 
 #define UADK_CIPHER_DESCR(nm, blk_size, key_len, iv_len,			\

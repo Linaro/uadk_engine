@@ -67,6 +67,11 @@ struct digest_prov {
 	int pid;
 };
 
+enum {
+	HW_DIGEST_INVALID = 0x0,
+	HW_DIGEST_VALID = 0x1
+} g_digest_avaiable;
+
 static struct digest_prov dprov;
 static pthread_mutex_t digest_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1043,13 +1048,18 @@ int uadk_prov_digest_version(void)
 {
 	struct uacce_dev *dev;
 
+	if (g_digest_avaiable != HW_DIGEST_INVALID)
+		return g_digest_avaiable;
+
 	dev = uadk_get_accel_dev("digest");
 	if (!dev) {
 		UADK_ERR("no digest device available!\n");
-		return UADK_DIGEST_FAIL;
+		g_digest_avaiable = HW_DIGEST_INVALID;
+		return g_digest_avaiable;
 	}
 
 	free(dev);
+	g_digest_avaiable = HW_DIGEST_VALID;
 
-	return UADK_DIGEST_SUCCESS;
+	return g_digest_avaiable;
 }

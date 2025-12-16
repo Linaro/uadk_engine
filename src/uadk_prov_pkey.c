@@ -39,6 +39,7 @@ static int p_keymgmt_support_state[KEYMGMT_TYPE];
 static int p_signature_support_state[SIGNATURE_TYPE];
 static int p_asym_cipher_support_state[ASYM_CIPHER_TYPE];
 static int p_keyexch_support_state[KEYEXCH_TYPE];
+static enum HW_ASYM_ENC_DEV g_hw_asym_enc_dev;
 
 struct ecc_prov {
 	int pid;
@@ -947,20 +948,26 @@ int uadk_prov_pkey_version(void)
 {
 	struct uacce_dev *dev1, *dev2;
 
+	if (g_hw_asym_enc_dev != HW_ASYM_ENC_INVALID)
+		return g_hw_asym_enc_dev;
+
 	dev1 = uadk_get_accel_dev("rsa");
 	if (!dev1) {
 		UADK_ERR("no pkey device available!\n");
-		return HW_PKEY_INVALID;
+		g_hw_asym_enc_dev = HW_ASYM_ENC_INVALID;
+		return g_hw_asym_enc_dev;
 	}
 
 	dev2 = uadk_get_accel_dev("sm2");
 	if (!dev2) {
 		free(dev1);
-		return HW_PKEY_V2;
+		g_hw_asym_enc_dev = HW_ASYM_ENC_V2;
+		return g_hw_asym_enc_dev;
 	}
 
 	free(dev1);
 	free(dev2);
+	g_hw_asym_enc_dev = HW_ASYM_ENC_V3;
 
-	return HW_PKEY_V3;
+	return g_hw_asym_enc_dev;
 }

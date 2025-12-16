@@ -63,9 +63,12 @@
 #define TRANS_BITS_BYTES_SHIFT		3
 #define GET_MS_BYTE(n)			((n) >> 8)
 #define GET_LS_BYTE(n)			((n) & 0xFF)
-#define HW_PKEY_V2			2
-#define HW_PKEY_V3			3
-#define HW_PKEY_INVALID			0
+
+enum HW_ASYM_ENC_DEV {
+	HW_ASYM_ENC_INVALID = 0x0,
+	HW_ASYM_ENC_V2 = 0x2,
+	HW_ASYM_ENC_V3 = 0x3
+};
 
 enum {
 	KEYMGMT_SM2 = 0x0,
