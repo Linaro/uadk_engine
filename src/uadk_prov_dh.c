@@ -383,13 +383,8 @@ static void *uadk_keymgmt_dh_dup(const void *keydata_from, int selection)
 	return get_default_dh_keymgmt().dup(keydata_from, selection);
 }
 
-static int uadk_DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
+static void uadk_DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 {
-	if (dh == NULL) {
-		UADK_ERR("invalid: dh is NULL\n");
-		return UADK_P_FAIL;
-	}
-
 	if (pub_key != NULL) {
 		BN_clear_free(dh->pub_key);
 		dh->pub_key = pub_key;
@@ -401,8 +396,6 @@ static int uadk_DH_set0_key(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 	}
 
 	dh->dirty_cnt++;
-
-	return UADK_P_SUCCESS;
 }
 
 static FFC_PARAMS *ossl_dh_get0_params(DH *dh)
@@ -937,20 +930,17 @@ err:
 	return UADK_P_FAIL;
 }
 
-static int uadk_prov_dh_set_pkey(DH *dh, BIGNUM *pubkey, BIGNUM *prikey)
+static void uadk_prov_dh_set_pkey(DH *dh, BIGNUM *pubkey, BIGNUM *prikey)
 {
 	const BIGNUM *old_priv = uadk_DH_get0_priv_key(dh);
 	const BIGNUM *old_pub = uadk_DH_get0_pub_key(dh);
-	int ret = UADK_P_SUCCESS;
 
 	if (old_pub != pubkey && old_priv != prikey)
-		ret = uadk_DH_set0_key(dh, pubkey, prikey);
+		uadk_DH_set0_key(dh, pubkey, prikey);
 	else if (old_pub != pubkey)
-		ret = uadk_DH_set0_key(dh, pubkey, NULL);
+		uadk_DH_set0_key(dh, pubkey, NULL);
 	else if (old_priv != prikey)
-		ret = uadk_DH_set0_key(dh, NULL, prikey);
-
-	return ret;
+		uadk_DH_set0_key(dh, NULL, prikey);
 }
 
 static int uadk_prov_dh_generate_key(DH *dh)
@@ -961,11 +951,6 @@ static int uadk_prov_dh_generate_key(DH *dh)
 	BIGNUM *prikey = NULL;
 	BIGNUM *pubkey = NULL;
 	int ret;
-
-	if (dh == NULL) {
-		UADK_ERR("invalid: dh is NULL\n");
-		return UADK_P_FAIL;
-	}
 
 	ret = uadk_prov_dh_init();
 	if (ret) {
@@ -1005,14 +990,12 @@ static int uadk_prov_dh_generate_key(DH *dh)
 		goto free_req;
 	}
 
-	ret = uadk_prov_dh_set_pkey(dh, pubkey, prikey);
-	if (ret == UADK_P_FAIL)
-		UADK_ERR("failed to set dh pkey\n");
+	uadk_prov_dh_set_pkey(dh, pubkey, prikey);
 
 	uadk_prov_dh_free_genkey_req(dh_sess);
 	uadk_prov_dh_free_session(dh_sess);
 
-	return ret;
+	return UADK_P_SUCCESS;
 
 free_req:
 	uadk_prov_dh_free_genkey_req(dh_sess);
@@ -1087,10 +1070,22 @@ static int ossl_dh_generate_ffc_parameters(DH *dh, int type, int pbits, int qbit
 	return ret;
 }
 
+static int dh_down_ref(int *val)
+{
+	int i;
+
+	i = __atomic_fetch_sub(val, 1, __ATOMIC_RELAXED) - 1;
+	if (i == 0)
+		__atomic_thread_fence(__ATOMIC_ACQUIRE);
+
+	return i;
+}
+
 static DH *ossl_dh_new_ex(OSSL_LIB_CTX *libctx)
 {
-	DH *dh = OPENSSL_zalloc(sizeof(*dh));
+	DH *dh;
 
+	dh = OPENSSL_zalloc(sizeof(*dh));
 	if (dh == NULL) {
 		UADK_ERR("failed to alloc dh\n");
 		return NULL;
@@ -1100,21 +1095,63 @@ static DH *ossl_dh_new_ex(OSSL_LIB_CTX *libctx)
 	dh->lock = CRYPTO_THREAD_lock_new();
 	if (dh->lock == NULL) {
 		UADK_ERR("failed to new dh thread lock\n");
-		OPENSSL_free(dh);
-		return NULL;
+		goto free_dh;
 	}
 
 	dh->libctx = libctx;
+	dh->meth = DH_get_default_method();
+	dh->flags = dh->meth->flags;
+
+#ifndef FIPS_MODULE
+	if (!CRYPTO_new_ex_data(CRYPTO_EX_INDEX_DH, dh, &dh->ex_data)) {
+		UADK_ERR("failed to new ex_data\n");
+		goto free_lock;
+	}
+#endif /* FIPS_MODULE */
+
+	ossl_ffc_params_init(&dh->params);
+
+	if ((dh->meth->init != NULL) && !dh->meth->init(dh)) {
+		UADK_ERR("failed to init dh\n");
+		goto free_ex_data;
+	}
 
 	return dh;
+
+free_ex_data:
+#ifndef FIPS_MODULE
+	CRYPTO_free_ex_data(CRYPTO_EX_INDEX_DH, dh, &dh->ex_data);
+free_lock:
+#endif /* FIPS_MODULE */
+	CRYPTO_THREAD_lock_free(dh->lock);
+free_dh:
+	OPENSSL_free(dh);
+	return NULL;
 }
 
 static void ossl_dh_free_ex(DH *dh)
 {
-	if (dh) {
-		CRYPTO_THREAD_lock_free(dh->lock);
-		OPENSSL_free(dh);
-	}
+	int i;
+
+	if (dh == NULL)
+		return;
+
+	i = dh_down_ref(&dh->references);
+	if (i > 0)
+		return;
+
+	if (dh->meth != NULL && dh->meth->finish != NULL)
+		dh->meth->finish(dh);
+#ifndef FIPS_MODULE
+	CRYPTO_free_ex_data(CRYPTO_EX_INDEX_DH, dh, &dh->ex_data);
+#endif /* FIPS_MODULE */
+
+	CRYPTO_THREAD_lock_free(dh->lock);
+
+	ossl_ffc_params_cleanup(&dh->params);
+	BN_clear_free(dh->pub_key);
+	BN_clear_free(dh->priv_key);
+	OPENSSL_free(dh);
 }
 
 static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc)
@@ -1143,7 +1180,6 @@ static DH *uadk_prov_dh_gen_params_with_group(PROV_DH_KEYMGMT_CTX *gctx, FFC_PAR
 		return NULL;
 	}
 
-	dh->meth = DH_get_default_method();
 	ossl_ffc_named_group_set(&dh->params, group);
 	dh->params.nid = ossl_ffc_named_group_get_uid(group);
 	dh->dirty_cnt++;
@@ -1280,12 +1316,6 @@ static DH *uadk_prov_dh_gen_params(PROV_DH_KEYMGMT_CTX *gctx, FFC_PARAMS **ffc,
 
 static void uadk_prov_dh_free_params(DH *dh)
 {
-	FFC_PARAMS *ffc;
-
-	ffc = ossl_dh_get0_params(dh);
-	if (ffc)
-		ossl_ffc_params_cleanup(ffc);
-
 	/*
 	 * Release DH object that allocated by uadk_prov_dh_gen_params_ex() or
 	 * uadk_prov_dh_gen_params_with_group().
@@ -1306,8 +1336,8 @@ static void *uadk_keymgmt_dh_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_param
 {
 	PROV_DH_KEYMGMT_CTX *gctx = (PROV_DH_KEYMGMT_CTX *)genctx;
 	FFC_PARAMS *ffc = NULL;
+	int ret = UADK_P_FAIL;
 	DH *dh = NULL;
-	int ret;
 
 	if (gctx == NULL) {
 		UADK_ERR("invalid: keygen ctx is NULL\n");
