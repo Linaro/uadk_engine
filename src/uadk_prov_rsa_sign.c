@@ -17,6 +17,7 @@
  *
  */
 #include "uadk_prov_rsa.h"
+#include "uadk_prov_rsa_utils.h"
 
 UADK_PKEY_SIGNATURE_DESCR(rsa, RSA);
 
