@@ -41,6 +41,7 @@ void engine_init_child_at_fork_handler_v1(void)
 		g_sec_digests_qnode_pool->pool_use_num = 0;
 	if (g_sec_ciphers_qnode_pool)
 		g_sec_ciphers_qnode_pool->pool_use_num = 0;
+#ifndef UADK_ENABLE_GMSSL
 	if (g_hpre_rsa_qnode_pool)
 		g_hpre_rsa_qnode_pool->pool_use_num = 0;
 	if (g_hpre_dh_qnode_pool)
@@ -48,6 +49,7 @@ void engine_init_child_at_fork_handler_v1(void)
 
 	(void)hpre_module_init();
 	(void)hpre_module_dh_init();
+#endif
 	(void)cipher_module_init();
 	(void)digest_module_init();
 
