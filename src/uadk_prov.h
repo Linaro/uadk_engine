@@ -54,8 +54,6 @@ enum HW_SYMM_ENC_DEV {
 	HW_SYMM_ENC_V3 = 0x3
 };
 
-typedef int CRYPTO_REF_COUNT;
-
 struct ossl_provider_st {
 	/* Flag bits */
 	unsigned int flag_initialized:1;

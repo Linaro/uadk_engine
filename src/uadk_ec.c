@@ -191,7 +191,7 @@ static int get_smallest_hw_keybits(int bits)
 		return ECC128BITS;
 }
 
-static handle_t ecc_alloc_sess(const EC_KEY *eckey, char *alg)
+static handle_t ecc_alloc_sess(const EC_KEY *eckey, const char *alg)
 {
 	char buff[UADK_ECC_MAX_KEY_BYTES * UADK_ECC_CV_PARAM_NUM];
 	struct sched_params sch_p = {0};

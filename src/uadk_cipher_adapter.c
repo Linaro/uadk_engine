@@ -139,7 +139,7 @@ static void uadk_e_create_ciphers(int index)
 	}
 }
 
-int uadk_e_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
+static int uadk_e_ciphers(ENGINE *e, const EVP_CIPHER **cipher, const int **nids, int nid)
 {
 	__u32 i;
 
