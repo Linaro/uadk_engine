@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <openssl/bio.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
@@ -843,6 +842,7 @@ static const OSSL_DISPATCH uadk_dispatch_table[] = {
 	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))uadk_teardown },
 	{ OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))uadk_get_params },
 	{ OSSL_FUNC_PROVIDER_UNQUERY_OPERATION, (void (*)(void))uadk_unquery },
+	{ OSSL_FUNC_PROVIDER_GET_CAPABILITIES, (void (*)(void))uadk_get_capabilities},
 	{ 0, NULL }
 };
 

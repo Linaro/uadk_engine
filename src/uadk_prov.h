@@ -17,6 +17,7 @@
  */
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
+#include <openssl/bio.h>
 #include <openssl/core_dispatch.h>
 
 #define FUNC_MAX_NUM			32
@@ -44,6 +45,8 @@
 #define PROV_NAMES_SHA2_512 "SHA2-512:SHA-512:SHA512:2.16.840.1.101.3.4.2.3"
 #define PROV_NAMES_SHA2_512_224 "SHA2-512/224:SHA-512/224:SHA512-224:2.16.840.1.101.3.4.2.5"
 #define PROV_NAMES_SHA2_512_256 "SHA2-512/256:SHA-512/256:SHA512-256:2.16.840.1.101.3.4.2.6"
+
+OSSL_FUNC_provider_get_capabilities_fn uadk_get_capabilities;
 
 enum HW_SYMM_ENC_DEV {
 	HW_SYMM_ENC_INVALID = 0x0,

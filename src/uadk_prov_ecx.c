@@ -299,18 +299,12 @@ static const OSSL_PARAM *uadk_keymgmt_x448_gen_settable_params(ossl_unused void 
 
 static int uadk_keymgmt_x448_gen_set_template(void *genctx, void *templ)
 {
-	if (get_default_x448_keymgmt().gen_set_template == NULL)
-		return UADK_P_FAIL;
-
-	return get_default_x448_keymgmt().gen_set_template(genctx, templ);
+	return UADK_P_SUCCESS;
 }
 
 static const char *uadk_keymgmt_x448_query_operation_name(int operation_id)
 {
-	if (get_default_x448_keymgmt().query_operation_name == NULL)
-		return NULL;
-
-	return get_default_x448_keymgmt().query_operation_name(operation_id);
+	return "X448";
 }
 
 static int ossl_param_build_set_octet_string(OSSL_PARAM_BLD *bld, OSSL_PARAM *p, const char *key,
@@ -780,7 +774,7 @@ static int uadk_prov_ecx_keygen(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY **ecx_key)
 		return UADK_P_FAIL;
 
 	*ecx_key = uadk_prov_ecx_create_prikey(gctx);
-	if (*ecx_key == NULL)
+	if (*ecx_key == NULL || !(gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR))
 		return UADK_P_FAIL;
 
 	ret = uadk_prov_ecx_keygen_init_iot(gctx->sess, &req);
@@ -895,7 +889,8 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
-	if (ret != UADK_P_SUCCESS) {
+	/* Blank key and UADK_P_FAIL in parameter generation is expected, not an error */
+	if (ret != UADK_P_SUCCESS && (gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)) {
 		UADK_ERR("failed to generate x448 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;
@@ -1466,18 +1461,12 @@ static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused voi
 
 static int uadk_keymgmt_x25519_gen_set_template(void *genctx, void *templ)
 {
-	if (get_default_x25519_keymgmt().gen_set_template == NULL)
-		return UADK_P_FAIL;
-
-	return get_default_x25519_keymgmt().gen_set_template(genctx, templ);
+	return UADK_P_SUCCESS;
 }
 
 static const char *uadk_keymgmt_x25519_query_operation_name(int operation_id)
 {
-	if (get_default_x25519_keymgmt().query_operation_name == NULL)
-		return NULL;
-
-	return get_default_x25519_keymgmt().query_operation_name(operation_id);
+	return "X25519";
 }
 
 static int uadk_keymgmt_x25519_get_params(void *key, OSSL_PARAM params[])
@@ -1544,7 +1533,8 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
-	if (ret != UADK_P_SUCCESS) {
+	/* Blank key and UADK_P_FAIL in parameter generation is expected, not an error */
+	if (ret != UADK_P_SUCCESS && (gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)) {
 		UADK_ERR("failed to generate x25519 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;
