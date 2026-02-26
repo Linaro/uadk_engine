@@ -392,43 +392,15 @@ static int uadk_prov_sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_sm2_check_priv_key(EC_KEY *eckey)
-{
-	BIGNUM *priv_key;
-	int ret;
-
-	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
-	if (priv_key)
-		return UADK_P_SUCCESS;
-
-	priv_key = BN_new();
-	if (!priv_key) {
-		UADK_ERR("failed to BN_new priv_key\n");
-		return UADK_P_FAIL;
-	}
-
-	ret = EC_KEY_set_private_key(eckey, priv_key);
-	if (ret == 0)
-		UADK_ERR("failed to set private key\n");
-
-	BN_free(priv_key);
-
-	return ret;
-}
-
 static int uadk_prov_sm2_keygen(EC_KEY *eckey)
 {
 	struct wd_ecc_req req = {0};
 	handle_t sess;
 	int ret;
 
-	ret = uadk_prov_sm2_check_priv_key(eckey);
-	if (ret == UADK_P_FAIL)
-		goto error;
-
 	sess = uadk_prov_ecc_alloc_sess(eckey, "sm2");
 	if (sess == (handle_t)0)
-		goto error;
+		return UADK_P_FAIL;
 
 	ret = uadk_prov_sm2_keygen_init_iot(sess, &req);
 	if (ret == UADK_P_FAIL)
@@ -451,7 +423,6 @@ uninit_iot:
 	wd_ecc_del_out(sess, req.dst);
 free_sess:
 	wd_ecc_free_sess(sess);
-error:
 	return UADK_P_FAIL;
 }
 
