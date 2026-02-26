@@ -779,6 +779,7 @@ static void uadk_teardown(void *provctx)
 		OPENSSL_free(ctx);
 	}
 
+	async_module_uninit();
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_hmac();
 	uadk_prov_destroy_cipher();
@@ -786,7 +787,6 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_destroy_rsa();
 	uadk_prov_ecc_uninit();
 	uadk_prov_dh_uninit();
-	async_module_uninit();
 	if (default_prov) {
 		OSSL_PROVIDER_unload(default_prov);
 		default_prov = NULL;
