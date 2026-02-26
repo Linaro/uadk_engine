@@ -880,38 +880,10 @@ static int sm2_keygen_init_iot(handle_t sess, struct wd_ecc_req *req)
 	return 0;
 }
 
-static int eckey_create_key(EC_KEY *eckey)
-{
-	BIGNUM *priv_key;
-	int ret;
-
-	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
-	if (priv_key)
-		return 1;
-
-	priv_key = BN_new();
-	if (!priv_key) {
-		fprintf(stderr, "failed to BN_new priv_key\n");
-		return 0;
-	}
-
-	ret = EC_KEY_set_private_key(eckey, priv_key);
-	if (!ret)
-		fprintf(stderr, "failed to set private key\n");
-
-	BN_free(priv_key);
-
-	return ret;
-}
-
 static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 {
 	BIGNUM *priv_key;
 	int ret;
-
-	priv_key = (BIGNUM *)EC_KEY_get0_private_key(eckey);
-	if (priv_key)
-		return 1;
 
 	priv_key = BN_new();
 	if (!priv_key) {
@@ -985,10 +957,6 @@ static int sm2_generate_key(EC_KEY *eckey)
 
 	ret = ecc_genkey_check(eckey);
 	if (ret)
-		goto soft_log;
-
-	ret = eckey_create_key(eckey);
-	if (!ret)
 		goto soft_log;
 
 	ret = uadk_e_ecc_get_support_state(SM2_SUPPORT);
