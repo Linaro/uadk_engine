@@ -190,6 +190,7 @@ extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_rsa_signature_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[FUNC_MAX_NUM];
@@ -229,6 +230,7 @@ void set_default_ecdh_keyexch(void);
 void set_default_ecx_keymgmt(void);
 void set_default_ecx_keyexch(void);
 void set_default_rsa_keymgmt(void);
+void set_default_rsapss_keymgmt(void);
 void set_default_rsa_signature(void);
 void set_default_rsa_asym_cipher(void);
 void set_default_sm2_asym_cipher(void);

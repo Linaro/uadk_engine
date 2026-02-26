@@ -75,10 +75,16 @@ struct rsa_gen_ctx {
 };
 
 static UADK_PKEY_KEYMGMT s_keymgmt;
+static UADK_PKEY_KEYMGMT rsapss_keymgmt;
 
 static UADK_PKEY_KEYMGMT get_default_rsa_keymgmt(void)
 {
 	return s_keymgmt;
+}
+
+static UADK_PKEY_KEYMGMT get_default_rsapss_keymgmt(void)
+{
+	return rsapss_keymgmt;
 }
 
 void set_default_rsa_keymgmt(void)
@@ -91,6 +97,19 @@ void set_default_rsa_keymgmt(void)
 		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
 	} else {
 		UADK_INFO("failed to EVP_KEYMGMT_fetch rsa default provider\n");
+	}
+}
+
+void set_default_rsapss_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "RSA-PSS", "provider=default");
+	if (keymgmt) {
+		rsapss_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch rsa-pss default provider\n");
 	}
 }
 
@@ -993,3 +1012,65 @@ static void *uadk_keymgmt_rsa_dup(const void *keydata_from, int selection)
 
 	return get_default_rsa_keymgmt().dup(keydata_from, selection);
 }
+
+static void *uadk_keymgmt_rsapss_new(void *provctx)
+{
+	if (!get_default_rsapss_keymgmt().new_fun)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().new_fun(provctx);
+}
+
+static void *uadk_keymgmt_rsapss_gen_init(void *provctx, int selection,
+				       const OSSL_PARAM params[])
+{
+	if (!get_default_rsapss_keymgmt().gen_init)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().gen_init(provctx, selection, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_rsapss_gen_settable_params(ossl_unused void *genctx,
+							      ossl_unused void *provctx)
+{
+	if (!get_default_rsapss_keymgmt().gen_settable_params)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().gen_settable_params(genctx, provctx);
+}
+
+static void *uadk_keymgmt_rsapss_load(const void *reference, size_t reference_sz)
+{
+	if (!get_default_rsapss_keymgmt().load)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().load(reference, reference_sz);
+}
+
+const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[] = {
+	{ OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))uadk_keymgmt_rsapss_new },
+	{ OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))uadk_keymgmt_rsa_free },
+	{ OSSL_FUNC_KEYMGMT_GET_PARAMS, (void (*) (void))uadk_keymgmt_rsa_get_params },
+	{ OSSL_FUNC_KEYMGMT_GETTABLE_PARAMS,
+		(void (*) (void))uadk_keymgmt_rsa_gettable_params },
+	{ OSSL_FUNC_KEYMGMT_GEN_INIT, (void (*)(void))uadk_keymgmt_rsapss_gen_init },
+	{ OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsa_gen_set_params },
+	{ OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsapss_gen_settable_params },
+	{ OSSL_FUNC_KEYMGMT_GEN, (void (*)(void))uadk_keymgmt_rsa_gen },
+	{ OSSL_FUNC_KEYMGMT_GEN_CLEANUP, (void (*)(void))uadk_keymgmt_rsa_gen_cleanup },
+	{ OSSL_FUNC_KEYMGMT_LOAD, (void (*)(void))uadk_keymgmt_rsapss_load },
+	{ OSSL_FUNC_KEYMGMT_HAS, (void (*)(void))uadk_keymgmt_rsa_has },
+	{ OSSL_FUNC_KEYMGMT_VALIDATE, (void (*)(void))uadk_keymgmt_rsa_validate },
+	{ OSSL_FUNC_KEYMGMT_MATCH, (void (*)(void))uadk_keymgmt_rsa_match },
+	{ OSSL_FUNC_KEYMGMT_IMPORT, (void (*)(void))uadk_keymgmt_rsa_import },
+	{ OSSL_FUNC_KEYMGMT_IMPORT_TYPES,
+		(void (*)(void))uadk_keymgmt_rsa_import_types },
+	{ OSSL_FUNC_KEYMGMT_EXPORT, (void (*)(void))uadk_keymgmt_rsa_export },
+	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_rsa_export_types },
+	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_rsa_dup },
+	{ OSSL_FUNC_KEYMGMT_QUERY_OPERATION_NAME,
+		(void (*)(void))uadk_keymgmt_rsa_query_operation_name },
+	{ 0, NULL }
+};

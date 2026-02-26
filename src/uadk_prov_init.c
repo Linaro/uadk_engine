@@ -288,6 +288,8 @@ static const OSSL_ALGORITHM uadk_prov_signature_v3[] = {
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
+	{ "RSA-PSS", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsapss_keymgmt_functions, "uadk RSA-PSS Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
 	{ NULL, NULL, NULL, NULL }
 };
@@ -295,7 +297,10 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v3[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
-	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
+	{ "RSA-PSS", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsapss_keymgmt_functions, "uadk RSA-PSS Keymgmt implementation." },
+	{ "DH", UADK_DEFAULT_PROPERTIES,
+	  uadk_dh_keymgmt_functions, "uadk dh Keymgmt implementation." },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
 	{ "EC", UADK_DEFAULT_PROPERTIES,
@@ -674,6 +679,7 @@ static void uadk_set_default_alg(void)
 	set_default_ecx_keymgmt();
 	set_default_ecx_keyexch();
 	set_default_rsa_keymgmt();
+	set_default_rsapss_keymgmt();
 	set_default_rsa_asym_cipher();
 	set_default_rsa_signature();
 	set_default_sm2_asym_cipher();
