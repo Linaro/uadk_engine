@@ -536,6 +536,8 @@ static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v2(void)
 		name = uadk_prov_keymgmt_v2[i].algorithm_names;
 		if (name == NULL ||
 		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    /* RSA and RSA-PSS can utilize the same enable flag */
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA-PSS")) ||
 		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")))
 			memcpy(&keymgmt_array_v2[index++],
 			       &uadk_prov_keymgmt_v2[i], sizeof(OSSL_ALGORITHM));
@@ -561,6 +563,7 @@ static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v3(void)
 		name = uadk_prov_keymgmt_v3[i].algorithm_names;
 		if (name == NULL ||
 		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA-PSS")) ||
 		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")) ||
 		    (uadk_prov_alg_en.sm2_en && !strcmp(name, "SM2")) ||
 		    (uadk_prov_alg_en.ecdh_en && !strcmp(name, "EC")) ||
