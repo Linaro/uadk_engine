@@ -658,18 +658,25 @@ static int uadk_prov_dh_init(void)
 	char alg_name[] = "dh";
 	int ret;
 
-	pthread_atfork(NULL, NULL, uadk_prov_dh_mutex_infork);
-	pthread_mutex_lock(&dh_mutex);
 	if (g_dh_prov.pid != getpid()) {
+		pthread_atfork(NULL, NULL, uadk_prov_dh_mutex_infork);
+		pthread_mutex_lock(&dh_mutex);
+		if (g_dh_prov.pid == getpid()) {
+			pthread_mutex_unlock(&dh_mutex);
+			return UADK_P_INIT_SUCCESS;
+		}
+
 		ret = wd_dh_init2(alg_name, SCHED_POLICY_RR, TASK_HW);
 		if (unlikely(ret)) {
 			pthread_mutex_unlock(&dh_mutex);
 			return ret;
 		}
-		g_dh_prov.pid = getpid();
+
 		async_register_poll_fn(ASYNC_TASK_DH, uadk_prov_dh_poll);
+		mb();
+		g_dh_prov.pid = getpid();
+		pthread_mutex_unlock(&dh_mutex);
 	}
-	pthread_mutex_unlock(&dh_mutex);
 
 	return UADK_P_INIT_SUCCESS;
 }

@@ -213,18 +213,24 @@ int uadk_prov_rsa_init(void)
 	char alg_name[] = "rsa";
 	int ret;
 
-	pthread_atfork(NULL, NULL, uadk_rsa_mutex_infork);
-	pthread_mutex_lock(&rsa_mutex);
 	if (g_rsa_prov.pid != getpid()) {
+		pthread_atfork(NULL, NULL, uadk_rsa_mutex_infork);
+		pthread_mutex_lock(&rsa_mutex);
+		if (g_rsa_prov.pid == getpid()) {
+			pthread_mutex_unlock(&rsa_mutex);
+			return UADK_P_INIT_SUCCESS;
+		}
+
 		ret = wd_rsa_init2(alg_name, SCHED_POLICY_RR, TASK_MIX);
 		if (unlikely(ret)) {
 			pthread_mutex_unlock(&rsa_mutex);
 			return ret;
 		}
-		g_rsa_prov.pid = getpid();
 		async_register_poll_fn(ASYNC_TASK_RSA, uadk_rsa_env_poll);
+		mb();
+		g_rsa_prov.pid = getpid();
+		pthread_mutex_unlock(&rsa_mutex);
 	}
-	pthread_mutex_unlock(&rsa_mutex);
 
 	return UADK_P_INIT_SUCCESS;
 }

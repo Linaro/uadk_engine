@@ -293,24 +293,26 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 	struct wd_ctx_params cparams = {0};
 	int ret = UADK_AEAD_SUCCESS;
 
-	pthread_atfork(NULL, NULL, uadk_aead_mutex_infork);
-	pthread_mutex_lock(&aead_mutex);
 	if (aprov.pid == getpid())
-		goto mutex_unlock;
+		return ret;
 
 	cparams.op_type_num = UADK_AEAD_OP_NUM;
 	cparams.ctx_set_num = &ctx_set_num;
 	cparams.bmp = numa_allocate_nodemask();
 	if (!cparams.bmp) {
-		ret = UADK_AEAD_FAIL;
 		UADK_ERR("failed to create nodemask!\n");
-		goto mutex_unlock;
+		return UADK_AEAD_FAIL;
 	}
 
 	numa_bitmask_setall(cparams.bmp);
 
 	ctx_set_num.sync_ctx_num = UADK_AEAD_DEF_CTXS;
 	ctx_set_num.async_ctx_num = UADK_AEAD_DEF_CTXS;
+
+	pthread_atfork(NULL, NULL, uadk_aead_mutex_infork);
+	pthread_mutex_lock(&aead_mutex);
+	if (aprov.pid == getpid())
+		goto free_nodemask;
 
 	ret = wd_aead_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
 	if (unlikely(ret)) {
@@ -319,13 +321,13 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 		goto free_nodemask;
 	}
 
-	aprov.pid = getpid();
 	async_register_poll_fn(ASYNC_TASK_AEAD, uadk_aead_poll);
+	mb();
+	aprov.pid = getpid();
 
 free_nodemask:
-	numa_free_nodemask(cparams.bmp);
-mutex_unlock:
 	pthread_mutex_unlock(&aead_mutex);
+	numa_free_nodemask(cparams.bmp);
 	return ret;
 }
 

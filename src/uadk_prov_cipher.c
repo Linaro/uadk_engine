@@ -528,54 +528,54 @@ static void uadk_cipher_mutex_infork(void)
 
 static int uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 {
-	int ret;
+	struct wd_ctx_params cparams = {0};
+	struct wd_ctx_nums *ctx_set_num;
+	int ret = UADK_P_SUCCESS;
+
+	if (prov.pid == getpid())
+		return ret;
+
+	ctx_set_num = calloc(UADK_CIPHER_OP_NUM, sizeof(*ctx_set_num));
+	if (!ctx_set_num) {
+		UADK_ERR("failed to alloc ctx_set_size!\n");
+		return UADK_P_FAIL;
+	}
+
+	cparams.op_type_num = UADK_CIPHER_OP_NUM;
+	cparams.ctx_set_num = ctx_set_num;
+	cparams.bmp = numa_allocate_nodemask();
+	if (!cparams.bmp) {
+		UADK_ERR("failed to create nodemask!\n");
+		free(ctx_set_num);
+		return UADK_P_FAIL;
+	}
+
+	numa_bitmask_setall(cparams.bmp);
+
+	ctx_set_num->sync_ctx_num = UADK_CIPHER_DEF_CTXS;
+	ctx_set_num->async_ctx_num = UADK_CIPHER_DEF_CTXS;
 
 	pthread_atfork(NULL, NULL, uadk_cipher_mutex_infork);
 	pthread_mutex_lock(&cipher_mutex);
-	if (prov.pid != getpid()) {
-		struct wd_ctx_nums *ctx_set_num;
-		struct wd_ctx_params cparams = {0};
+	if (prov.pid == getpid())
+		goto init_err;
 
-		ctx_set_num = calloc(UADK_CIPHER_OP_NUM, sizeof(*ctx_set_num));
-		if (!ctx_set_num) {
-			UADK_ERR("failed to alloc ctx_set_size!\n");
-			ret = UADK_P_FAIL;
-			goto init_err;
-		}
-
-		cparams.op_type_num = UADK_CIPHER_OP_NUM;
-		cparams.ctx_set_num = ctx_set_num;
-		cparams.bmp = numa_allocate_nodemask();
-		if (!cparams.bmp) {
-			UADK_ERR("failed to create nodemask!\n");
-			free(ctx_set_num);
-			ret = UADK_P_FAIL;
-			goto init_err;
-		}
-
-		numa_bitmask_setall(cparams.bmp);
-
-		ctx_set_num->sync_ctx_num = UADK_CIPHER_DEF_CTXS;
-		ctx_set_num->async_ctx_num = UADK_CIPHER_DEF_CTXS;
-
-		ret = wd_cipher_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
-		numa_free_nodemask(cparams.bmp);
-		free(ctx_set_num);
-
-		if (unlikely(ret)) {
-			UADK_ERR("failed to init cipher!\n");
-			ret = UADK_P_FAIL;
-			goto init_err;
-		}
-
-		prov.pid = getpid();
-		async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
+	ret = wd_cipher_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	if (unlikely(ret)) {
+		UADK_ERR("failed to init cipher!\n");
+		ret = UADK_P_FAIL;
+		goto init_err;
 	}
 
+	async_register_poll_fn(ASYNC_TASK_CIPHER, uadk_cipher_poll);
+	mb();
+	prov.pid = getpid();
 	ret = UADK_P_SUCCESS;
 
 init_err:
 	pthread_mutex_unlock(&cipher_mutex);
+	numa_free_nodemask(cparams.bmp);
+	free(ctx_set_num);
 	return ret;
 }
 

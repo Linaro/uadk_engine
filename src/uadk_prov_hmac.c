@@ -412,30 +412,30 @@ static int uadk_prov_hmac_dev_init(struct hmac_priv_ctx *priv)
 	int ret = UADK_P_SUCCESS;
 	const char *alg_name;
 
-	pthread_atfork(NULL, NULL, uadk_hmac_mutex_infork);
-	pthread_mutex_lock(&hmac_mutex);
 	if (hprov.pid == getpid())
-		goto mutex_unlock;
+		return ret;
 
 	alg_name = get_uadk_alg_name(priv->alg_id);
-	if (!alg_name) {
-		ret = UADK_P_FAIL;
-		goto mutex_unlock;
-	}
+	if (!alg_name)
+		return UADK_P_FAIL;
 
 	cparams.op_type_num = UADK_DIGEST_OP_NUM;
 	cparams.ctx_set_num = &ctx_set_num;
 	cparams.bmp = numa_allocate_nodemask();
 	if (!cparams.bmp) {
-		ret = UADK_P_FAIL;
 		UADK_ERR("failed to create nodemask!\n");
-		goto mutex_unlock;
+		return UADK_P_FAIL;
 	}
 
 	numa_bitmask_setall(cparams.bmp);
 
 	ctx_set_num.sync_ctx_num = UADK_DIGEST_DEF_CTXS;
 	ctx_set_num.async_ctx_num = UADK_DIGEST_DEF_CTXS;
+
+	pthread_atfork(NULL, NULL, uadk_hmac_mutex_infork);
+	pthread_mutex_lock(&hmac_mutex);
+	if (hprov.pid == getpid())
+		goto free_nodemask;
 
 	ret = wd_digest_init2_((char *)alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
@@ -444,13 +444,13 @@ static int uadk_prov_hmac_dev_init(struct hmac_priv_ctx *priv)
 	}
 	ret = UADK_P_SUCCESS;
 
-	hprov.pid = getpid();
 	async_register_poll_fn(ASYNC_TASK_HMAC, uadk_hmac_poll);
+	mb();
+	hprov.pid = getpid();
 
 free_nodemask:
-	numa_free_nodemask(cparams.bmp);
-mutex_unlock:
 	pthread_mutex_unlock(&hmac_mutex);
+	numa_free_nodemask(cparams.bmp);
 	return ret;
 }
 
