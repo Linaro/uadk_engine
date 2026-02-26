@@ -806,6 +806,7 @@ static int ecx_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen)
 
 	if (!key || !(*keylen)) {
 		*keylen = (size_t)derive_ctx->key_size;
+		ecx_uninit(ctx);
 		return UADK_E_SUCCESS;
 	}
 
