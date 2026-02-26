@@ -523,6 +523,7 @@ static int uadk_e_init_digest(void)
 		if (ret)
 			goto err_unlock;
 
+		mb();
 		g_digest_engine.pid = getpid();
 		pthread_spin_unlock(&g_digest_engine.lock);
 		free(dev);

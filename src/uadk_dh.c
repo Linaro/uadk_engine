@@ -400,6 +400,7 @@ static int uadk_e_dh_init(void)
 	}
 
 	g_dh_res.numa_id = dev->numa_id;
+	mb();
 	g_dh_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&g_dh_res.lock);
 	free(dev);
