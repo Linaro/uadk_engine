@@ -74,6 +74,26 @@ struct rsa_gen_ctx {
 	void *cbarg;
 };
 
+static UADK_PKEY_KEYMGMT s_keymgmt;
+
+static UADK_PKEY_KEYMGMT get_default_rsa_keymgmt(void)
+{
+	return s_keymgmt;
+}
+
+void set_default_rsa_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "RSA", "provider=default");
+	if (keymgmt) {
+		s_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch rsa default provider\n");
+	}
+}
+
 static void uadk_rsa_clear_flags(RSA *r, int flags)
 {
 	r->flags &= ~flags;

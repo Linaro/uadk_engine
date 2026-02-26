@@ -73,27 +73,24 @@ struct ecdh_sess_ctx {
 };
 
 UADK_PKEY_KEYEXCH_DESCR(ecdh, ECDH);
-static pthread_mutex_t ecdh_mutex = PTHREAD_MUTEX_INITIALIZER;
+static UADK_PKEY_KEYEXCH s_keyexch;
+
 static UADK_PKEY_KEYEXCH get_default_ecdh_keyexch(void)
 {
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initialized;
-
-	pthread_mutex_lock(&ecdh_mutex);
-	if (!initialized) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "ecdh", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initialized = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default X448 provider\n");
-		}
-	}
-	pthread_mutex_unlock(&ecdh_mutex);
-
 	return s_keyexch;
+}
+
+void set_default_ecdh_keyexch(void)
+{
+	UADK_PKEY_KEYEXCH *keyexch;
+
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "ecdh", "provider=default");
+	if (keyexch) {
+		s_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch default ecdh provider\n");
+	}
 }
 
 static size_t ecdh_get_ec_size(const EC_GROUP *group)

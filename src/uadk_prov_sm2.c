@@ -36,9 +36,6 @@
 #define SM2_DEFAULT_USERID	"1234567812345678"
 #define SM2_DEFAULT_USERID_LEN	16
 
-static pthread_mutex_t sign_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t asym_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 UADK_PKEY_KEYMGMT_DESCR(sm2, SM2);
 UADK_PKEY_SIGNATURE_DESCR(sm2, SM2);
 UADK_PKEY_ASYM_CIPHER_DESCR(sm2, SM2);
@@ -220,6 +217,28 @@ ASN1_SEQUENCE(SM2_Ciphertext) = {
 } ASN1_SEQUENCE_END(SM2_Ciphertext)
 
 IMPLEMENT_ASN1_FUNCTIONS(SM2_Ciphertext)
+
+static UADK_PKEY_KEYMGMT s_keymgmt;
+static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
+static UADK_PKEY_SIGNATURE s_signature;
+
+static UADK_PKEY_KEYMGMT get_default_sm2_keymgmt(void)
+{
+	return s_keymgmt;
+}
+
+void set_default_sm2_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "SM2", "provider=default");
+	if (keymgmt) {
+		s_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch sm2 default provider\n");
+	}
+}
 
 static const char *uadk_keymgmt_sm2_query_operation_name(int operation_id)
 {
@@ -711,24 +730,20 @@ free_ec_key:
 
 static UADK_PKEY_SIGNATURE get_default_sm2_signature(void)
 {
-	static UADK_PKEY_SIGNATURE s_signature;
-	static int initilazed;
-
-	pthread_mutex_lock(&sign_mutex);
-	if (!initilazed) {
-		UADK_PKEY_SIGNATURE *signature =
-			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "SM2", "provider=default");
-		if (signature) {
-			s_signature = *signature;
-			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_SIGNATURE_fetch default SM2 provider\n");
-		}
-	}
-	pthread_mutex_unlock(&sign_mutex);
-
 	return s_signature;
+}
+
+void set_default_sm2_signature(void)
+{
+	UADK_PKEY_SIGNATURE *signature;
+
+	signature = (UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "SM2", "provider=default");
+	if (signature) {
+		s_signature = *signature;
+		EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
+	} else {
+		UADK_INFO("failed to EVP_SIGNATURE_fetch sm2 default provider\n");
+	}
 }
 
 static void *uadk_signature_sm2_newctx(void *provctx, const char *propq)
@@ -2371,26 +2386,21 @@ static int uadk_signature_sm2_verify_recover(void *vpsm2ctx, unsigned char *rout
 
 static UADK_PKEY_ASYM_CIPHER get_default_sm2_asym_cipher(void)
 {
-	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
-	static int initilazed;
-
-	pthread_mutex_lock(&asym_mutex);
-	if (!initilazed) {
-		UADK_PKEY_ASYM_CIPHER *asym_cipher =
-			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "SM2",
-								       "provider=default");
-
-		if (asym_cipher) {
-			s_asym_cipher = *asym_cipher;
-			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_ASYM_CIPHER_fetch default SM2 provider\n");
-		}
-	}
-	pthread_mutex_unlock(&asym_mutex);
-
 	return s_asym_cipher;
+}
+
+void set_default_sm2_asym_cipher(void)
+{
+	UADK_PKEY_ASYM_CIPHER *asym_cipher;
+
+	asym_cipher = (UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL,
+						"SM2", "provider=default");
+	if (asym_cipher) {
+		s_asym_cipher = *asym_cipher;
+		EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
+	} else {
+		UADK_INFO("failed to EVP_ASYM_CIPHER_fetch sm2 default provider\n");
+	}
 }
 
 static void *uadk_asym_cipher_sm2_newctx(void *provctx)

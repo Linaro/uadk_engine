@@ -219,6 +219,18 @@ int uadk_prov_cipher_version(void);
 int uadk_prov_digest_version(void);
 int uadk_get_sw_offload_state(void);
 void uadk_set_sw_offload_state(int enable);
+void set_default_dh_keymgmt(void);
+void set_default_dh_keyexch(void);
+void set_default_ec_keymgmt(void);
+void set_default_ecdh_keyexch(void);
+void set_default_ecx_keymgmt(void);
+void set_default_ecx_keyexch(void);
+void set_default_rsa_keymgmt(void);
+void set_default_rsa_signature(void);
+void set_default_rsa_asym_cipher(void);
+void set_default_sm2_asym_cipher(void);
+void set_default_sm2_signature(void);
+void set_default_sm2_keymgmt(void);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;

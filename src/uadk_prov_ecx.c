@@ -51,55 +51,78 @@ static inline int UADK_CRYPTO_DOWN_REF(int *val, int *ret,
 		__atomic_thread_fence(__ATOMIC_ACQUIRE);
 	return 1;
 }
-static pthread_mutex_t x25519_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t x448_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static UADK_PKEY_KEYEXCH s_x448_keyexch;
+static UADK_PKEY_KEYEXCH s_x25519_keyexch;
+
+static UADK_PKEY_KEYMGMT s_x448_keymgmt;
+static UADK_PKEY_KEYMGMT s_x25519_keymgmt;
 
 UADK_PKEY_KEYMGMT_DESCR(x448, X448);
 UADK_PKEY_KEYEXCH_DESCR(x448, X448);
-static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
-{
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initilazed;
-
-	pthread_mutex_lock(&x448_mutex);
-	if (!initilazed) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X448", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default X448 provider\n");
-		}
-	}
-	pthread_mutex_unlock(&x448_mutex);
-
-	return s_keyexch;
-}
-
 UADK_PKEY_KEYMGMT_DESCR(x25519, X25519);
 UADK_PKEY_KEYEXCH_DESCR(x25519, X25519);
+
 static UADK_PKEY_KEYEXCH get_default_x25519_keyexch(void)
 {
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initialized;
+	return s_x25519_keyexch;
+}
 
-	pthread_mutex_lock(&x25519_mutex);
-	if (!initialized) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initialized = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default X25519 provider\n");
-		}
+static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
+{
+	return s_x448_keyexch;
+}
+
+void set_default_ecx_keyexch(void)
+{
+	UADK_PKEY_KEYEXCH *keyexch;
+
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X448", "provider=default");
+	if (keyexch) {
+		s_x448_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch default X448 provider\n");
 	}
-	pthread_mutex_unlock(&x25519_mutex);
 
-	return s_keyexch;
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
+	if (keyexch) {
+		s_x25519_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch default X25519 provider\n");
+	}
+}
+
+static UADK_PKEY_KEYMGMT get_default_x25519_keymgmt(void)
+{
+	return s_x25519_keymgmt;
+}
+
+static UADK_PKEY_KEYMGMT get_default_x448_keymgmt(void)
+{
+	return s_x448_keymgmt;
+}
+
+void set_default_ecx_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "X448", "provider=default");
+	if (keymgmt) {
+		s_x448_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch X448 default provider\n");
+	}
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "X25519", "provider=default");
+	if (keymgmt) {
+		s_x25519_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch X25519 default provider\n");
+	}
 }
 
 typedef enum {

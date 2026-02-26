@@ -60,27 +60,44 @@ UADK_PKEY_KEYMGMT_DESCR(dh, DH);
 UADK_PKEY_KEYEXCH_DESCR(dh, DH);
 
 static pthread_mutex_t dh_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t dh_default_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static UADK_PKEY_KEYEXCH s_keyexch;
+static UADK_PKEY_KEYMGMT s_keymgmt;
+
+static UADK_PKEY_KEYMGMT get_default_dh_keymgmt(void)
+{
+	return s_keymgmt;
+}
+
+void set_default_dh_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "DH", "provider=default");
+	if (keymgmt) {
+		s_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch dh default provider\n");
+	}
+}
+
 static UADK_PKEY_KEYEXCH get_default_dh_keyexch(void)
 {
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initialized;
-
-	pthread_mutex_lock(&dh_default_mutex);
-	if (!initialized) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "dh", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initialized = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default dh provider\n");
-		}
-	}
-	pthread_mutex_unlock(&dh_default_mutex);
-
 	return s_keyexch;
+}
+
+void set_default_dh_keyexch(void)
+{
+	UADK_PKEY_KEYEXCH *keyexch;
+
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "DH", "provider=default");
+	if (keyexch) {
+		s_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch dh default provider\n");
+	}
 }
 
 struct dh_st {

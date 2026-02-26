@@ -68,31 +68,27 @@ struct PROV_RSA_SIG_CTX {
 	unsigned int soft : 1;
 };
 
-static pthread_mutex_t sig_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 static int encode_pkcs1(unsigned char **out, size_t *out_len, int type,
 			const unsigned char *m, size_t m_len);
 
+static UADK_PKEY_SIGNATURE s_signature;
+
 static UADK_PKEY_SIGNATURE get_default_rsa_signature(void)
 {
-	static UADK_PKEY_SIGNATURE s_signature;
-	static int initilazed;
-
-	pthread_mutex_lock(&sig_mutex);
-	if (!initilazed) {
-		UADK_PKEY_SIGNATURE *signature =
-			(UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "RSA", "provider=default");
-
-		if (signature) {
-			s_signature = *signature;
-			EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_SIGNATURE_fetch default RSA provider\n");
-		}
-	}
-	pthread_mutex_unlock(&sig_mutex);
 	return s_signature;
+}
+
+void set_default_rsa_signature(void)
+{
+	UADK_PKEY_SIGNATURE *signature;
+
+	signature = (UADK_PKEY_SIGNATURE *)EVP_SIGNATURE_fetch(NULL, "RSA", "provider=default");
+	if (signature) {
+		s_signature = *signature;
+		EVP_SIGNATURE_free((EVP_SIGNATURE *)signature);
+	} else {
+		UADK_INFO("failed to EVP_SIGNATURE_fetch rsa default provider\n");
+	}
 }
 
 static size_t uadk_rsa_get_md_size(struct PROV_RSA_SIG_CTX *prsactx)
