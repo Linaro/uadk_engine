@@ -501,6 +501,10 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 		goto free_ec_key;
 	}
 
+	/* If there is no need to generate the private and public keys, return directly. */
+	if (!gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)
+		return ec;
+
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_SM2);
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to get hardware sm2 keygen support\n");
@@ -512,12 +516,6 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to init sm2\n");
 		goto do_soft;
-	}
-
-	/* Do sm2 keygen with hardware */
-	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) == 0) {
-		UADK_ERR("invalid keymgmt keypair selection\n");
-		goto free_ec_key;
 	}
 
 	ret = uadk_prov_sm2_keygen(ec);
