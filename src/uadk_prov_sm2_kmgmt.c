@@ -26,8 +26,6 @@
 #include "uadk_prov_pkey.h"
 #include "uadk_utils.h"
 
-#define SM2_KEY_BYTES		32
-
 UADK_PKEY_KEYMGMT_DESCR(sm2, SM2);
 static UADK_PKEY_KEYMGMT s_keymgmt;
 

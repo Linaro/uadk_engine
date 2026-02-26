@@ -61,6 +61,8 @@
 #define GET_MS_BYTE(n)			((n) >> 8)
 #define GET_LS_BYTE(n)			((n) & 0xFF)
 
+#define SM2_KEY_BYTES			32
+
 enum HW_ASYM_ENC_DEV {
 	HW_ASYM_ENC_INVALID = 0x0,
 	HW_ASYM_ENC_V2 = 0x2,
