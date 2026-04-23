@@ -61,13 +61,15 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 endif #WD_KAE
 
 uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \
+			 uadk_prov_capabilities.c\
 			 uadk_prov_digest.c uadk_prov_cipher.c \
 			 uadk_prov_rsa.c uadk_prov_rsa_kmgmt.c \
 			 uadk_prov_rsa_enc.c uadk_prov_rsa_sign.c \
 			 uadk_prov_rsa_utils.c \
 			 uadk_prov_dh.c uadk_prov_bio.c \
 			 uadk_prov_der_writer.c uadk_prov_packet.c \
-			 uadk_prov_pkey.c uadk_prov_sm2.c \
+			 uadk_prov_pkey.c uadk_prov_sm2_sign.c \
+			 uadk_prov_sm2_kmgmt.c uadk_prov_sm2_enc.c \
 			 uadk_prov_ffc.c uadk_prov_aead.c \
 			 uadk_prov_ec_kmgmt.c uadk_prov_ecdh_exch.c \
 			 uadk_prov_ecx.c uadk_prov_ecdsa.c \

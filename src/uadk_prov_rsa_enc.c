@@ -48,29 +48,25 @@ struct PROV_RSA_ASYM_CTX {
 	unsigned int soft : 1;
 };
 
-static pthread_mutex_t asym_mutex = PTHREAD_MUTEX_INITIALIZER;
+static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
 
 static UADK_PKEY_ASYM_CIPHER get_default_rsa_asym_cipher(void)
 {
-	static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
-	static int initilazed;
-
-	pthread_mutex_lock(&asym_mutex);
-	if (!initilazed) {
-		UADK_PKEY_ASYM_CIPHER *asym_cipher =
-			(UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL, "RSA",
-								       "provider=default");
-
-		if (asym_cipher) {
-			s_asym_cipher = *asym_cipher;
-			EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_ASYM_CIPHER_fetch default RSA provider\n");
-		}
-	}
-	pthread_mutex_unlock(&asym_mutex);
 	return s_asym_cipher;
+}
+
+void set_default_rsa_asym_cipher(void)
+{
+	UADK_PKEY_ASYM_CIPHER *asym_cipher;
+
+	asym_cipher = (UADK_PKEY_ASYM_CIPHER *)EVP_ASYM_CIPHER_fetch(NULL,
+						"RSA", "provider=default");
+	if (asym_cipher) {
+		s_asym_cipher = *asym_cipher;
+		EVP_ASYM_CIPHER_free((EVP_ASYM_CIPHER *)asym_cipher);
+	} else {
+		UADK_INFO("failed to EVP_ASYM_CIPHER_fetch rsa default provider\n");
+	}
 }
 
 /**

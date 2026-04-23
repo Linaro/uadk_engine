@@ -61,6 +61,8 @@
 #define GET_MS_BYTE(n)			((n) >> 8)
 #define GET_LS_BYTE(n)			((n) & 0xFF)
 
+#define SM2_KEY_BYTES			32
+
 enum HW_ASYM_ENC_DEV {
 	HW_ASYM_ENC_INVALID = 0x0,
 	HW_ASYM_ENC_V2 = 0x2,
@@ -187,25 +189,6 @@ static OSSL_FUNC_keymgmt_export_fn uadk_keymgmt_##nm##_export;	\
 static OSSL_FUNC_keymgmt_export_types_fn uadk_keymgmt_##nm##_export_types;	\
 static OSSL_FUNC_keymgmt_dup_fn uadk_keymgmt_##nm##_dup;	\
 static OSSL_FUNC_keymgmt_query_operation_name_fn uadk_keymgmt_##nm##_query_operation_name;	\
-static UADK_PKEY_KEYMGMT get_default_##nm##_keymgmt(void)	\
-{				\
-	static UADK_PKEY_KEYMGMT s_keymgmt;	\
-	static int initilazed;	\
-				\
-	if (!initilazed) {	\
-		UADK_PKEY_KEYMGMT *keymgmt =	\
-			(UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, #alg, "provider=default");	\
-				\
-		if (keymgmt) {	\
-			s_keymgmt = *keymgmt;	\
-			EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);	\
-			initilazed = 1;	\
-		} else {	\
-			fprintf(stderr, "failed to EVP_KEYMGMT_fetch default provider\n");	\
-		}	\
-	}	\
-	return s_keymgmt;	\
-}	\
 const OSSL_DISPATCH uadk_##nm##_keymgmt_functions[] = {	\
 	{ OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))uadk_keymgmt_##nm##_new },	\
 	{ OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))uadk_keymgmt_##nm##_free },	\

@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <openssl/bio.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
@@ -289,6 +288,8 @@ static const OSSL_ALGORITHM uadk_prov_signature_v3[] = {
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
+	{ "RSA-PSS", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsapss_keymgmt_functions, "uadk RSA-PSS Keymgmt implementation." },
 	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
 	{ NULL, NULL, NULL, NULL }
 };
@@ -296,7 +297,10 @@ static const OSSL_ALGORITHM uadk_prov_keymgmt_v2[] = {
 static const OSSL_ALGORITHM uadk_prov_keymgmt_v3[] = {
 	{ "RSA", UADK_DEFAULT_PROPERTIES,
 	  uadk_rsa_keymgmt_functions, "uadk RSA Keymgmt implementation." },
-	{ "DH", UADK_DEFAULT_PROPERTIES, uadk_dh_keymgmt_functions },
+	{ "RSA-PSS", UADK_DEFAULT_PROPERTIES,
+	  uadk_rsapss_keymgmt_functions, "uadk RSA-PSS Keymgmt implementation." },
+	{ "DH", UADK_DEFAULT_PROPERTIES,
+	  uadk_dh_keymgmt_functions, "uadk dh Keymgmt implementation." },
 	{ "SM2", UADK_DEFAULT_PROPERTIES,
 	  uadk_sm2_keymgmt_functions, "uadk SM2 Keymgmt implementation." },
 	{ "EC", UADK_DEFAULT_PROPERTIES,
@@ -532,6 +536,8 @@ static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v2(void)
 		name = uadk_prov_keymgmt_v2[i].algorithm_names;
 		if (name == NULL ||
 		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    /* RSA and RSA-PSS can utilize the same enable flag */
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA-PSS")) ||
 		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")))
 			memcpy(&keymgmt_array_v2[index++],
 			       &uadk_prov_keymgmt_v2[i], sizeof(OSSL_ALGORITHM));
@@ -557,6 +563,7 @@ static OSSL_ALGORITHM *uadk_generate_keymgmt_array_v3(void)
 		name = uadk_prov_keymgmt_v3[i].algorithm_names;
 		if (name == NULL ||
 		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA")) ||
+		    (uadk_prov_alg_en.rsa_en && !strcmp(name, "RSA-PSS")) ||
 		    (uadk_prov_alg_en.dh_en && !strcmp(name, "DH")) ||
 		    (uadk_prov_alg_en.sm2_en && !strcmp(name, "SM2")) ||
 		    (uadk_prov_alg_en.ecdh_en && !strcmp(name, "EC")) ||
@@ -666,33 +673,53 @@ static OSSL_ALGORITHM *uadk_generate_keyexch_array_v3(void)
 	return keyexch_array_v3;
 }
 
+static void uadk_set_default_alg(void)
+{
+	set_default_dh_keymgmt();
+	set_default_dh_keyexch();
+	set_default_ec_keymgmt();
+	set_default_ecdh_keyexch();
+	set_default_ecx_keymgmt();
+	set_default_ecx_keyexch();
+	set_default_rsa_keymgmt();
+	set_default_rsapss_keymgmt();
+	set_default_rsa_asym_cipher();
+	set_default_rsa_signature();
+	set_default_sm2_asym_cipher();
+	set_default_sm2_keymgmt();
+	set_default_sm2_signature();
+}
+
+static int uadk_set_default_prov(OSSL_LIB_CTX *libctx)
+{
+	if (default_prov)
+		return UADK_P_SUCCESS;
+
+	default_prov = OSSL_PROVIDER_load(libctx, "default");
+	if (!default_prov) {
+		printf("failed to load default provider\n");
+		return UADK_P_FAIL;
+	}
+	/*
+	 * uadk_provider takes the highest priority
+	 * and overwrite the openssl.cnf property.
+	 */
+	EVP_set_default_properties(libctx, "?provider=uadk_provider");
+	/*
+	 * In asynchronous scenarios, if random numbers are obtained using
+	 * uadk provider cipher, deadlocks may occur. Therefore, random numbers are
+	 * obtained using default provider cipher.
+	 */
+	(void)RAND_set_DRBG_type(libctx, NULL, "provider=default", NULL, NULL);
+	uadk_set_default_alg();
+
+	return UADK_P_SUCCESS;
+}
+
 static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 					int *no_cache)
 {
-	OSSL_LIB_CTX *libctx;
-	static int prov_init;
 	int ver;
-
-	if (__atomic_compare_exchange_n(&prov_init, &(int){0}, 1, false, __ATOMIC_SEQ_CST,
-					__ATOMIC_SEQ_CST)) {
-		libctx = prov_libctx_of(provctx);
-		default_prov = OSSL_PROVIDER_load(libctx, "default");
-		if (!default_prov) {
-			UADK_ERR("failed to load default provider\n");
-			return NULL;
-		}
-		/*
-		 * uadk_provider takes the highest priority
-		 * and overwrite the openssl.cnf property.
-		 */
-		EVP_set_default_properties(libctx, "?provider=uadk_provider");
-		/*
-		 * In asynchronous scenarios, if random numbers are obtained using
-		 * uadk provider cipher, deadlocks may occur. Therefore, random numbers are
-		 * obtained using default provider cipher.
-		 */
-		(void)RAND_set_DRBG_type(libctx, NULL, "provider=default", NULL, NULL);
-	}
 
 	if (no_cache)
 		*no_cache = 0;
@@ -760,6 +787,7 @@ static void uadk_teardown(void *provctx)
 		OPENSSL_free(ctx);
 	}
 
+	async_module_uninit();
 	uadk_prov_destroy_digest();
 	uadk_prov_destroy_hmac();
 	uadk_prov_destroy_cipher();
@@ -767,7 +795,6 @@ static void uadk_teardown(void *provctx)
 	uadk_prov_destroy_rsa();
 	uadk_prov_ecc_uninit();
 	uadk_prov_dh_uninit();
-	async_module_uninit();
 	if (default_prov) {
 		OSSL_PROVIDER_unload(default_prov);
 		default_prov = NULL;
@@ -824,6 +851,7 @@ static const OSSL_DISPATCH uadk_dispatch_table[] = {
 	{ OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))uadk_teardown },
 	{ OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))uadk_get_params },
 	{ OSSL_FUNC_PROVIDER_UNQUERY_OPERATION, (void (*)(void))uadk_unquery },
+	{ OSSL_FUNC_PROVIDER_GET_CAPABILITIES, (void (*)(void))uadk_get_capabilities},
 	{ 0, NULL }
 };
 
@@ -995,10 +1023,12 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	ctx->libctx = (OSSL_LIB_CTX *)c_get_libctx(handle);
 
 	ret = uadk_prov_ctx_set_core_bio_method(ctx);
-	if (!ret) {
-		OPENSSL_free(ctx);
-		return UADK_P_FAIL;
-	}
+	if (!ret)
+		goto free_ctx;
+
+	ret = uadk_set_default_prov(ctx->libctx);
+	if (!ret)
+		goto free_corebiometh;
 
 	ret = async_module_init();
 	if (!ret)
@@ -1009,4 +1039,10 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 	*out = uadk_dispatch_table;
 
 	return UADK_P_SUCCESS;
+
+free_corebiometh:
+	BIO_meth_free(ctx->corebiometh);
+free_ctx:
+	OPENSSL_free(ctx);
+	return UADK_P_FAIL;
 }

@@ -448,6 +448,7 @@ static int uadk_e_init_cipher(void)
 		if (ret)
 			goto err_unlock;
 
+		mb();
 		g_cipher_engine.pid = getpid();
 		pthread_spin_unlock(&g_cipher_engine.lock);
 		free(dev);

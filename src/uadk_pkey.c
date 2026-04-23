@@ -599,6 +599,7 @@ int uadk_init_ecc(void)
 	}
 
 	ecc_res.numa_id = dev->numa_id;
+	mb();
 	ecc_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&ecc_res.lock);
 	free(dev);

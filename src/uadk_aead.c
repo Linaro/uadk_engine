@@ -263,6 +263,7 @@ static int uadk_e_init_aead_cipher(void)
 			return UADK_E_FAIL;
 		}
 
+		mb();
 		g_aead_engine.pid = getpid();
 		pthread_spin_unlock(&g_aead_engine.lock);
 		free(dev);

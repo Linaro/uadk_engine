@@ -849,6 +849,7 @@ static int uadk_e_rsa_init(void)
 	}
 
 	g_rsa_res.numa_id = dev->numa_id;
+	mb();
 	g_rsa_res.status = UADK_INIT_SUCCESS;
 	pthread_spin_unlock(&g_rsa_res.lock);
 	free(dev);

@@ -17,6 +17,7 @@
  */
 #ifndef UADK_PROV_H
 #define UADK_PROV_H
+#include <openssl/bio.h>
 #include <openssl/core_dispatch.h>
 
 #define FUNC_MAX_NUM			32
@@ -45,13 +46,13 @@
 #define PROV_NAMES_SHA2_512_224 "SHA2-512/224:SHA-512/224:SHA512-224:2.16.840.1.101.3.4.2.5"
 #define PROV_NAMES_SHA2_512_256 "SHA2-512/256:SHA-512/256:SHA512-256:2.16.840.1.101.3.4.2.6"
 
+OSSL_FUNC_provider_get_capabilities_fn uadk_get_capabilities;
+
 enum HW_SYMM_ENC_DEV {
 	HW_SYMM_ENC_INVALID = 0x0,
 	HW_SYMM_ENC_V2 = 0x2,
 	HW_SYMM_ENC_V3 = 0x3
 };
-
-typedef int CRYPTO_REF_COUNT;
 
 struct ossl_provider_st {
 	/* Flag bits */
@@ -187,6 +188,7 @@ extern const OSSL_DISPATCH uadk_des_ede3_ecb_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_rsa_signature_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_keymgmt_functions[FUNC_MAX_NUM];
+extern const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[FUNC_MAX_NUM];
 extern const OSSL_DISPATCH uadk_rsa_asym_cipher_functions[FUNC_MAX_NUM];
 
 extern const OSSL_DISPATCH uadk_dh_keymgmt_functions[FUNC_MAX_NUM];
@@ -219,6 +221,19 @@ int uadk_prov_cipher_version(void);
 int uadk_prov_digest_version(void);
 int uadk_get_sw_offload_state(void);
 void uadk_set_sw_offload_state(int enable);
+void set_default_dh_keymgmt(void);
+void set_default_dh_keyexch(void);
+void set_default_ec_keymgmt(void);
+void set_default_ecdh_keyexch(void);
+void set_default_ecx_keymgmt(void);
+void set_default_ecx_keyexch(void);
+void set_default_rsa_keymgmt(void);
+void set_default_rsapss_keymgmt(void);
+void set_default_rsa_signature(void);
+void set_default_rsa_asym_cipher(void);
+void set_default_sm2_asym_cipher(void);
+void set_default_sm2_signature(void);
+void set_default_sm2_keymgmt(void);
 
 /* offload small packets to sw */
 extern int enable_sw_offload;

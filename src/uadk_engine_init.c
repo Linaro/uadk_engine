@@ -223,6 +223,10 @@ static int uadk_destroy(ENGINE *e)
 	kae_debug_close_log();
 #endif
 
+	pthread_mutex_lock(&uadk_engine_mutex);
+	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
+		async_module_uninit();
+
 	if (uadk_cipher)
 		uadk_e_destroy_ciphers();
 	if (uadk_digest)
@@ -234,10 +238,6 @@ static int uadk_destroy(ENGINE *e)
 	if (uadk_dh)
 		uadk_e_destroy_dh();
 
-	if (uadk_cipher || uadk_digest || uadk_rsa || uadk_dh || uadk_ecc)
-		async_module_uninit();
-
-	pthread_mutex_lock(&uadk_engine_mutex);
 	uadk_inited = 0;
 	pthread_mutex_unlock(&uadk_engine_mutex);
 

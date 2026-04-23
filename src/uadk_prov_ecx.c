@@ -51,55 +51,78 @@ static inline int UADK_CRYPTO_DOWN_REF(int *val, int *ret,
 		__atomic_thread_fence(__ATOMIC_ACQUIRE);
 	return 1;
 }
-static pthread_mutex_t x25519_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t x448_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static UADK_PKEY_KEYEXCH s_x448_keyexch;
+static UADK_PKEY_KEYEXCH s_x25519_keyexch;
+
+static UADK_PKEY_KEYMGMT s_x448_keymgmt;
+static UADK_PKEY_KEYMGMT s_x25519_keymgmt;
 
 UADK_PKEY_KEYMGMT_DESCR(x448, X448);
 UADK_PKEY_KEYEXCH_DESCR(x448, X448);
-static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
-{
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initilazed;
-
-	pthread_mutex_lock(&x448_mutex);
-	if (!initilazed) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X448", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initilazed = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default X448 provider\n");
-		}
-	}
-	pthread_mutex_unlock(&x448_mutex);
-
-	return s_keyexch;
-}
-
 UADK_PKEY_KEYMGMT_DESCR(x25519, X25519);
 UADK_PKEY_KEYEXCH_DESCR(x25519, X25519);
+
 static UADK_PKEY_KEYEXCH get_default_x25519_keyexch(void)
 {
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initialized;
+	return s_x25519_keyexch;
+}
 
-	pthread_mutex_lock(&x25519_mutex);
-	if (!initialized) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initialized = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default X25519 provider\n");
-		}
+static UADK_PKEY_KEYEXCH get_default_x448_keyexch(void)
+{
+	return s_x448_keyexch;
+}
+
+void set_default_ecx_keyexch(void)
+{
+	UADK_PKEY_KEYEXCH *keyexch;
+
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X448", "provider=default");
+	if (keyexch) {
+		s_x448_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch default X448 provider\n");
 	}
-	pthread_mutex_unlock(&x25519_mutex);
 
-	return s_keyexch;
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "X25519", "provider=default");
+	if (keyexch) {
+		s_x25519_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch default X25519 provider\n");
+	}
+}
+
+static UADK_PKEY_KEYMGMT get_default_x25519_keymgmt(void)
+{
+	return s_x25519_keymgmt;
+}
+
+static UADK_PKEY_KEYMGMT get_default_x448_keymgmt(void)
+{
+	return s_x448_keymgmt;
+}
+
+void set_default_ecx_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "X448", "provider=default");
+	if (keymgmt) {
+		s_x448_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch X448 default provider\n");
+	}
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "X25519", "provider=default");
+	if (keymgmt) {
+		s_x25519_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch X25519 default provider\n");
+	}
 }
 
 typedef enum {
@@ -276,18 +299,12 @@ static const OSSL_PARAM *uadk_keymgmt_x448_gen_settable_params(ossl_unused void 
 
 static int uadk_keymgmt_x448_gen_set_template(void *genctx, void *templ)
 {
-	if (get_default_x448_keymgmt().gen_set_template == NULL)
-		return UADK_P_FAIL;
-
-	return get_default_x448_keymgmt().gen_set_template(genctx, templ);
+	return UADK_P_SUCCESS;
 }
 
 static const char *uadk_keymgmt_x448_query_operation_name(int operation_id)
 {
-	if (get_default_x448_keymgmt().query_operation_name == NULL)
-		return NULL;
-
-	return get_default_x448_keymgmt().query_operation_name(operation_id);
+	return "X448";
 }
 
 static int ossl_param_build_set_octet_string(OSSL_PARAM_BLD *bld, OSSL_PARAM *p, const char *key,
@@ -757,7 +774,7 @@ static int uadk_prov_ecx_keygen(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY **ecx_key)
 		return UADK_P_FAIL;
 
 	*ecx_key = uadk_prov_ecx_create_prikey(gctx);
-	if (*ecx_key == NULL)
+	if (*ecx_key == NULL || !(gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR))
 		return UADK_P_FAIL;
 
 	ret = uadk_prov_ecx_keygen_init_iot(gctx->sess, &req);
@@ -872,7 +889,8 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
-	if (ret != UADK_P_SUCCESS) {
+	/* Blank key and UADK_P_FAIL in parameter generation is expected, not an error */
+	if (ret != UADK_P_SUCCESS && (gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)) {
 		UADK_ERR("failed to generate x448 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;
@@ -1443,18 +1461,12 @@ static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused voi
 
 static int uadk_keymgmt_x25519_gen_set_template(void *genctx, void *templ)
 {
-	if (get_default_x25519_keymgmt().gen_set_template == NULL)
-		return UADK_P_FAIL;
-
-	return get_default_x25519_keymgmt().gen_set_template(genctx, templ);
+	return UADK_P_SUCCESS;
 }
 
 static const char *uadk_keymgmt_x25519_query_operation_name(int operation_id)
 {
-	if (get_default_x25519_keymgmt().query_operation_name == NULL)
-		return NULL;
-
-	return get_default_x25519_keymgmt().query_operation_name(operation_id);
+	return "X25519";
 }
 
 static int uadk_keymgmt_x25519_get_params(void *key, OSSL_PARAM params[])
@@ -1521,7 +1533,8 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
-	if (ret != UADK_P_SUCCESS) {
+	/* Blank key and UADK_P_FAIL in parameter generation is expected, not an error */
+	if (ret != UADK_P_SUCCESS && (gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)) {
 		UADK_ERR("failed to generate x25519 key\n");
 		uadk_prov_ecx_free_sess(gctx->sess);
 		goto exe_soft;

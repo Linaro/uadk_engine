@@ -37,6 +37,25 @@ static const OSSL_ITEM check_group_type_nameid_map[] = {
 };
 
 UADK_PKEY_KEYMGMT_DESCR(ec, EC);
+static UADK_PKEY_KEYMGMT s_keymgmt;
+
+static UADK_PKEY_KEYMGMT get_default_ec_keymgmt(void)
+{
+	return s_keymgmt;
+}
+
+void set_default_ec_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "EC", "provider=default");
+	if (keymgmt) {
+		s_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch EC default provider\n");
+	}
+}
 
 static int ec_param_check(struct ec_gen_ctx *gctx, EC_KEY *ec)
 {

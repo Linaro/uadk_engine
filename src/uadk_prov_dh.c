@@ -60,27 +60,44 @@ UADK_PKEY_KEYMGMT_DESCR(dh, DH);
 UADK_PKEY_KEYEXCH_DESCR(dh, DH);
 
 static pthread_mutex_t dh_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t dh_default_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static UADK_PKEY_KEYEXCH s_keyexch;
+static UADK_PKEY_KEYMGMT s_keymgmt;
+
+static UADK_PKEY_KEYMGMT get_default_dh_keymgmt(void)
+{
+	return s_keymgmt;
+}
+
+void set_default_dh_keymgmt(void)
+{
+	UADK_PKEY_KEYMGMT *keymgmt;
+
+	keymgmt = (UADK_PKEY_KEYMGMT *)EVP_KEYMGMT_fetch(NULL, "DH", "provider=default");
+	if (keymgmt) {
+		s_keymgmt = *keymgmt;
+		EVP_KEYMGMT_free((EVP_KEYMGMT *)keymgmt);
+	} else {
+		UADK_INFO("failed to EVP_KEYMGMT_fetch dh default provider\n");
+	}
+}
+
 static UADK_PKEY_KEYEXCH get_default_dh_keyexch(void)
 {
-	static UADK_PKEY_KEYEXCH s_keyexch;
-	static int initialized;
-
-	pthread_mutex_lock(&dh_default_mutex);
-	if (!initialized) {
-		UADK_PKEY_KEYEXCH *keyexch =
-			(UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "dh", "provider=default");
-		if (keyexch) {
-			s_keyexch = *keyexch;
-			EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
-			initialized = 1;
-		} else {
-			UADK_ERR("failed to EVP_KEYEXCH_fetch default dh provider\n");
-		}
-	}
-	pthread_mutex_unlock(&dh_default_mutex);
-
 	return s_keyexch;
+}
+
+void set_default_dh_keyexch(void)
+{
+	UADK_PKEY_KEYEXCH *keyexch;
+
+	keyexch = (UADK_PKEY_KEYEXCH *)EVP_KEYEXCH_fetch(NULL, "DH", "provider=default");
+	if (keyexch) {
+		s_keyexch = *keyexch;
+		EVP_KEYEXCH_free((EVP_KEYEXCH *)keyexch);
+	} else {
+		UADK_INFO("failed to EVP_KEYEXCH_fetch dh default provider\n");
+	}
 }
 
 struct dh_st {
@@ -641,18 +658,25 @@ static int uadk_prov_dh_init(void)
 	char alg_name[] = "dh";
 	int ret;
 
-	pthread_atfork(NULL, NULL, uadk_prov_dh_mutex_infork);
-	pthread_mutex_lock(&dh_mutex);
 	if (g_dh_prov.pid != getpid()) {
+		pthread_atfork(NULL, NULL, uadk_prov_dh_mutex_infork);
+		pthread_mutex_lock(&dh_mutex);
+		if (g_dh_prov.pid == getpid()) {
+			pthread_mutex_unlock(&dh_mutex);
+			return UADK_P_INIT_SUCCESS;
+		}
+
 		ret = wd_dh_init2(alg_name, SCHED_POLICY_RR, TASK_HW);
 		if (unlikely(ret)) {
 			pthread_mutex_unlock(&dh_mutex);
 			return ret;
 		}
-		g_dh_prov.pid = getpid();
+
 		async_register_poll_fn(ASYNC_TASK_DH, uadk_prov_dh_poll);
+		mb();
+		g_dh_prov.pid = getpid();
+		pthread_mutex_unlock(&dh_mutex);
 	}
-	pthread_mutex_unlock(&dh_mutex);
 
 	return UADK_P_INIT_SUCCESS;
 }

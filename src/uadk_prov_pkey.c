@@ -815,18 +815,24 @@ int uadk_prov_ecc_init(const char *alg_name)
 {
 	int ret;
 
-	pthread_atfork(NULL, NULL, uadk_prov_ecc_mutex_infork);
-	pthread_mutex_lock(&ecc_mutex);
 	if (g_ecc_prov.pid != getpid()) {
+		pthread_atfork(NULL, NULL, uadk_prov_ecc_mutex_infork);
+		pthread_mutex_lock(&ecc_mutex);
+		if (g_ecc_prov.pid == getpid()) {
+			pthread_mutex_unlock(&ecc_mutex);
+			return UADK_P_SUCCESS;
+		}
+
 		ret = wd_ecc_init2((char *)alg_name, SCHED_POLICY_RR, TASK_HW);
 		if (unlikely(ret)) {
 			pthread_mutex_unlock(&ecc_mutex);
 			return UADK_P_FAIL;
 		}
-		g_ecc_prov.pid = getpid();
 		async_register_poll_fn(ASYNC_TASK_ECC, uadk_prov_ecc_poll);
+		mb();
+		g_ecc_prov.pid = getpid();
+		pthread_mutex_unlock(&ecc_mutex);
 	}
-	pthread_mutex_unlock(&ecc_mutex);
 
 	return UADK_P_SUCCESS;
 }
