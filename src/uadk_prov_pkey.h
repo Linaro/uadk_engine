@@ -121,6 +121,8 @@ struct ec_gen_ctx {
 	int selection;
 	int ecdh_mode;
 	EC_GROUP *gen_group;
+	unsigned char *dhkem_ikm;
+	size_t dhkem_ikmlen;
 	BIGNUM *priv_key;
 };
 
@@ -129,12 +131,17 @@ typedef struct {
 	int id;
 
 	int name_id;
+#if OPENSSL_VERSION_NUMBER >= 0x30300000L
+	/* NID for the legacy alg if there is one */
+	int legacy_alg;
+# endif
 	char *type_name;
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
+#if OPENSSL_VERSION_NUMBER < 0x30200000L
 	void *lock;
-
+# endif
 	/* Constructor(s), destructor, information */
 	OSSL_FUNC_keymgmt_new_fn *new_fun;
 	OSSL_FUNC_keymgmt_free_fn *free;
@@ -146,6 +153,10 @@ typedef struct {
 	/* Generation, a complex constructor */
 	OSSL_FUNC_keymgmt_gen_init_fn *gen_init;
 	OSSL_FUNC_keymgmt_gen_set_template_fn *gen_set_template;
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	OSSL_FUNC_keymgmt_gen_get_params_fn *gen_get_params;
+	OSSL_FUNC_keymgmt_gen_gettable_params_fn *gen_gettable_params;
+# endif
 	OSSL_FUNC_keymgmt_gen_set_params_fn *gen_set_params;
 	OSSL_FUNC_keymgmt_gen_settable_params_fn *gen_settable_params;
 	OSSL_FUNC_keymgmt_gen_fn *gen;
@@ -161,8 +172,14 @@ typedef struct {
 	/* Import and export routines */
 	OSSL_FUNC_keymgmt_import_fn *import;
 	OSSL_FUNC_keymgmt_import_types_fn *import_types;
+#if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
+# endif
 	OSSL_FUNC_keymgmt_export_fn *export_fun;
 	OSSL_FUNC_keymgmt_export_types_fn *export_types;
+#if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
+# endif
 	OSSL_FUNC_keymgmt_dup_fn *dup;
 } UADK_PKEY_KEYMGMT;
 
@@ -228,13 +245,24 @@ typedef struct {
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
+#if OPENSSL_VERSION_NUMBER < 0x30200000L
 	void *lock;
-
+#endif
 	OSSL_FUNC_signature_newctx_fn *newctx;
 	OSSL_FUNC_signature_sign_init_fn *sign_init;
 	OSSL_FUNC_signature_sign_fn *sign;
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	OSSL_FUNC_signature_sign_message_init_fn *sign_message_init;
+	OSSL_FUNC_signature_sign_message_update_fn *sign_message_update;
+	OSSL_FUNC_signature_sign_message_final_fn *sign_message_final;
+#endif
 	OSSL_FUNC_signature_verify_init_fn *verify_init;
 	OSSL_FUNC_signature_verify_fn *verify;
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	OSSL_FUNC_signature_verify_message_init_fn *verify_message_init;
+	OSSL_FUNC_signature_verify_message_update_fn *verify_message_update;
+	OSSL_FUNC_signature_verify_message_final_fn *verify_message_final;
+#endif
 	OSSL_FUNC_signature_verify_recover_init_fn *verify_recover_init;
 	OSSL_FUNC_signature_verify_recover_fn *verify_recover;
 	OSSL_FUNC_signature_digest_sign_init_fn *digest_sign_init;
@@ -330,8 +358,9 @@ typedef struct {
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
+#if OPENSSL_VERSION_NUMBER < 0x30200000L
 	void *lock;
-
+#endif
 	OSSL_FUNC_asym_cipher_newctx_fn *newctx;
 	OSSL_FUNC_asym_cipher_encrypt_init_fn *encrypt_init;
 	OSSL_FUNC_asym_cipher_encrypt_fn *encrypt;
@@ -384,7 +413,9 @@ typedef struct {
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
+#if OPENSSL_VERSION_NUMBER < 0x30200000L
 	void *lock;
+#endif
 
 	OSSL_FUNC_keyexch_newctx_fn *newctx;
 	OSSL_FUNC_keyexch_init_fn *init;

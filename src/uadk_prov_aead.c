@@ -115,6 +115,7 @@ static struct aead_info aead_info_table[] = {
 	{ NID_aes_256_gcm, WD_CIPHER_AES, WD_CIPHER_GCM }
 };
 
+# if OPENSSL_VERSION_NUMBER <= 0x30200000L
 static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
 {
 	EVP_CIPHER_CTX *out = EVP_CIPHER_CTX_new();
@@ -126,6 +127,7 @@ static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
 
 	return out;
 }
+# endif
 
 static int uadk_aead_poll(void *ctx)
 {

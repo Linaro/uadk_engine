@@ -53,7 +53,9 @@ struct ecdsa_ctx {
 
 	/* The Algorithm Identifier of the combined signature algorithm */
 	unsigned char aid_buf[MAX_ALGORITHM_ID_SIZE];
+#if OPENSSL_VERSION_NUMBER < 0x30400000L
 	unsigned char *aid;
+#endif
 	size_t aid_len;
 	size_t mdsize;
 	int operation;
@@ -174,6 +176,7 @@ err:
 
 static void ecdsa_set_aid(struct ecdsa_ctx *ctx, int md_nid)
 {
+	unsigned char *aid = NULL;
 	WPACKET pkt;
 
 	ctx->aid_len = 0;
@@ -181,9 +184,11 @@ static void ecdsa_set_aid(struct ecdsa_ctx *ctx, int md_nid)
 	    ossl_DER_w_algorithmIdentifier_ECDSA_with_MD(&pkt, -1, ctx->ec, md_nid) &&
 	    WPACKET_finish(&pkt)) {
 		WPACKET_get_total_written(&pkt, &ctx->aid_len);
-		ctx->aid = WPACKET_get_curr(&pkt);
+		aid = WPACKET_get_curr(&pkt);
 	}
 	WPACKET_cleanup(&pkt);
+	if (aid && ctx->aid_len)
+		memmove(ctx->aid_buf, aid, ctx->aid_len);
 }
 
 /*
@@ -969,13 +974,17 @@ static int uadk_signature_ecdsa_digest_verify_final(void *vctx, const unsigned c
 
 static int ecdsa_get_ctx_aid(struct ecdsa_ctx *ctx, OSSL_PARAM *params)
 {
+	unsigned char *aid = NULL;
 	OSSL_PARAM *p;
+
+	if (ctx->aid_len)
+		aid = ctx->aid_buf;
 
 	p = OSSL_PARAM_locate(params, OSSL_SIGNATURE_PARAM_ALGORITHM_ID);
 	if (!p)
 		return UADK_P_SUCCESS;
 
-	return OSSL_PARAM_set_octet_string(p, ctx->aid, ctx->aid_len);
+	return OSSL_PARAM_set_octet_string(p, aid, ctx->aid_len);
 }
 
 static int ecdsa_get_ctx_digest_size(struct ecdsa_ctx *ctx, OSSL_PARAM *params)

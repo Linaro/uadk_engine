@@ -123,6 +123,7 @@ static struct digest_info digest_info_table[] = {
 	32, SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT},
 };
 
+# if OPENSSL_VERSION_NUMBER <= 0x30200000L
 static EVP_MD_CTX *EVP_MD_CTX_dup(const EVP_MD_CTX *in)
 {
 	EVP_MD_CTX *out = EVP_MD_CTX_new();
@@ -133,6 +134,7 @@ static EVP_MD_CTX *EVP_MD_CTX_dup(const EVP_MD_CTX *in)
 	}
 	return out;
 }
+# endif
 
 static int uadk_create_digest_soft_ctx(struct digest_priv_ctx *priv)
 {

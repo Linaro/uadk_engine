@@ -44,6 +44,9 @@ struct PROV_RSA_SIG_CTX {
 	 */
 	unsigned int flag_allow_md : 1;
 	unsigned int mgf1_md_set : 1;
+	unsigned int flag_allow_update : 1;
+	unsigned int flag_allow_final : 1;
+	unsigned int flag_allow_oneshot : 1;
 
 	/* main digest */
 	EVP_MD *md;
@@ -61,6 +64,10 @@ struct PROV_RSA_SIG_CTX {
 	int saltlen;
 	/* Minimum salt length or -1 if no PSS parameter restriction */
 	int min_saltlen;
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	unsigned char *sig;
+	size_t siglen;
+#endif
 
 	/* Temp buffer */
 	unsigned char *tbuf;
