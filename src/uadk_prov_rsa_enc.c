@@ -44,7 +44,10 @@ struct PROV_RSA_ASYM_CTX {
 	/* TLS padding */
 	unsigned int client_version;
 	unsigned int alt_version;
-
+#if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	/* PKCS#1 v1.5 decryption mode */
+	unsigned int implicit_rejection;
+# endif
 	unsigned int soft : 1;
 };
 

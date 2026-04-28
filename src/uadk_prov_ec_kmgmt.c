@@ -412,6 +412,7 @@ static void uadk_keymgmt_ec_gen_cleanup(void *genctx)
 	if (!gctx)
 		return;
 
+	OPENSSL_clear_free(gctx->dhkem_ikm, gctx->dhkem_ikmlen);
 	EC_GROUP_free(gctx->gen_group);
 	BN_free(gctx->p);
 	BN_free(gctx->a);
@@ -620,6 +621,13 @@ static int uadk_keymgmt_ec_gen_set_params(void *genctx, const OSSL_PARAM params[
 	if (!ret)
 		return ret;
 
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	ret = ec_set_octet_param(OSSL_PKEY_PARAM_DHKEM_IKM, &gctx->dhkem_ikm,
+				 &gctx->dhkem_ikmlen, params);
+	if (!ret)
+		return ret;
+# endif
+
 	return ec_set_octet_param(OSSL_PKEY_PARAM_EC_GENERATOR,
 				  &gctx->gen, &gctx->gen_len, params);
 }
@@ -640,8 +648,11 @@ static const OSSL_PARAM *uadk_keymgmt_ec_gen_settable_params(ossl_unused void *g
 		OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_EC_GENERATOR, NULL, 0),
 		OSSL_PARAM_BN(OSSL_PKEY_PARAM_EC_ORDER, NULL, 0),
 		OSSL_PARAM_BN(OSSL_PKEY_PARAM_EC_COFACTOR, NULL, 0),
-		OSSL_PARAM_BN(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0),
 		OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_EC_SEED, NULL, 0),
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+		OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_DHKEM_IKM, NULL, 0),
+# endif
+		OSSL_PARAM_BN(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0),
 		OSSL_PARAM_END
 	};
 

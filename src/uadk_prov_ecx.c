@@ -147,6 +147,10 @@ typedef struct {
 	char *propq;
 	ECX_KEY_TYPE type;
 	int selection;
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	unsigned char *dhkem_ikm;
+	size_t dhkem_ikmlen;
+# endif
 	size_t keylen;
 	/* uadk sesssion */
 	handle_t sess;

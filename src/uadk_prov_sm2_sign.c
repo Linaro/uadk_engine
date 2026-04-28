@@ -61,8 +61,10 @@ typedef struct {
 
 	/* The Algorithm Identifier of the combined signature algorithm */
 	unsigned char aid_buf[OSSL_MAX_ALGORITHM_ID_SIZE];
+#if OPENSSL_VERSION_NUMBER < 0x30400000L
 	unsigned char *aid;
-	size_t  aid_len;
+#endif
+	size_t aid_len;
 
 	/* main digest */
 	EVP_MD *md;
@@ -755,6 +757,7 @@ static int sm2_digest_signverify_init(void *vpsm2ctx, const char *mdname,
 				      void *ec, const OSSL_PARAM params[])
 {
 	PROV_SM2_SIGN_CTX *psm2ctx = (PROV_SM2_SIGN_CTX *)vpsm2ctx;
+	unsigned char *aid = NULL;
 	int md_nid;
 	WPACKET pkt;
 
@@ -784,9 +787,11 @@ static int sm2_digest_signverify_init(void *vpsm2ctx, const char *mdname,
 	    ossl_DER_w_algorithmIdentifier_SM2_with_MD(&pkt, -1, psm2ctx->key, md_nid) &&
 	    WPACKET_finish(&pkt)) {
 		WPACKET_get_total_written(&pkt, &psm2ctx->aid_len);
-		psm2ctx->aid = WPACKET_get_curr(&pkt);
+		aid = WPACKET_get_curr(&pkt);
 	}
 	WPACKET_cleanup(&pkt);
+	if (aid && psm2ctx->aid_len)
+		memmove(psm2ctx->aid_buf, aid, psm2ctx->aid_len);
 
 	if (!EVP_DigestInit_ex2(psm2ctx->mdctx, psm2ctx->md, params)) {
 		UADK_ERR("failed to do digest init\n");
@@ -1240,6 +1245,7 @@ static const OSSL_PARAM *uadk_signature_sm2_gettable_ctx_params(ossl_unused void
 static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
 {
 	PROV_SM2_SIGN_CTX *psm2ctx = (PROV_SM2_SIGN_CTX *)vpsm2ctx;
+	unsigned char *aid = NULL;
 	OSSL_PARAM *p;
 
 	if (!psm2ctx) {
@@ -1247,8 +1253,10 @@ static int uadk_signature_sm2_get_ctx_params(void *vpsm2ctx, OSSL_PARAM *params)
 		return UADK_P_FAIL;
 	}
 
+	if (psm2ctx->aid_len)
+		aid = psm2ctx->aid_buf;
 	p = OSSL_PARAM_locate(params, OSSL_SIGNATURE_PARAM_ALGORITHM_ID);
-	if (p && !OSSL_PARAM_set_octet_string(p, psm2ctx->aid, psm2ctx->aid_len)) {
+	if (p != NULL && !OSSL_PARAM_set_octet_string(p, aid, psm2ctx->aid_len)) {
 		UADK_ERR("failed to locate algorithm id\n");
 		return UADK_P_FAIL;
 	}
