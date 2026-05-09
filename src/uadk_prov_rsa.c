@@ -401,12 +401,10 @@ int uadk_rsa_size(const RSA *r)
 	return BN_num_bytes(r->n);
 }
 
-int rsa_check_bit_useful(const int bits, int flen)
+int rsa_check_bit_useful(const int bits)
 {
 	if (bits < RSA_MIN_MODULUS_BITS)
 		return UADK_P_FAIL;
-	if (flen > (bits >> BIT_BYTES_SHIFT))
-		return UADK_DO_SOFT;
 
 	switch (bits) {
 	case RSA1024BITS:
@@ -423,6 +421,46 @@ int rsa_check_bit_useful(const int bits, int flen)
 	}
 }
 
+int is_valid_rsa_pub_key(const RSA *rsa)
+{
+	const BIGNUM *n;
+	const BIGNUM *e;
+
+	RSA_get0_key(rsa, &n, &e, NULL);
+	if (BN_ucmp(n, e) <= 0) {
+		UADK_ERR("invalid: e is a bad value\n");
+		return UADK_P_FAIL;
+	}
+
+	return UADK_P_SUCCESS;
+}
+
+int is_valid_rsa_input(const unsigned char *in, int inlen, const RSA *rsa)
+{
+	int ret = UADK_P_SUCCESS;
+	const BIGNUM *n;
+	BIGNUM *f;
+	int n_len;
+
+	RSA_get0_key(rsa, &n, NULL, NULL);
+	n_len = BN_num_bytes(n);
+	if (inlen < n_len)
+		return UADK_P_SUCCESS;
+	if (inlen > n_len) {
+		UADK_ERR("data too large for rsa modulus\n");
+		return UADK_P_FAIL;
+	}
+
+	f = BN_bin2bn(in, inlen, NULL);
+	if (f == NULL || BN_ucmp(f, n) >= 0) {
+		UADK_ERR("data too large for rsa modulus\n");
+		ret = UADK_P_FAIL;
+	}
+
+	BN_free(f);
+	return ret;
+}
+
 int check_rsa_input_para(const int flen, const unsigned char *from,
 				unsigned char *to, RSA *rsa)
 {
@@ -431,7 +469,7 @@ int check_rsa_input_para(const int flen, const unsigned char *from,
 		return UADK_P_FAIL;
 	}
 
-	return rsa_check_bit_useful(uadk_rsa_bits(rsa), flen);
+	return rsa_check_bit_useful(uadk_rsa_bits(rsa));
 }
 
 int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,

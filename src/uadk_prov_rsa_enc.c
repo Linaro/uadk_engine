@@ -220,6 +220,10 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 	if (ret != UADK_P_SUCCESS)
 		return ret;
 
+	ret = is_valid_rsa_pub_key(rsa);
+	if (!ret)
+		return UADK_P_FAIL;
+
 	ret = rsa_pkey_param_alloc(&pub_enc, NULL);
 	if (ret == -ENOMEM)
 		return UADK_P_FAIL;
@@ -239,16 +243,16 @@ static int uadk_prov_rsa_public_encrypt(int flen, const unsigned char *from,
 	}
 
 	ret = add_rsa_pubenc_padding(flen, from, from_buf, num_bytes, padding);
-	if (!ret) {
-		ret = UADK_P_FAIL;
+	if (!ret)
 		goto free_buf;
-	}
+
+	ret = is_valid_rsa_input(from_buf, num_bytes, rsa);
+	if (!ret)
+		goto free_buf;
 
 	ret = rsa_fill_pubkey(pub_enc, rsa_sess, from_buf, to);
-	if (!ret) {
-		ret = UADK_P_FAIL;
+	if (!ret)
 		goto free_buf;
-	}
 
 	ret = rsa_do_crypto(rsa_sess);
 	if (!ret || rsa_sess->req.status) {
@@ -278,6 +282,10 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 	ret = check_rsa_input_para(flen, from, to, rsa);
 	if (ret != UADK_P_SUCCESS)
 		return ret;
+
+	ret = is_valid_rsa_input(from, flen, rsa);
+	if (!ret)
+		return UADK_P_FAIL;
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
@@ -350,9 +358,6 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 	case RSA_FLAG_TYPE_RSA:
 		priv->pad_mode = RSA_PKCS1_PADDING;
 		break;
-	case RSA_FLAG_TYPE_RSASSAPSS:
-		priv->pad_mode = RSA_PKCS1_PSS_PADDING;
-		break;
 	default:
 		UADK_ERR("rsa asym operation not supported this keytype!\n");
 		return UADK_P_FAIL;
@@ -361,7 +366,7 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 	if (uadk_prov_rsa_init())
 		priv->soft = 1;
 
-	return UADK_P_SUCCESS;
+	return uadk_asym_cipher_rsa_set_ctx_params(vprsactx, params);
 }
 
 static void *uadk_asym_cipher_rsa_newctx(void *provctx)

@@ -732,7 +732,7 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int is_crt = 1;
 	int ret;
 
-	ret = rsa_check_bit_useful(bits, 0);
+	ret = rsa_check_bit_useful(bits);
 	if (ret != UADK_P_SUCCESS)
 		return ret;
 
