@@ -490,11 +490,6 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	int idx, ret;
 	int cnt = 0;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		UADK_ERR("async cipher init failed.\n");
-		return UADK_P_FAIL;
-	}
-
 	cb_param.op = op;
 	cb_param.priv = &priv->req;
 	priv->req.cb = (void *)async_cb;
@@ -768,19 +763,13 @@ static int uadk_prov_hw_cipher(struct cipher_priv_ctx *priv, unsigned char *out,
 		return UADK_P_FAIL;
 	}
 
-	if (op.job == NULL) {
-		/* Synchronous, only the synchronous mode supports soft computing */
+	if (op.job == NULL)
 		ret = uadk_do_cipher_sync(priv);
-		if (!ret) {
-			async_clear_async_event_notification();
-			return UADK_P_FAIL;
-		}
-	} else {
+	else
 		ret = uadk_do_cipher_async(priv, &op);
-		if (!ret) {
-			async_clear_async_event_notification();
-			return UADK_P_FAIL;
-		}
+	if (!ret) {
+		async_clear_async_event_notification();
+		return UADK_P_FAIL;
 	}
 
 	return UADK_P_SUCCESS;

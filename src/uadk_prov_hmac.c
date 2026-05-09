@@ -578,11 +578,6 @@ static int uadk_do_hmac_async(struct hmac_priv_ctx *priv, struct async_op *op)
 	int idx, ret;
 	int cnt = 0;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		UADK_ERR("soft switching is not supported in asynchronous mode.\n");
-		return UADK_P_FAIL;
-	}
-
 	cb_param.op = op;
 	cb_param.priv = &priv->req;
 	priv->req.cb = (void *)uadk_hmac_async_cb;
@@ -750,12 +745,15 @@ static int uadk_hmac_final(struct hmac_priv_ctx *priv, unsigned char *digest)
 		return UADK_P_FAIL;
 	}
 
-	/* It dose not need to be initialized again if the software calculation is applied. */
-	if (priv->switch_flag != UADK_DO_SOFT) {
-		ret = uadk_hmac_ctx_init(priv);
-		if (!ret)
-			return UADK_P_FAIL;
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		ret = uadk_hmac_soft_final(priv, digest);
+		hmac_soft_cleanup(priv);
+		return ret;
 	}
+
+	ret = uadk_hmac_ctx_init(priv);
+	if (!ret)
+		return UADK_P_FAIL;
 
 	priv->req.in = priv->data;
 	priv->req.out = priv->state == SEC_DIGEST_INIT ? digest : priv->out;
@@ -770,23 +768,13 @@ static int uadk_hmac_final(struct hmac_priv_ctx *priv, unsigned char *digest)
 		return UADK_P_FAIL;
 	}
 
-	if (!op.job) {
-		/* Synchronous, only the synchronous mode supports soft computing */
-		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = uadk_hmac_soft_final(priv, digest);
-			hmac_soft_cleanup(priv);
-			goto clear;
-		}
-
+	if (!op.job)
 		ret = uadk_do_hmac_sync(priv);
-		if (!ret)
-			goto do_hmac_err;
-	} else {
+	else
 		ret = uadk_do_hmac_async(priv, &op);
-		if (!ret)
-			goto clear;
-	}
 
+	if (!ret)
+		goto do_hmac_err;
 	if (priv->state != SEC_DIGEST_INIT)
 		memcpy(digest, priv->req.out, priv->req.out_bytes);
 
@@ -801,8 +789,8 @@ do_hmac_err:
 		ret = UADK_P_FAIL;
 		UADK_ERR("do sec digest final failed.\n");
 	}
-clear:
 	async_clear_async_event_notification();
+
 	return ret;
 }
 

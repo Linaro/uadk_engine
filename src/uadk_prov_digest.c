@@ -606,11 +606,6 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	int idx, ret;
 	int cnt = 0;
 
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		UADK_ERR("digest soft switching is not supported in asynchronous mode.\n");
-		return UADK_DIGEST_FAIL;
-	}
-
 	cb_param.op = op;
 	cb_param.priv = &priv->req;
 	priv->req.cb = (void *)uadk_async_cb;
@@ -660,11 +655,15 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 		return UADK_DIGEST_FAIL;
 	}
 
-	if (unlikely(priv->switch_flag != UADK_DO_SOFT)) {
-		ret = uadk_digest_ctx_init(priv);
-		if (ret != UADK_DIGEST_SUCCESS)
-			return UADK_DIGEST_FAIL;
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		ret = uadk_digest_soft_final(priv, digest);
+		digest_soft_cleanup(priv);
+		return ret;
 	}
+
+	ret = uadk_digest_ctx_init(priv);
+	if (ret != UADK_DIGEST_SUCCESS)
+		return UADK_DIGEST_FAIL;
 
 	priv->req.in = priv->data;
 	priv->req.out = priv->out;
@@ -679,22 +678,13 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 		return UADK_DIGEST_FAIL;
 	}
 
-	if (op.job == NULL) {
-		/* Synchronous, only the synchronous mode supports soft computing */
-		if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-			ret = uadk_digest_soft_final(priv, digest);
-			digest_soft_cleanup(priv);
-			goto clear;
-		}
-
+	if (op.job == NULL)
 		ret = uadk_do_digest_sync(priv);
-		if (!ret)
-			goto sync_err;
-	} else {
+	else
 		ret = uadk_do_digest_async(priv, &op);
-		if (!ret)
-			goto clear;
-	}
+
+	if (!ret)
+		goto sync_err;
 	memcpy(digest, priv->req.out, priv->req.out_bytes);
 
 	return UADK_DIGEST_SUCCESS;
@@ -706,8 +696,8 @@ sync_err:
 		ret = UADK_DIGEST_FAIL;
 		UADK_ERR("do sec digest final failed.\n");
 	}
-clear:
 	async_clear_async_event_notification();
+
 	return ret;
 }
 
