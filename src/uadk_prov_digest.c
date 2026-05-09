@@ -625,8 +625,11 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 
 	do {
 		ret = wd_do_digest_async(priv->sess, &priv->req);
-		if (ret < 0 && ret != -EBUSY) {
-			UADK_ERR("do sec digest async failed.\n");
+		if (likely(!ret))
+			break;
+
+		if (ret != -EBUSY) {
+			UADK_ERR("do digest async failed.\n");
 			goto free_poll_task;
 		}
 
@@ -634,7 +637,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 			UADK_ERR("do digest async operation timeout.\n");
 			goto free_poll_task;
 		}
-	} while (ret == -EBUSY);
+	} while (true);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
 	if (!ret || priv->req.state)

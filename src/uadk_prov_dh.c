@@ -925,7 +925,10 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 		cnt = 0;
 		do {
 			ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
-			if (ret < 0 && ret != -EBUSY) {
+			if (likely(!ret))
+				break;
+
+			if (ret != -EBUSY) {
 				UADK_ERR("failed to do dh async\n");
 				goto free_poll_task;
 			}
@@ -934,7 +937,7 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 				UADK_ERR("do dh async operation timeout\n");
 				goto free_poll_task;
 			}
-		} while (ret == -EBUSY);
+		} while (true);
 
 		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
 		if (!ret)

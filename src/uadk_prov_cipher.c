@@ -488,6 +488,7 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 {
 	struct uadk_e_cb_info cb_param;
 	int idx, ret;
+	int cnt = 0;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
 		UADK_ERR("async cipher init failed.\n");
@@ -506,18 +507,29 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	op->idx = idx;
 	do {
 		ret = wd_do_cipher_async(priv->sess, &priv->req);
-		if (ret < 0 && ret != -EBUSY) {
-			UADK_ERR("do sec cipher failed, switch to soft cipher.\n");
-			async_free_poll_task(op->idx, 0);
-			return UADK_P_FAIL;
+		if (likely(!ret))
+			break;
+
+		if (ret != -EBUSY) {
+			UADK_ERR("failed to do cipher async\n");
+			goto free_poll_task;
 		}
-	} while (ret == -EBUSY);
+
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
+			UADK_ERR("do cipher async operation timeout\n");
+			goto free_poll_task;
+		}
+	} while (true);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
 	if (!ret || priv->req.state)
 		return UADK_P_FAIL;
 
 	return UADK_P_SUCCESS;
+
+free_poll_task:
+	async_free_poll_task(op->idx, 0);
+	return UADK_P_FAIL;
 }
 
 static void uadk_cipher_mutex_infork(void)

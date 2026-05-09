@@ -335,6 +335,7 @@ int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	struct uadk_e_cb_info cb_param;
 	struct async_op op;
 	int idx, ret;
+	int cnt = 0;
 
 	ret = async_setup_async_event_notification(&op);
 	if (!ret) {
@@ -361,11 +362,19 @@ int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 	op.idx = idx;
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &(rsa_sess->req));
-		if (ret < 0 && ret != -EBUSY) {
-			async_free_poll_task(op.idx, 0);
-			goto err;
+		if (likely(!ret))
+			break;
+
+		if (ret != -EBUSY) {
+			UADK_ERR("failed to do rsa async\n");
+			goto free_poll_task;
 		}
-	} while (ret == -EBUSY);
+
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
+			UADK_ERR("do rsa async operation timeout\n");
+			goto free_poll_task;
+		}
+	} while (true);
 
 	ret = async_pause_job(rsa_sess, &op, ASYNC_TASK_RSA);
 	if (!ret)
@@ -375,7 +384,8 @@ int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess)
 		return UADK_P_FAIL;
 
 	return UADK_P_SUCCESS;
-
+free_poll_task:
+	async_free_poll_task(op.idx, 0);
 err:
 	(void)async_clear_async_event_notification();
 	return UADK_P_FAIL;

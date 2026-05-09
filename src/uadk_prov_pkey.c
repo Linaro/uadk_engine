@@ -407,7 +407,10 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 	cnt = 0;
 	do {
 		ret = wd_do_ecc_async(sess, req);
-		if (ret < 0 && ret != -EBUSY) {
+		if (likely(!ret))
+			break;
+
+		if (ret != -EBUSY) {
 			UADK_ERR("failed to do ecc async\n");
 			goto free_poll_task;
 		}
@@ -416,7 +419,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 			UADK_ERR("do ecc async operation timeout\n");
 			goto free_poll_task;
 		}
-	} while (ret == -EBUSY);
+	} while (true);
 
 	ret = async_pause_job(usr, &op, ASYNC_TASK_ECC);
 	if (ret == 0)
