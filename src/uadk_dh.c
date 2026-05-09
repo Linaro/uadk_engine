@@ -755,12 +755,15 @@ static int dh_do_async(struct uadk_dh_sess *dh_sess, struct async_op *op)
 	do {
 		ret = wd_do_dh_async(dh_sess->sess, &dh_sess->req);
 		if (unlikely(ret < 0)) {
-			if (unlikely(ret == -WD_HW_EACCESS))
-				uadk_e_dh_set_status();
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+			if (unlikely(ret != -EBUSY)) {
+				fprintf(stderr, "do dh async operation failed.\n");
+				if (unlikely(ret == -WD_HW_EACCESS))
+					uadk_e_dh_set_status();
+			} else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT)) {
 				fprintf(stderr, "do dh async operation timeout.\n");
-			else
+			} else {
 				continue;
+			}
 
 			async_free_poll_task(op->idx, 0);
 			ret = UADK_E_FAIL;

@@ -342,12 +342,15 @@ static int uadk_ecc_do_async(handle_t sess, struct wd_ecc_req *req,
 	do {
 		ret = wd_do_ecc_async(sess, req);
 		if (unlikely(ret < 0)) {
-			if (unlikely(ret == -WD_HW_EACCESS))
-				uadk_e_ecc_set_status();
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+			if (unlikely(ret != -EBUSY)) {
+				fprintf(stderr, "do ecc async operation failed.\n");
+				if (unlikely(ret == -WD_HW_EACCESS))
+					uadk_e_ecc_set_status();
+			} else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT)) {
 				fprintf(stderr, "do ecc async operation timeout.\n");
-			else
+			} else {
 				continue;
+			}
 
 			async_free_poll_task(op->idx, 0);
 			ret = 0;

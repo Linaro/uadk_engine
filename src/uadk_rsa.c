@@ -1162,12 +1162,15 @@ static int rsa_do_async(struct uadk_rsa_sess *rsa_sess, struct async_op *op)
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &rsa_sess->req);
 		if (unlikely(ret < 0)) {
-			if (unlikely(ret == -WD_HW_EACCESS))
-				uadk_e_rsa_set_status();
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+			if (unlikely(ret != -EBUSY)) {
+				fprintf(stderr, "do rsa async operation failed.\n");
+				if (unlikely(ret == -WD_HW_EACCESS))
+					uadk_e_rsa_set_status();
+			} else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT)) {
 				fprintf(stderr, "do rsa async operation timeout.\n");
-			else
+			} else {
 				continue;
+			}
 
 			async_free_poll_task(op->idx, 0);
 			ret = UADK_E_FAIL;
