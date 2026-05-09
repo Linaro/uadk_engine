@@ -1015,6 +1015,15 @@ static int ecdh_keygen_init_iot(handle_t sess, struct wd_ecc_req *req,
 	return 1;
 }
 
+static size_t ecdh_get_ec_size(const EC_GROUP *group)
+{
+	size_t degree;
+
+	degree = EC_GROUP_get_degree(group);
+
+	return BITS_TO_BYTES(degree);
+}
+
 static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 				 const EC_POINT *pubkey, const EC_KEY *ecdh)
 {
@@ -1025,6 +1034,7 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_ecc_in *ecdh_in;
 	BIGNUM *pkey_x, *pkey_y;
 	const EC_GROUP *group;
+	size_t ec_size;
 	BN_CTX *ctx;
 	int ret = 0;
 
@@ -1045,11 +1055,12 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	if (!group)
 		goto free_ctx;
 
+	ec_size = ecdh_get_ec_size(group);
 	uadk_get_affine_coordinates(group, pubkey, pkey_x, pkey_y, ctx);
 	in_pkey.x.data = buf_x;
 	in_pkey.y.data = buf_y;
-	in_pkey.x.dsize = BN_bn2bin(pkey_x, (unsigned char *)in_pkey.x.data);
-	in_pkey.y.dsize = BN_bn2bin(pkey_y, (unsigned char *)in_pkey.y.data);
+	in_pkey.x.dsize = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
+	in_pkey.y.dsize = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
 
 	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);

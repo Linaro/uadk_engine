@@ -790,6 +790,14 @@ static const char *uadk_keymgmt_rsa_query_operation_name(int operation_id)
 	return get_default_rsa_keymgmt().query_operation_name(operation_id);
 }
 
+static const char *uadk_keymgmt_rsapss_query_operation_name(int operation_id)
+{
+	if (!get_default_rsapss_keymgmt().query_operation_name)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().query_operation_name(operation_id);
+}
+
 static void *uadk_keymgmt_rsa_new(void *provctx)
 {
 	if (!get_default_rsa_keymgmt().new_fun)
@@ -1071,6 +1079,6 @@ const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[] = {
 	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_rsa_export_types },
 	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_rsa_dup },
 	{ OSSL_FUNC_KEYMGMT_QUERY_OPERATION_NAME,
-		(void (*)(void))uadk_keymgmt_rsa_query_operation_name },
+		(void (*)(void))uadk_keymgmt_rsapss_query_operation_name },
 	{ 0, NULL }
 };
