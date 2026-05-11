@@ -151,11 +151,8 @@ enum {
 
 static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb);
 
-static int rsa_check_bit_useful(const int bits, int flen)
+static int rsa_check_bit_useful(const int bits)
 {
-	if (flen > bits)
-		return SOFT;
-
 	if (bits < RSA_MIN_MODULUS_BITS)
 		return UADK_E_FAIL;
 
@@ -172,6 +169,46 @@ static int rsa_check_bit_useful(const int bits, int flen)
 	default:
 		return SOFT;
 	}
+}
+
+static int is_valid_rsa_pub_key(const RSA *rsa)
+{
+	const BIGNUM *n;
+	const BIGNUM *e;
+
+	RSA_get0_key(rsa, &n, &e, NULL);
+	if (BN_ucmp(n, e) <= 0) {
+		fprintf(stderr, "invalid: e is a bad value\n");
+		return UADK_E_FAIL;
+	}
+
+	return UADK_E_SUCCESS;
+}
+
+static int is_valid_rsa_input(const unsigned char *in, int inlen, const RSA *rsa)
+{
+	int ret = UADK_E_SUCCESS;
+	const BIGNUM *n;
+	BIGNUM *f;
+	int n_len;
+
+	RSA_get0_key(rsa, &n, NULL, NULL);
+	n_len = BN_num_bytes(n);
+	if (inlen < n_len)
+		return UADK_E_SUCCESS;
+	if (inlen > n_len) {
+		fprintf(stderr, "data too large for rsa modulus\n");
+		return UADK_E_FAIL;
+	}
+
+	f = BN_bin2bn(in, inlen, NULL);
+	if (f == NULL || BN_ucmp(f, n) >= 0) {
+		fprintf(stderr, "data too large for rsa modulus\n");
+		ret = UADK_E_FAIL;
+	}
+
+	BN_free(f);
+	return ret;
 }
 
 static int rsa_prime_mul_res(int num, struct rsa_prime_param *param,
@@ -629,7 +666,7 @@ static int check_rsa_input_para(const int flen, const unsigned char *from,
 		return UADK_E_FAIL;
 	}
 
-	return rsa_check_bit_useful(RSA_bits(rsa), flen);
+	return rsa_check_bit_useful(RSA_bits(rsa));
 }
 
 static BN_ULONG *bn_get_words(const BIGNUM *a)
@@ -1162,12 +1199,15 @@ static int rsa_do_async(struct uadk_rsa_sess *rsa_sess, struct async_op *op)
 	do {
 		ret = wd_do_rsa_async(rsa_sess->sess, &rsa_sess->req);
 		if (unlikely(ret < 0)) {
-			if (unlikely(ret == -WD_HW_EACCESS))
-				uadk_e_rsa_set_status();
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+			if (unlikely(ret != -EBUSY)) {
+				fprintf(stderr, "do rsa async operation failed.\n");
+				if (unlikely(ret == -WD_HW_EACCESS))
+					uadk_e_rsa_set_status();
+			} else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT)) {
 				fprintf(stderr, "do rsa async operation timeout.\n");
-			else
+			} else {
 				continue;
+			}
 
 			async_free_poll_task(op->idx, 0);
 			ret = UADK_E_FAIL;
@@ -1459,7 +1499,7 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int is_crt = 1;
 	int ret;
 
-	ret = rsa_check_bit_useful(bits, 0);
+	ret = rsa_check_bit_useful(bits);
 	if (!ret)
 		return UADK_E_FAIL;
 	else if (ret == SOFT)
@@ -1535,6 +1575,10 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 	else if (ret == SOFT)
 		goto soft_log;
 
+	ret = is_valid_rsa_pub_key(rsa);
+	if (!ret)
+		return UADK_E_FAIL;
+
 	ret = uadk_e_rsa_init();
 	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
@@ -1567,6 +1611,10 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 		ret = UADK_DO_SOFT;
 		goto free_buf;
 	}
+
+	ret = is_valid_rsa_input(from_buf, num_bytes, rsa);
+	if (!ret)
+		goto free_buf;
 
 	ret = rsa_fill_pubkey(pub_enc, rsa_sess, from_buf, to);
 	if (!ret) {
@@ -1622,6 +1670,10 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 		return UADK_E_FAIL;
 	else if (ret == SOFT)
 		goto soft_log;
+
+	ret = is_valid_rsa_input(from, flen, rsa);
+	if (!ret)
+		return UADK_E_FAIL;
 
 	ret = uadk_e_rsa_init();
 	if (ret != UADK_INIT_SUCCESS)
@@ -1738,6 +1790,10 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
+	ret = is_valid_rsa_input(from_buf, num_bytes, rsa);
+	if (!ret)
+		goto free_buf;
+
 	ret = rsa_fill_prikey(rsa, rsa_sess, pri, from_buf, to);
 	if (!ret) {
 		ret = UADK_DO_SOFT;
@@ -1805,6 +1861,14 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	else if (ret == SOFT)
 		goto soft_log;
 
+	ret = is_valid_rsa_pub_key(rsa);
+	if (!ret)
+		return UADK_E_FAIL;
+
+	ret = is_valid_rsa_input(from, flen, rsa);
+	if (!ret)
+		return UADK_E_FAIL;
+
 	ret = uadk_e_rsa_init();
 	if (ret != UADK_INIT_SUCCESS)
 		goto exe_soft;
@@ -1825,11 +1889,6 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	if (ret <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
-	}
-
-	if (flen > num_bytes) {
-		ret = UADK_DO_SOFT;
-		goto free_buf;
 	}
 
 	ret = rsa_fill_pubkey(pub, rsa_sess, from_buf, to);

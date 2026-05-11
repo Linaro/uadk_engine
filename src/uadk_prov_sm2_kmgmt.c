@@ -471,7 +471,7 @@ static void *uadk_keymgmt_sm2_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	}
 
 	/* If there is no need to generate the private and public keys, return directly. */
-	if (!gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR)
+	if (!(gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR))
 		return ec;
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_SM2);

@@ -574,13 +574,8 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 {
 	int ret;
 
-	if (inlen > MAX_AAD_LEN) {
-		if (priv->mode != ASYNC_MODE)
-			goto soft;
-
-		UADK_ERR("the aad len is out of range, aad len = %zu.\n", inlen);
-		return UADK_AEAD_FAIL;
-	}
+	if (inlen > MAX_AAD_LEN || !inlen)
+		goto soft;
 
 	priv->req.assoc_bytes = inlen;
 
@@ -589,9 +584,6 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 		memcpy(priv->data, in, inlen);
 		return UADK_AEAD_SUCCESS;
 	}
-
-	if (!priv->req.assoc_bytes)
-		goto soft;
 
 	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
 	if (unlikely(ret < 0))
@@ -858,9 +850,6 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *
 
 	ret = uadk_prov_aead_dev_init(priv);
 	if (unlikely(ret < 0)) {
-		if (ASYNC_get_current_job())
-			return UADK_OSSL_FAIL;
-
 		UADK_ERR("aead switch to soft init.!\n");
 		return uadk_prov_aead_soft_init(priv, key, iv, params);
 	}

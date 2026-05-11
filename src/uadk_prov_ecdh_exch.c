@@ -216,6 +216,7 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 	struct wd_ecc_in *ecdh_in;
 	BIGNUM *pkey_x, *pkey_y;
 	int ret = UADK_P_FAIL;
+	size_t ec_size;
 	BN_CTX *ctx;
 
 	ctx = BN_CTX_new();
@@ -231,11 +232,12 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 	if (!pkey_y)
 		goto free_ctx;
 
+	ec_size = ecdh_get_ec_size(sess_ctx->group);
 	uadk_prov_get_affine_coordinates(sess_ctx->group, sess_ctx->pub_key, pkey_x, pkey_y, ctx);
 	in_pkey.x.data = buf_x;
 	in_pkey.y.data = buf_y;
-	in_pkey.x.dsize = BN_bn2bin(pkey_x, (unsigned char *)in_pkey.x.data);
-	in_pkey.y.dsize = BN_bn2bin(pkey_y, (unsigned char *)in_pkey.y.data);
+	in_pkey.x.dsize = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
+	in_pkey.y.dsize = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
 
 	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);

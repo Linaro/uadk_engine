@@ -293,6 +293,10 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
+	ret = is_valid_rsa_input(from_buf, num_bytes, rsa);
+	if (!ret)
+		return UADK_P_FAIL;
+
 	ret = rsa_fill_prikey(rsa, rsa_sess, prik, from_buf, to);
 	if (!ret) {
 		ret = UADK_P_FAIL;
@@ -353,6 +357,14 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 	if (ret != UADK_P_SUCCESS)
 		return ret;
 
+	ret = is_valid_rsa_pub_key(rsa);
+	if (!ret)
+		return UADK_P_FAIL;
+
+	ret = is_valid_rsa_input(from, flen, rsa);
+	if (!ret)
+		return UADK_P_FAIL;
+
 	ret = rsa_pkey_param_alloc(&pub, NULL);
 	if (ret == -ENOMEM)
 		return UADK_P_FAIL;
@@ -366,7 +378,7 @@ static int uadk_prov_rsa_public_verify(int flen, const unsigned char *from,
 	}
 
 	ret = rsa_create_pub_bn_ctx(rsa, pub, &from_buf, &num_bytes);
-	if (ret <= 0 || flen > num_bytes) {
+	if (ret <= 0) {
 		ret = UADK_P_FAIL;
 		goto free_sess;
 	}

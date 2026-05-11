@@ -732,7 +732,7 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	int is_crt = 1;
 	int ret;
 
-	ret = rsa_check_bit_useful(bits, 0);
+	ret = rsa_check_bit_useful(bits);
 	if (ret != UADK_P_SUCCESS)
 		return ret;
 
@@ -788,6 +788,14 @@ static const char *uadk_keymgmt_rsa_query_operation_name(int operation_id)
 		return NULL;
 
 	return get_default_rsa_keymgmt().query_operation_name(operation_id);
+}
+
+static const char *uadk_keymgmt_rsapss_query_operation_name(int operation_id)
+{
+	if (!get_default_rsapss_keymgmt().query_operation_name)
+		return NULL;
+
+	return get_default_rsapss_keymgmt().query_operation_name(operation_id);
 }
 
 static void *uadk_keymgmt_rsa_new(void *provctx)
@@ -1071,6 +1079,6 @@ const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[] = {
 	{ OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))uadk_keymgmt_rsa_export_types },
 	{ OSSL_FUNC_KEYMGMT_DUP, (void (*)(void))uadk_keymgmt_rsa_dup },
 	{ OSSL_FUNC_KEYMGMT_QUERY_OPERATION_NAME,
-		(void (*)(void))uadk_keymgmt_rsa_query_operation_name },
+		(void (*)(void))uadk_keymgmt_rsapss_query_operation_name },
 	{ 0, NULL }
 };

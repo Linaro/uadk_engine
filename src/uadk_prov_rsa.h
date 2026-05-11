@@ -162,7 +162,9 @@ struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 int rsa_do_crypto(struct uadk_rsa_sess *rsa_sess);
 int uadk_rsa_bits(const RSA *r);
 int uadk_rsa_size(const RSA *r);
-int rsa_check_bit_useful(const int bits, int flen);
+int rsa_check_bit_useful(const int bits);
+int is_valid_rsa_input(const unsigned char *in, int inlen, const RSA *rsa);
+int is_valid_rsa_pub_key(const RSA *rsa);
 int check_rsa_input_para(const int flen, const unsigned char *from,
 				unsigned char *to, RSA *rsa);
 int rsa_pkey_param_alloc(struct rsa_pubkey_param **pub,
