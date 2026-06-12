@@ -434,21 +434,6 @@ static int do_aes_gcm_prepare(struct aead_priv_ctx *priv)
 	return UADK_AEAD_SUCCESS;
 }
 
-static void uadk_do_aead_async_prepare(struct aead_priv_ctx *priv, unsigned char *output,
-				       const unsigned char *input, size_t inlen)
-{
-	priv->req.in_bytes = inlen;
-	/* AAD data will be input and output together with plaintext or ciphertext. */
-	if (priv->req.assoc_bytes) {
-		memcpy(priv->data + priv->req.assoc_bytes, input, inlen);
-		priv->req.src = priv->data;
-		priv->req.dst = priv->data + AEAD_BLOCK_SIZE;
-	} else {
-		priv->req.src = (unsigned char *)input;
-		priv->req.dst = output;
-	}
-}
-
 static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
 				   const unsigned char *in, size_t inlen,
 				   enum wd_aead_msg_state state)
@@ -511,14 +496,15 @@ static int uadk_do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
 	return UADK_AEAD_SUCCESS;
 }
 
-static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
-			      unsigned char *out, const unsigned char *in, size_t inlen)
+static int uadk_do_aead_async_inner(struct aead_priv_ctx *priv, struct async_op *op,
+				    unsigned char *out, const unsigned char *in, size_t inlen)
 {
 	struct uadk_e_cb_info cb_param;
 	int cnt = 0;
 	int ret;
 
-	if (!priv->enc && priv->tag_set != SET_TAG) {
+	if ((priv->req.msg_state == AEAD_MSG_BLOCK || priv->req.msg_state == AEAD_MSG_END)
+	    && !priv->enc && priv->tag_set != SET_TAG) {
 		UADK_ERR("The tag for asynchronous decryption is not set.\n");
 		return UADK_AEAD_FAIL;
 	}
@@ -528,14 +514,19 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 		return UADK_AEAD_FAIL;
 	}
 
-	uadk_do_aead_async_prepare(priv, out, in, inlen);
-
 	cb_param.op = op;
 	cb_param.priv = &priv->req;
 	priv->req.cb = uadk_prov_aead_cb;
 	priv->req.cb_param = &cb_param;
-	priv->req.msg_state = AEAD_MSG_BLOCK;
 	priv->req.state = POLL_ERROR;
+	priv->req.src = (unsigned char *)in;
+	priv->req.dst = out;
+	priv->req.in_bytes = inlen;
+
+	if (unlikely(!priv->sess)) {
+		UADK_ERR("uadk session is NULL!\n");
+		return UADK_AEAD_FAIL;
+	}
 
 	ret = async_get_free_task(&op->idx);
 	if (unlikely(!ret))
@@ -559,12 +550,9 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 	ret = async_pause_job(priv, op, ASYNC_TASK_AEAD);
 	if (unlikely(!ret || priv->req.state)) {
 		UADK_ERR("do aead async job failed, ret: %d, state: %u!\n",
-			ret, priv->req.state);
+			 ret, priv->req.state);
 		return UADK_AEAD_FAIL;
 	}
-
-	if (priv->req.assoc_bytes)
-		memcpy(out, priv->req.dst + priv->req.assoc_bytes, inlen);
 
 	return ret;
 }
@@ -572,6 +560,7 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, struct async_op *op,
 static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
 				      const unsigned char *in, size_t inlen)
 {
+	struct async_op op;
 	int ret;
 
 	if (inlen > MAX_AAD_LEN || !inlen)
@@ -579,9 +568,20 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 
 	priv->req.assoc_bytes = inlen;
 
-	/* Asynchronous jobs use the block mode. */
 	if (priv->mode == ASYNC_MODE) {
-		memcpy(priv->data, in, inlen);
+		ret = async_setup_async_event_notification(&op);
+		if (unlikely(!ret)) {
+			UADK_ERR("failed to setup async event notification.\n");
+			goto soft;
+		}
+
+		priv->req.msg_state = AEAD_MSG_FIRST;
+		ret = uadk_do_aead_async_inner(priv, &op, out, in, inlen);
+		if (unlikely(ret < 0)) {
+			UADK_ERR("aead async first failed, switch to soft.\n");
+			goto free_notification;
+		}
+
 		return UADK_AEAD_SUCCESS;
 	}
 
@@ -591,58 +591,105 @@ static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char 
 
 	return UADK_AEAD_SUCCESS;
 
+free_notification:
+	(void)async_clear_async_event_notification();
 soft:
 	UADK_ERR("aead failed to update aad, switch to soft.\n");
 	return SWITCH_TO_SOFT;
 }
 
-static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
-				       const unsigned char *in, size_t inlen)
+static int uadk_do_aead_async(struct aead_priv_ctx *priv, unsigned char *out,
+			      const unsigned char *in, size_t inlen)
 {
-	struct async_op *op;
+	size_t nbytes, tail, processing_len, max_mid_len;
+	const unsigned char *in_block = in;
+	unsigned char *out_block = out;
+	struct async_op op;
 	int ret;
 
-	if (priv->mode == ASYNC_MODE) {
-		op = malloc(sizeof(struct async_op));
-		if (unlikely(!op))
-			return UADK_AEAD_FAIL;
-
-		ret = async_setup_async_event_notification(op);
-		if (unlikely(!ret)) {
-			UADK_ERR("failed to setup async event notification.\n");
-			goto free_op;
-		}
-
-		ret = uadk_do_aead_async(priv, op, out, in, inlen);
-		if (unlikely(ret < 0)) {
-			UADK_ERR("uadk_do_aead_async failed ret = %d.\n", ret);
-			goto free_notification;
-		}
-
-		free(op);
-		return UADK_AEAD_SUCCESS;
+	ret = async_setup_async_event_notification(&op);
+	if (unlikely(!ret)) {
+		UADK_ERR("failed to setup async event notification.\n");
+		return UADK_AEAD_FAIL;
 	}
 
-	if (priv->stream_switch_flag == UADK_DO_SOFT)
-		return SWITCH_TO_SOFT;
+	tail = inlen % AES_BLOCK_SIZE;
+	nbytes = inlen - tail;
+	max_mid_len = AEAD_BLOCK_SIZE - priv->req.assoc_bytes;
 
-	return uadk_do_aead_sync(priv, out, in, inlen);
+	/* Middle packets processing */
+	while (nbytes > 0) {
+		processing_len = nbytes > max_mid_len ? max_mid_len : nbytes;
+		processing_len -= (processing_len % AES_BLOCK_SIZE);
+
+		priv->req.msg_state = AEAD_MSG_MIDDLE;
+		ret = uadk_do_aead_async_inner(priv, &op, out_block, in_block,
+					       processing_len);
+		if (unlikely(ret < 0)) {
+			UADK_ERR("aead async middle failed!\n");
+			goto free_notification;
+		}
+		nbytes -= processing_len;
+		in_block = in_block + processing_len;
+		out_block = out_block + processing_len;
+	}
+
+	/* Tail packet processing */
+	if (tail) {
+		priv->req.msg_state = AEAD_MSG_END;
+		ret = uadk_do_aead_async_inner(priv, &op, out_block, in_block, tail);
+		if (unlikely(ret < 0)) {
+			UADK_ERR("aead async tail failed!\n");
+			goto free_notification;
+		}
+	}
+
+	return UADK_AEAD_SUCCESS;
 
 free_notification:
 	(void)async_clear_async_event_notification();
-free_op:
-	free(op);
+
 	return UADK_AEAD_FAIL;
+}
+
+static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
+				       const unsigned char *in, size_t inlen)
+{
+	if (priv->stream_switch_flag == UADK_DO_SOFT)
+		return SWITCH_TO_SOFT;
+
+	if (priv->mode == ASYNC_MODE)
+		return uadk_do_aead_async(priv, out, in, inlen);
+
+	return uadk_do_aead_sync(priv, out, in, inlen);
 }
 
 static int uadk_prov_do_aes_gcm_final(struct aead_priv_ctx *priv, unsigned char *out,
 				      const unsigned char *in, size_t inlen)
 {
+	struct async_op op;
 	int ret;
 
-	if (priv->mode == ASYNC_MODE || !priv->req.assoc_bytes ||
-	    priv->req.msg_state == AEAD_MSG_END)
+	if (!priv->req.assoc_bytes || priv->req.msg_state == AEAD_MSG_END)
 		goto out;
+
+	if (priv->mode == ASYNC_MODE) {
+		ret = async_setup_async_event_notification(&op);
+		if (unlikely(!ret)) {
+			UADK_ERR("failed to setup async event notification.\n");
+			return UADK_AEAD_FAIL;
+		}
+
+		priv->req.msg_state = AEAD_MSG_END;
+		ret = uadk_do_aead_async_inner(priv, &op, out, in, inlen);
+		if (unlikely(ret < 0)) {
+			UADK_ERR("aead async final failed!\n");
+			(void)async_clear_async_event_notification();
+			return UADK_AEAD_FAIL;
+		}
+
+		goto out;
+	}
 
 	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_END);
 	if (unlikely(ret < 0))
@@ -655,6 +702,7 @@ out:
 		priv->tag_set = INIT_TAG;
 
 	priv->mode = UNINIT_MODE;
+
 	return UADK_AEAD_SUCCESS;
 }
 
