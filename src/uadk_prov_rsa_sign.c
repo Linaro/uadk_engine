@@ -35,7 +35,9 @@ struct PROV_RSA_SIG_CTX {
 	char *propq;
 	RSA *rsa;
 	int operation;
-
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	unsigned int flag_sigalg : 1;
+#endif
 	/*
 	 * Flag to determine if the hash function can be changed (1) or not (0)
 	 * Because it's dangerous to change during a DigestSign or DigestVerify
@@ -637,6 +639,9 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 	/* Maximum for sign, auto for verify */
 	ctx->saltlen = RSA_PSS_SALTLEN_AUTO;
 	ctx->min_saltlen = -1;
+	ctx->flag_allow_oneshot = 1;
+	ctx->flag_allow_final = 1;
+	ctx->flag_allow_update = 1;
 
 	switch (uadk_rsa_test_flags(ctx->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
@@ -1585,6 +1590,10 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 		 */
 		if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 			return UADK_P_FAIL;
+
+		priv->flag_allow_update = 0;
+		priv->flag_allow_oneshot = 0;
+		priv->flag_allow_final = 0;
 	}
 
 	priv->flag_allow_md = 1;
@@ -1629,6 +1638,10 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	 */
 	if (!EVP_DigestFinal_ex(priv->mdctx, digest, &dlen))
 		return UADK_P_FAIL;
+
+	priv->flag_allow_update = 0;
+	priv->flag_allow_final = 0;
+	priv->flag_allow_oneshot = 0;
 
 	priv->flag_allow_md = 1;
 	return uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
