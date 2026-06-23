@@ -35,7 +35,9 @@ struct PROV_RSA_SIG_CTX {
 	char *propq;
 	RSA *rsa;
 	int operation;
-
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	unsigned int flag_sigalg : 1;
+#endif
 	/*
 	 * Flag to determine if the hash function can be changed (1) or not (0)
 	 * Because it's dangerous to change during a DigestSign or DigestVerify
@@ -67,6 +69,17 @@ struct PROV_RSA_SIG_CTX {
 #if OPENSSL_VERSION_NUMBER >= 0x30400000L
 	unsigned char *sig;
 	size_t siglen;
+#endif
+
+#ifdef FIPS_MODULE
+#ifdef OPENSSL_VERSION_NUMBER >= 0x30400000L
+	/*
+	 * FIPS 140-3 IG 2.4.B mandates that verification based on a digest of a
+	 * message is not permitted.  However, signing based on a digest is still
+	 * permitted.
+	 */
+	int verify_message;
+#endif
 #endif
 
 	/* Temp buffer */
@@ -637,6 +650,9 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 	/* Maximum for sign, auto for verify */
 	ctx->saltlen = RSA_PSS_SALTLEN_AUTO;
 	ctx->min_saltlen = -1;
+	ctx->flag_allow_oneshot = 1;
+	ctx->flag_allow_final = 1;
+	ctx->flag_allow_update = 1;
 
 	switch (uadk_rsa_test_flags(ctx->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
@@ -1567,6 +1583,7 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int ret;
 
 	if (!priv)
 		return UADK_P_FAIL;
@@ -1589,7 +1606,14 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 
 	priv->flag_allow_md = 1;
 
-	return uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize, digest, (size_t)dlen);
+	ret = uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize, digest, (size_t)dlen);
+	if (sig != NULL) {
+		priv->flag_allow_update = 0;
+		priv->flag_allow_oneshot = 0;
+		priv->flag_allow_final = 0;
+	}
+
+	return ret;
 }
 
 static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
@@ -1616,6 +1640,7 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int ret;
 
 	if (!priv)
 		return UADK_P_FAIL;
@@ -1631,7 +1656,14 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 		return UADK_P_FAIL;
 
 	priv->flag_allow_md = 1;
-	return uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+
+	ret = uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+
+	priv->flag_allow_update = 0;
+	priv->flag_allow_final = 0;
+	priv->flag_allow_oneshot = 0;
+
+	return ret;
 }
 
 static void *uadk_signature_rsa_dupctx(void *vprsactx)

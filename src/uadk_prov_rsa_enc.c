@@ -353,6 +353,9 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 	RSA_free(priv->rsa);
 	priv->rsa = vrsa;
 	priv->operation = operation;
+# if OPENSSL_VERSION_NUMBER >= 0x30200000
+	priv->implicit_rejection = 1;
+#endif
 
 	switch (uadk_rsa_test_flags(priv->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
