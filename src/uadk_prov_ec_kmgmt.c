@@ -172,7 +172,7 @@ static handle_t ec_alloc_sess(EC_KEY *ec, struct wd_ecc_out **ec_out)
 	sess = uadk_prov_ecc_alloc_sess(ec, "ecdh");
 	if (!sess) {
 		UADK_ERR("failed to alloc ec sess!\n");
-		return ret;
+		return UADK_P_FAIL;
 	}
 
 	*ec_out = wd_ecxdh_new_out(sess);
