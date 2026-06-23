@@ -483,14 +483,20 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 		goto exe_soft;
 	}
 
+	len = uadk_rsa_size(priv->rsa);
+	if (len == 0) {
+		UADK_ERR("invalid: rsa key size is 0.\n");
+		return UADK_P_FAIL;
+	}
+
 	if (!out) {
-		len = uadk_rsa_size(priv->rsa);
-		if (len == 0) {
-			UADK_ERR("invalid: rsa encrypt size.\n");
-			return UADK_P_FAIL;
-		}
 		*outlen = len;
 		return UADK_P_SUCCESS;
+	}
+
+	if (outsize < len) {
+		UADK_ERR("invalid: outsize %d is too small.\n", outsize);
+		return UADK_P_FAIL;
 	}
 
 	if (priv->pad_mode == RSA_PKCS1_OAEP_PADDING)
