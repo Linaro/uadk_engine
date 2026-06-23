@@ -84,8 +84,6 @@ struct PROV_RSA_SIG_CTX {
 
 	/* Temp buffer */
 	unsigned char *tbuf;
-
-	unsigned int soft : 1;
 };
 
 static int encode_pkcs1(unsigned char **out, size_t *out_len, int type,
@@ -668,9 +666,6 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 		return UADK_P_FAIL;
 	}
 
-	if (uadk_prov_rsa_init())
-		ctx->soft = 1;
-
 	if (!uadk_signature_rsa_set_ctx_params(ctx, params))
 		return UADK_P_FAIL;
 
@@ -739,9 +734,9 @@ static int uadk_signature_rsa_verify_recover(void *vprsactx, unsigned char *rout
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa verify_recover\n");
+		return UADK_P_FAIL;
 	}
 
 	if (!rout) {
@@ -927,9 +922,9 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 	size_t rslen = 0;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa verify\n");
+		return UADK_P_FAIL;
 	}
 
 	if (!priv->md) {
@@ -1156,9 +1151,9 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	size_t mdsize;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa sign\n");
+		return UADK_P_FAIL;
 	}
 
 	rsasize = uadk_rsa_size(priv->rsa);

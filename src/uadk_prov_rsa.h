@@ -155,7 +155,6 @@ int rsa_fill_prikey(RSA *rsa, struct uadk_rsa_sess *rsa_sess,
 int rsa_fill_pubkey(struct rsa_pubkey_param *pubkey_param,
 			   struct uadk_rsa_sess *rsa_sess,
 			   unsigned char *in_buf, unsigned char *to);
-int uadk_prov_rsa_init(void);
 void rsa_free_eng_session(struct uadk_rsa_sess *rsa_sess);
 struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 						 int is_crt);

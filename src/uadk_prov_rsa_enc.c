@@ -48,7 +48,6 @@ struct PROV_RSA_ASYM_CTX {
 	/* PKCS#1 v1.5 decryption mode */
 	unsigned int implicit_rejection;
 # endif
-	unsigned int soft : 1;
 };
 
 static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
@@ -366,9 +365,6 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 		return UADK_P_FAIL;
 	}
 
-	if (uadk_prov_rsa_init())
-		priv->soft = 1;
-
 	return uadk_asym_cipher_rsa_set_ctx_params(vprsactx, params);
 }
 
@@ -478,9 +474,9 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	size_t len;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa encrypt\n");
+		return UADK_P_FAIL;
 	}
 
 	len = uadk_rsa_size(priv->rsa);
@@ -613,9 +609,9 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 	size_t len;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa decrypt\n");
+		return UADK_P_FAIL;
 	}
 
 	len = uadk_rsa_size(priv->rsa);
