@@ -208,7 +208,7 @@ static void uadk_rsa_mutex_infork(void)
 	pthread_mutex_unlock(&rsa_mutex);
 }
 
-int uadk_prov_rsa_init(void)
+static int uadk_prov_rsa_init(void)
 {
 	char alg_name[] = "rsa";
 	int ret;
@@ -277,9 +277,14 @@ void rsa_free_eng_session(struct uadk_rsa_sess *rsa_sess)
 struct uadk_rsa_sess *rsa_get_eng_session(RSA *rsa, unsigned int bits,
 						 int is_crt)
 {
-	unsigned int key_size =  bits >> BIT_BYTES_SHIFT;
+	unsigned int key_size = bits >> BIT_BYTES_SHIFT;
 	struct sched_params params = {0};
 	struct uadk_rsa_sess *rsa_sess;
+	int ret;
+
+	ret = uadk_prov_rsa_init();
+	if (ret)
+		return NULL;
 
 	rsa_sess = rsa_new_eng_session(rsa);
 	if (!rsa_sess)

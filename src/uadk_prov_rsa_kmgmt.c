@@ -893,12 +893,6 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	if (!gctx)
 		return NULL;
 
-	ret = uadk_prov_rsa_init();
-	if (ret) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
-	}
-
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
 	if (!rsa)
 		return NULL;

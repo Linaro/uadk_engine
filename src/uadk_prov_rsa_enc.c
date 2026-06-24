@@ -48,7 +48,6 @@ struct PROV_RSA_ASYM_CTX {
 	/* PKCS#1 v1.5 decryption mode */
 	unsigned int implicit_rejection;
 # endif
-	unsigned int soft : 1;
 };
 
 static UADK_PKEY_ASYM_CIPHER s_asym_cipher;
@@ -353,6 +352,9 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 	RSA_free(priv->rsa);
 	priv->rsa = vrsa;
 	priv->operation = operation;
+# if OPENSSL_VERSION_NUMBER >= 0x30200000
+	priv->implicit_rejection = 1;
+#endif
 
 	switch (uadk_rsa_test_flags(priv->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
@@ -362,9 +364,6 @@ static int uadk_rsa_asym_init(void *vprsactx, void *vrsa,
 		UADK_ERR("rsa asym operation not supported this keytype!\n");
 		return UADK_P_FAIL;
 	}
-
-	if (uadk_prov_rsa_init())
-		priv->soft = 1;
 
 	return uadk_asym_cipher_rsa_set_ctx_params(vprsactx, params);
 }
@@ -475,19 +474,25 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	size_t len;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa encrypt\n");
+		return UADK_P_FAIL;
+	}
+
+	len = uadk_rsa_size(priv->rsa);
+	if (len == 0) {
+		UADK_ERR("invalid: rsa key size is 0.\n");
+		return UADK_P_FAIL;
 	}
 
 	if (!out) {
-		len = uadk_rsa_size(priv->rsa);
-		if (len == 0) {
-			UADK_ERR("invalid: rsa encrypt size.\n");
-			return UADK_P_FAIL;
-		}
 		*outlen = len;
 		return UADK_P_SUCCESS;
+	}
+
+	if (outsize < len) {
+		UADK_ERR("invalid: outsize %d is too small.\n", outsize);
+		return UADK_P_FAIL;
 	}
 
 	if (priv->pad_mode == RSA_PKCS1_OAEP_PADDING)
@@ -604,9 +609,9 @@ static int uadk_asym_cipher_rsa_decrypt(void *vprsactx, unsigned char *out,
 	size_t len;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa decrypt\n");
+		return UADK_P_FAIL;
 	}
 
 	len = uadk_rsa_size(priv->rsa);

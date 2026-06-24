@@ -35,7 +35,9 @@ struct PROV_RSA_SIG_CTX {
 	char *propq;
 	RSA *rsa;
 	int operation;
-
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	unsigned int flag_sigalg : 1;
+#endif
 	/*
 	 * Flag to determine if the hash function can be changed (1) or not (0)
 	 * Because it's dangerous to change during a DigestSign or DigestVerify
@@ -69,10 +71,19 @@ struct PROV_RSA_SIG_CTX {
 	size_t siglen;
 #endif
 
+#ifdef FIPS_MODULE
+#ifdef OPENSSL_VERSION_NUMBER >= 0x30400000L
+	/*
+	 * FIPS 140-3 IG 2.4.B mandates that verification based on a digest of a
+	 * message is not permitted.  However, signing based on a digest is still
+	 * permitted.
+	 */
+	int verify_message;
+#endif
+#endif
+
 	/* Temp buffer */
 	unsigned char *tbuf;
-
-	unsigned int soft : 1;
 };
 
 static int encode_pkcs1(unsigned char **out, size_t *out_len, int type,
@@ -637,6 +648,9 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 	/* Maximum for sign, auto for verify */
 	ctx->saltlen = RSA_PSS_SALTLEN_AUTO;
 	ctx->min_saltlen = -1;
+	ctx->flag_allow_oneshot = 1;
+	ctx->flag_allow_final = 1;
+	ctx->flag_allow_update = 1;
 
 	switch (uadk_rsa_test_flags(ctx->rsa, RSA_FLAG_TYPE_MASK)) {
 	case RSA_FLAG_TYPE_RSA:
@@ -651,9 +665,6 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 		UADK_ERR("rsa init operation not supported this keytype!\n");
 		return UADK_P_FAIL;
 	}
-
-	if (uadk_prov_rsa_init())
-		ctx->soft = 1;
 
 	if (!uadk_signature_rsa_set_ctx_params(ctx, params))
 		return UADK_P_FAIL;
@@ -723,9 +734,9 @@ static int uadk_signature_rsa_verify_recover(void *vprsactx, unsigned char *rout
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa verify_recover\n");
+		return UADK_P_FAIL;
 	}
 
 	if (!rout) {
@@ -911,9 +922,9 @@ static int uadk_signature_rsa_verify(void *vprsactx, const unsigned char *sig,
 	size_t rslen = 0;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa verify\n");
+		return UADK_P_FAIL;
 	}
 
 	if (!priv->md) {
@@ -1140,9 +1151,9 @@ static int uadk_signature_rsa_sign(void *vprsactx, unsigned char *sig,
 	size_t mdsize;
 	int ret;
 
-	if (!priv || priv->soft) {
-		ret = UADK_DO_SOFT;
-		goto exe_soft;
+	if (!priv) {
+		UADK_ERR("invalid: vprsactx is NULL for rsa sign\n");
+		return UADK_P_FAIL;
 	}
 
 	rsasize = uadk_rsa_size(priv->rsa);
@@ -1567,6 +1578,7 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int ret;
 
 	if (!priv)
 		return UADK_P_FAIL;
@@ -1589,7 +1601,14 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 
 	priv->flag_allow_md = 1;
 
-	return uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize, digest, (size_t)dlen);
+	ret = uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize, digest, (size_t)dlen);
+	if (sig != NULL) {
+		priv->flag_allow_update = 0;
+		priv->flag_allow_oneshot = 0;
+		priv->flag_allow_final = 0;
+	}
+
+	return ret;
 }
 
 static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
@@ -1616,6 +1635,7 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int ret;
 
 	if (!priv)
 		return UADK_P_FAIL;
@@ -1631,7 +1651,14 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 		return UADK_P_FAIL;
 
 	priv->flag_allow_md = 1;
-	return uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+
+	ret = uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+
+	priv->flag_allow_update = 0;
+	priv->flag_allow_final = 0;
+	priv->flag_allow_oneshot = 0;
+
+	return ret;
 }
 
 static void *uadk_signature_rsa_dupctx(void *vprsactx)
