@@ -1,3 +1,23 @@
+# UADK engine Release v1.8 June 2026
+
+## New Features
+- Provider: Support asynchronous SEC and AEAD switching to software computing
+- Provider: Adapt UADK provider with TLS 1.3
+- Provider: Adapt RSA key management with PSS padding mode and algorithm enable configuration
+
+## Fixes
+- RSA: Add input length validation and initialization parameter checks, set RSA sign hash flag, add outsize check in RSA encryption and add RSA-PSS query function
+- AEAD: Fix AEAD fallback to software on exception.
+- ECDH: Ensure proper ECDH key length and fix EC alloc sess return value.
+- SM2: Fix compilation warning, modify keygen return value, and remove soft field to match default provider structure size.
+- Async: Fix return value check for asynchronous request sending, and remove redundant async declarations.
+- Engine/ECC: Fix memory leak in ECX algorithm and remove unnecessary code
+- Performance: Reduce lock scope during provider initialization
+- Compatibility: Fix OpenSSL 3.5 compatibility issues
+
+## Working combination
+- UADK v2.11
+- OpenSSL 1.1.1f & OpenSSL 3.0+
 
 # UADK engine Release v1.7 Dec 2025
 
