@@ -19,6 +19,9 @@ AC_ARG_ENABLE(engine,
 AC_SUBST(enable_engine)
 AM_CONDITIONAL([WD_ENGINE], [test "$enable_engine" = "yes"])
 
+AC_ARG_ENABLE(gmssl,AS_HELP_STRING([--with-gmssl],[Compile with GmSSL]),with_gmssl=no)
+AM_CONDITIONAL([UADK_ENABLE_GMSSL], [test "$with_gmssl" = "yes"])
+
 PKG_CHECK_MODULES(WD, libwd libwd_crypto, [with_wd=yes], [with_wd=no])
 AM_CONDITIONAL(HAVE_WD, [test "$with_wd" != "no"])
 

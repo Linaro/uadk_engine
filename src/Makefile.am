@@ -13,10 +13,16 @@ endif #WD_ENGINE
 
 endif #HAVE_CRYPTO
 
+if UADK_ENABLE_GMSSL
+uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
+		       uadk_digest.c uadk_async.c uadk_sm2.c uadk_pkey.c \
+		       uadk_ec.c uadk_aead.c uadk_cipher_adapter.c
+else
 uadk_engine_la_SOURCES=uadk_utils.c uadk_engine_init.c uadk_cipher.c \
 		       uadk_digest.c uadk_async.c uadk_rsa.c uadk_sm2.c \
 		       uadk_pkey.c uadk_dh.c uadk_ec.c uadk_ecx.c \
 		       uadk_aead.c uadk_cipher_adapter.c
+endif
 
 uadk_engine_la_LIBADD=-ldl $(WD_LIBS) -lpthread
 uadk_engine_la_LDFLAGS=-module -version-number $(VERSION)
@@ -32,6 +38,28 @@ AUTOMAKE_OPTIONS = subdir-objects
 
 if WD_KAE
 uadk_engine_la_CFLAGS += -DKAE
+if UADK_ENABLE_GMSSL
+uadk_engine_la_CFLAGS += -DUADK_ENABLE_GMSSL
+uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
+		 v1/alg/ciphers/sec_ciphers_soft.c \
+		 v1/alg/ciphers/sec_ciphers_utils.c \
+		 v1/alg/ciphers/sec_ciphers_wd.c \
+		 v1/alg/digests/sec_digests.c \
+		 v1/alg/digests/sec_digests_soft.c \
+		 v1/alg/digests/sec_digests_wd.c \
+		 v1/wdmngr/wd_alg_queue.c \
+		 v1/wdmngr/wd_queue_memory.c \
+		 v1/utils/engine_check.c \
+		 v1/utils/engine_config.c \
+		 v1/utils/engine_fork.c \
+		 v1/utils/engine_log.c \
+		 v1/utils/engine_opensslerr.c \
+		 v1/utils/engine_utils.c \
+		 v1/async/async_callback.c \
+		 v1/async/async_event.c \
+		 v1/async/async_poll.c \
+		 v1/async/async_task_queue.c
+else
 uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/alg/ciphers/sec_ciphers_soft.c \
 		 v1/alg/ciphers/sec_ciphers_utils.c \
@@ -58,6 +86,7 @@ uadk_engine_la_SOURCES+=v1/alg/ciphers/sec_ciphers.c \
 		 v1/async/async_event.c \
 		 v1/async/async_poll.c \
 		 v1/async/async_task_queue.c
+endif
 endif #WD_KAE
 
 uadk_provider_la_SOURCES=uadk_prov_init.c uadk_async.c uadk_utils.c \

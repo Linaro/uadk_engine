@@ -37,8 +37,10 @@ static int pkey_nids[] = {
 #if OPENSSL_VERSION_NUMBER < 0x30000000
 	EVP_PKEY_SM2,
 #endif
+#ifndef UADK_ENABLE_GMSSL
 	EVP_PKEY_X25519,
 	EVP_PKEY_X448
+#endif
 };
 
 struct ecc_sched {
@@ -669,6 +671,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		}
 		*pmeth = pkey_meth.ec;
 		break;
+#ifndef UADK_ENABLE_GMSSL
 	case EVP_PKEY_X448:
 		ret = uadk_x448_create_pmeth(&pkey_meth);
 		if (!ret) {
@@ -685,6 +688,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 		}
 		*pmeth = pkey_meth.x25519;
 		break;
+#endif
 	default:
 		fprintf(stderr, "not find nid %d\n", nid);
 		return 0;

@@ -216,10 +216,12 @@ static int uadk_destroy(ENGINE *e)
 		sec_ciphers_free_ciphers();
 	if (uadk_digest_nosva)
 		sec_digests_free_methods();
+#ifndef UADK_ENABLE_GMSSL
 	if (uadk_rsa_nosva)
 		hpre_destroy();
 	if (uadk_dh_nosva)
 		hpre_dh_destroy();
+#endif
 	kae_debug_close_log();
 #endif
 
@@ -231,12 +233,14 @@ static int uadk_destroy(ENGINE *e)
 		uadk_e_destroy_ciphers();
 	if (uadk_digest)
 		uadk_e_destroy_digest();
+#ifndef UADK_ENABLE_GMSSL
 	if (uadk_rsa)
 		uadk_e_destroy_rsa();
-	if (uadk_ecc)
-		uadk_e_destroy_ecc();
 	if (uadk_dh)
 		uadk_e_destroy_dh();
+#endif
+	if (uadk_ecc)
+		uadk_e_destroy_ecc();
 
 	uadk_inited = 0;
 	pthread_mutex_unlock(&uadk_engine_mutex);
@@ -269,10 +273,12 @@ static int uadk_init(ENGINE *e)
 		uadk_e_cipher_lock_init();
 		uadk_e_aead_lock_init();
 	}
+#ifndef UADK_ENABLE_GMSSL
 	if (uadk_rsa)
 		uadk_e_rsa_lock_init();
 	if (uadk_dh)
 		uadk_e_dh_lock_init();
+#endif
 	if (uadk_ecc)
 		uadk_e_ecc_lock_init();
 
@@ -319,6 +325,7 @@ static void bind_fn_kae_alg(ENGINE *e)
 			uadk_digest_nosva = 1;
 	}
 
+#ifndef UADK_ENABLE_GMSSL
 	dev_num = wd_get_nosva_dev_num("rsa");
 	if (dev_num > 0) {
 		hpre_module_init();
@@ -336,6 +343,7 @@ static void bind_fn_kae_alg(ENGINE *e)
 		else
 			uadk_dh_nosva = 1;
 	}
+#endif
 }
 #endif
 
@@ -361,6 +369,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 		free(dev);
 	}
 
+#ifndef UADK_ENABLE_GMSSL
 	dev = uadk_get_accel_dev("rsa");
 	if (dev) {
 		if (!uadk_e_bind_rsa(e))
@@ -378,6 +387,7 @@ static void bind_fn_uadk_alg(ENGINE *e)
 			uadk_dh = 1;
 		free(dev);
 	}
+#endif
 
 	/* find an ecc device, no difference for sm2/ecdsa/ecdh/x25519/x448 */
 	dev = uadk_get_accel_dev("ecdsa");
