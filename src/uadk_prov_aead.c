@@ -91,9 +91,7 @@ struct aead_priv_ctx {
 	unsigned char iv[MAX_IV_LEN];
 	unsigned char key[MAX_KEY_LEN];
 	unsigned char buf[AES_GCM_TAG_LEN];       /* mac buffers */
-	unsigned char *data;          /* store input and output when block mode */
 
-	struct wd_aead_sess_setup setup;
 	struct wd_aead_req req;
 	enum uadk_aead_mode mode;
 	handle_t sess;
@@ -114,6 +112,8 @@ static struct aead_info aead_info_table[] = {
 	{ NID_aes_192_gcm, WD_CIPHER_AES, WD_CIPHER_GCM },
 	{ NID_aes_256_gcm, WD_CIPHER_AES, WD_CIPHER_GCM }
 };
+
+static int uadk_prov_aead_alloc_sess(struct aead_priv_ctx *priv);
 
 # if OPENSSL_VERSION_NUMBER <= 0x30200000L
 static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
@@ -276,19 +276,6 @@ error:
 	return UADK_AEAD_FAIL;
 }
 
-static void uadk_aead_soft_cleanup(struct aead_priv_ctx *priv)
-{
-	if (priv->sw_ctx) {
-		EVP_CIPHER_CTX_free(priv->sw_ctx);
-		priv->sw_ctx = NULL;
-	}
-
-	if (priv->sw_aead) {
-		EVP_CIPHER_free(priv->sw_aead);
-		priv->sw_aead = NULL;
-	}
-}
-
 static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 {
 	struct wd_ctx_nums ctx_set_num;
@@ -335,8 +322,6 @@ free_nodemask:
 
 static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 {
-	struct wd_aead_sess_setup setup = {0};
-	struct sched_params params = {0};
 	int ret;
 
 	if (!priv->key_set || !priv->iv_set) {
@@ -350,44 +335,19 @@ static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 	priv->req.mac = priv->buf;
 	priv->req.mac_bytes = priv->taglen;
 
-	ret = uadk_prov_aead_dev_init(priv);
-	if (unlikely(ret < 0))
-		return UADK_AEAD_FAIL;
-
-	/* dec and enc use the same op */
-	params.type = 0;
-	/* Use the default numa parameters */
-	params.numa_id = -1;
-	setup.sched_param = &params;
-	setup.calg = priv->setup.calg;
-	setup.cmode = priv->setup.cmode;
-
 	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(&setup);
-		if (!priv->sess) {
-			UADK_ERR("uadk failed to alloc session!\n");
+		ret = uadk_prov_aead_alloc_sess(priv);
+		if (unlikely(ret < 0))
 			return UADK_AEAD_FAIL;
-		}
+	}
 
-		ret = wd_aead_set_authsize(priv->sess, priv->taglen);
-		if (ret) {
-			UADK_ERR("uadk failed to set authsize!\n");
-			goto free_sess;
-		}
-
-		ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
-		if (ret) {
-			UADK_ERR("uadk failed to set key!\n");
-			goto free_sess;
-		}
+	ret = wd_aead_set_authsize(priv->sess, priv->taglen);
+	if (ret) {
+		UADK_ERR("uadk failed to set authsize!\n");
+		return UADK_AEAD_FAIL;
 	}
 
 	return UADK_AEAD_SUCCESS;
-
-free_sess:
-	wd_aead_free_sess(priv->sess);
-	priv->sess = 0;
-	return UADK_AEAD_FAIL;
 }
 
 static void *uadk_prov_aead_cb(struct wd_aead_req *req, void *data)
@@ -846,15 +806,15 @@ do_soft:
 	return UADK_OSSL_FAIL;
 }
 
-static int uadk_get_aead_info(struct aead_priv_ctx *priv)
+static int uadk_get_aead_info(struct wd_aead_sess_setup *setup, int nid)
 {
 	int aead_counts = ARRAY_SIZE(aead_info_table);
 	int i;
 
 	for (i = 0; i < aead_counts; i++) {
-		if (priv->nid == aead_info_table[i].nid) {
-			priv->setup.calg = aead_info_table[i].alg;
-			priv->setup.cmode = aead_info_table[i].mode;
+		if (nid == aead_info_table[i].nid) {
+			setup->calg = aead_info_table[i].alg;
+			setup->cmode = aead_info_table[i].mode;
 			break;
 		}
 	}
@@ -862,6 +822,72 @@ static int uadk_get_aead_info(struct aead_priv_ctx *priv)
 	if (unlikely(i == aead_counts)) {
 		UADK_ERR("failed to get aead info.\n");
 		return UADK_AEAD_FAIL;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_alloc_sess(struct aead_priv_ctx *priv)
+{
+	struct wd_aead_sess_setup setup = {0};
+	struct sched_params params = {0};
+	int ret;
+
+	if (priv->sess)
+		return UADK_AEAD_SUCCESS;
+
+	ret = uadk_prov_aead_dev_init(priv);
+	if (unlikely(ret < 0))
+		return SWITCH_TO_SOFT;
+
+	ret = uadk_get_aead_info(&setup, priv->nid);
+	if (unlikely(ret < 0))
+		return UADK_OSSL_FAIL;
+
+	/* dec and enc use the same op */
+	params.type = 0;
+	/* Use the default numa parameters */
+	params.numa_id = -1;
+	setup.sched_param = &params;
+	priv->sess = wd_aead_alloc_sess(&setup);
+	if (!priv->sess) {
+		UADK_ERR("uadk failed to alloc session, switch to soft\n");
+		return SWITCH_TO_SOFT;
+	}
+
+	if (priv->key_set == KEY_STATE_SET) {
+		ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
+		if (ret) {
+			UADK_ERR("uadk failed to set key!\n");
+			return UADK_OSSL_FAIL;
+		}
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_set_key(struct aead_priv_ctx *priv,
+				  const unsigned char *key,
+				  size_t keylen)
+{
+	int ret;
+
+	if (keylen != priv->keylen) {
+		UADK_ERR("invalid keylen %zu!\n", keylen);
+		return UADK_OSSL_FAIL;
+	}
+
+	memcpy(priv->key, key, keylen);
+	priv->key_set = KEY_STATE_SET;
+
+	/* use default provider */
+	if (!priv->sess)
+		return UADK_AEAD_SUCCESS;
+
+	ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
+	if (ret) {
+		UADK_ERR("uadk failed to set key!\n");
+		return UADK_OSSL_FAIL;
 	}
 
 	return UADK_AEAD_SUCCESS;
@@ -877,32 +903,26 @@ static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *
 		return UADK_OSSL_FAIL;
 	}
 
+	/* will free in freectx */
+	ret = uadk_prov_aead_alloc_sess(priv);
+	if (ret == UADK_OSSL_FAIL)
+		return UADK_OSSL_FAIL;
+
 	if (iv) {
 		memcpy(priv->iv, iv, ivlen);
 		priv->iv_set = IV_STATE_SET;
 	}
 
-	ret = uadk_get_aead_info(priv);
-	if (unlikely(ret < 0))
-		return UADK_OSSL_FAIL;
-
 	if (key) {
-		memcpy(priv->key, key, keylen);
-		priv->key_set = KEY_STATE_SET;
+		ret = uadk_prov_aead_set_key(priv, key, keylen);
+		if (ret == UADK_OSSL_FAIL)
+			return UADK_OSSL_FAIL;
 	}
 
 	priv->stream_switch_flag = 0;
+	priv->req.msg_state = AEAD_MSG_INVALID;
 
-	if (uadk_get_sw_offload_state())
-		uadk_create_aead_soft_ctx(priv);
-
-	ret = uadk_prov_aead_dev_init(priv);
-	if (unlikely(ret < 0)) {
-		UADK_ERR("aead switch to soft init.!\n");
-		return uadk_prov_aead_soft_init(priv, key, iv, params);
-	}
-
-	return UADK_AEAD_SUCCESS;
+	return uadk_prov_aead_set_ctx_params(priv, params);
 }
 
 static int uadk_prov_aead_einit(void *vctx, const unsigned char *key, size_t keylen,
@@ -1152,6 +1172,30 @@ static int uadk_cipher_aead_get_params(OSSL_PARAM params[], unsigned int md,
 	return UADK_AEAD_SUCCESS;
 }
 
+static void uadk_prov_aead_free_sess(struct aead_priv_ctx *priv)
+{
+	if (priv->sess)
+		wd_aead_free_sess(priv->sess);
+}
+
+static int uadk_prov_aead_copy_sess(struct aead_priv_ctx *priv)
+{
+	if (!priv->sess)
+		return UADK_AEAD_SUCCESS;
+	priv->sess = 0;
+
+	/*
+	 * Encryption and decryption have already started, so it cannot
+	 * switch to software calculation, hence it returns a failure.
+	 */
+	if (priv->req.msg_state != AEAD_MSG_INVALID) {
+		UADK_ERR("invalid: The data has been processed by hardware, cannot be copied.\n");
+		return UADK_OSSL_FAIL;
+	}
+
+	return uadk_prov_aead_alloc_sess(priv);
+}
+
 static void *uadk_prov_aead_dupctx(void *ctx)
 {
 	struct aead_priv_ctx *dst_ctx, *src_ctx;
@@ -1165,16 +1209,15 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 	if (!dst_ctx)
 		return NULL;
 
-	dst_ctx->sess = 0;
-	dst_ctx->data = OPENSSL_memdup(src_ctx->data, AEAD_BLOCK_SIZE << 1);
-	if (!dst_ctx->data)
+	ret = uadk_prov_aead_copy_sess(dst_ctx);
+	if (ret == UADK_OSSL_FAIL)
 		goto free_ctx;
 
 	if (dst_ctx->sw_ctx) {
 		dst_ctx->sw_ctx = EVP_CIPHER_CTX_dup(src_ctx->sw_ctx);
 		if (!dst_ctx->sw_ctx) {
 			UADK_ERR("EVP_CIPHER_CTX_dup failed in ctx copy.\n");
-			goto free_data;
+			goto free_sess;
 		}
 
 		ret = EVP_CIPHER_up_ref(dst_ctx->sw_aead);
@@ -1187,11 +1230,20 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 free_dup:
 	if (dst_ctx->sw_ctx)
 		EVP_CIPHER_CTX_free(dst_ctx->sw_ctx);
-free_data:
-	OPENSSL_clear_free(dst_ctx->data, AEAD_BLOCK_SIZE << 1);
+free_sess:
+	uadk_prov_aead_free_sess(dst_ctx);
 free_ctx:
 	OPENSSL_clear_free(dst_ctx, sizeof(*dst_ctx));
 	return NULL;
+}
+
+static void uadk_aead_soft_cleanup(struct aead_priv_ctx *priv)
+{
+	if (priv->sw_ctx)
+		EVP_CIPHER_CTX_free(priv->sw_ctx);
+
+	if (priv->sw_aead)
+		EVP_CIPHER_free(priv->sw_aead);
 }
 
 static void uadk_prov_aead_freectx(void *ctx)
@@ -1201,15 +1253,8 @@ static void uadk_prov_aead_freectx(void *ctx)
 	if (!ctx)
 		return;
 
-	if (priv->sess)
-		wd_aead_free_sess(priv->sess);
-
-	if (priv->data)
-		OPENSSL_clear_free(priv->data, AEAD_BLOCK_SIZE << 1);
-
-	if (priv->sw_ctx)
-		uadk_aead_soft_cleanup(priv);
-
+	uadk_prov_aead_free_sess(priv);
+	uadk_aead_soft_cleanup(priv);
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
@@ -1218,21 +1263,20 @@ static void uadk_prov_aead_freectx(void *ctx)
 static OSSL_FUNC_cipher_newctx_fn uadk_##nm##_newctx;				\
 static void *uadk_##nm##_newctx(void *provctx)					\
 {										\
-	struct aead_priv_ctx *ctx = OPENSSL_zalloc(sizeof(*ctx));		\
+	struct aead_priv_ctx *ctx;						\
+										\
+	ctx = OPENSSL_zalloc(sizeof(*ctx));					\
 	if (!ctx)								\
 		return NULL;							\
-										\
-	ctx->data = OPENSSL_zalloc(AEAD_BLOCK_SIZE << 1);			\
-	if (!ctx->data) {							\
-		OPENSSL_free(ctx);						\
-		return NULL;							\
-	}									\
 										\
 	ctx->keylen = key_len;							\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
 	ctx->taglen = tag_len;							\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
+										\
+	if (uadk_get_sw_offload_state())					\
+		uadk_create_aead_soft_ctx(ctx);					\
 										\
 	return ctx;								\
 }										\
