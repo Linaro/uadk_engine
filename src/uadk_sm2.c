@@ -183,7 +183,6 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 	};
 	struct wd_ecc_sess_setup setup;
 	handle_t sess;
-	BIGNUM *order;
 	int type;
 
 	memset(&setup, 0, sizeof(setup));
@@ -202,13 +201,22 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 		setup.hash.type = type;
 	}
 
-	order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
+	if (!smctx->order) {
+		smctx->order = BN_bin2bn((void *)sm2_order, sizeof(sm2_order), NULL);
+		if (!smctx->order) {
+			fprintf(stderr, "failed to alloc order\n");
+			smctx->init_status = CTX_INIT_FAIL;
+			return -ENOMEM;
+		}
+	}
+
 	setup.rand.cb = uadk_ecc_get_rand;
-	setup.rand.usr = (void *)order;
+	setup.rand.usr = (void *)smctx->order;
 	sess = wd_ecc_alloc_sess(&setup);
 	if (!sess) {
 		fprintf(stderr, "failed to alloc sess\n");
-		BN_free(order);
+		BN_free(smctx->order);
+		smctx->order = NULL;
 		smctx->init_status = CTX_INIT_FAIL;
 		return -EINVAL;
 	}
@@ -220,7 +228,6 @@ static int sm2_update_sess(struct sm2_ctx *smctx)
 
 	smctx->prikey = NULL;
 	smctx->pubkey = NULL;
-	smctx->order = order;
 
 	return 0;
 }
