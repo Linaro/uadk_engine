@@ -782,7 +782,7 @@ static int uadk_prov_dh_prepare_data(const BIGNUM *g, DH *dh, struct uadk_dh_ses
 	*dh_sess = uadk_prov_dh_new_session(dh, bits, is_g2);
 	if (*dh_sess == NULL) {
 		UADK_ERR("failed to get session\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = uadk_prov_dh_prepare_prikey(*dh_sess, dh, prikey);

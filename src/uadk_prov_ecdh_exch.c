@@ -216,12 +216,13 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 	struct wd_ecc_in *ecdh_in;
 	BIGNUM *pkey_x, *pkey_y;
 	int ret = UADK_P_FAIL;
+	int xlen, ylen;
 	size_t ec_size;
 	BN_CTX *ctx;
 
 	ctx = BN_CTX_new();
 	if (!ctx)
-		return -ENOMEM;
+		return UADK_P_FAIL;
 
 	BN_CTX_start(ctx);
 	pkey_x = BN_CTX_get(ctx);
@@ -233,16 +234,29 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 		goto free_ctx;
 
 	ec_size = ecdh_get_ec_size(sess_ctx->group);
-	uadk_prov_get_affine_coordinates(sess_ctx->group, sess_ctx->pub_key, pkey_x, pkey_y, ctx);
+	ret = uadk_prov_get_affine_coordinates(sess_ctx->group,
+					       sess_ctx->pub_key, pkey_x, pkey_y, ctx);
+	if (ret != UADK_P_SUCCESS)
+		goto free_ctx;
+
 	in_pkey.x.data = buf_x;
 	in_pkey.y.data = buf_y;
-	in_pkey.x.dsize = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
-	in_pkey.y.dsize = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
+	xlen = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
+	ylen = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
+	if (xlen < 0 || ylen < 0) {
+		fprintf(stderr, "failed to BN_bn2binpad, xlen = %d, ylen = %d\n",
+			xlen, ylen);
+		ret = UADK_P_FAIL;
+		goto free_ctx;
+	}
 
+	in_pkey.x.dsize = xlen;
+	in_pkey.y.dsize = ylen;
 	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);
 	if (!ecdh_in) {
 		UADK_ERR("failed to new ecxdh in\n");
+		ret = UADK_P_FAIL;
 		goto free_ctx;
 	}
 
@@ -250,6 +264,7 @@ static int ecdh_init_req(struct ecdh_sess_ctx *sess_ctx,
 	if (!ecdh_out) {
 		UADK_ERR("failed to new ecxdh out\n");
 		wd_ecc_del_in(sess, ecdh_in);
+		ret = UADK_P_FAIL;
 		goto free_ctx;
 	}
 
