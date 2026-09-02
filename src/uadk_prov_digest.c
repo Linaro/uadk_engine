@@ -775,11 +775,15 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
 
 static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 {
-	if (priv->sess)
+	if (priv->sess) {
 		wd_digest_free_sess(priv->sess);
+		priv->sess = 0;
+	}
 
-	if (priv->data)
+	if (priv->data) {
 		OPENSSL_clear_free(priv->data, DIGEST_BLOCK_SIZE);
+		priv->data = NULL;
+	}
 
 	digest_soft_cleanup(priv);
 }
