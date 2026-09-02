@@ -368,7 +368,7 @@ static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
 	if (dprov.pid == getpid())
 		goto free_nodemask;
 
-	ret = wd_digest_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_digest_init2_(priv->alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
 		UADK_ERR("uadk failed to initialize digest dev, ret = %d\n", ret);
 		goto free_nodemask;

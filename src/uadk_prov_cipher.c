@@ -567,7 +567,7 @@ static int uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv)
 	if (prov.pid == getpid())
 		goto init_err;
 
-	ret = wd_cipher_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_cipher_init2_(priv->alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret)) {
 		UADK_ERR("failed to init cipher!\n");
 		ret = UADK_P_FAIL;

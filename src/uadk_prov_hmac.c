@@ -437,7 +437,7 @@ static int uadk_prov_hmac_dev_init(struct hmac_priv_ctx *priv)
 	if (hprov.pid == getpid())
 		goto free_nodemask;
 
-	ret = wd_digest_init2_((char *)alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_digest_init2_((char *)alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
 		UADK_ERR("uadk failed to initialize hmac, ret = %d\n", ret);
 		goto free_nodemask;

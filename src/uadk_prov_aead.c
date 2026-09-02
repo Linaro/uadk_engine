@@ -316,7 +316,7 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 	if (aprov.pid == getpid())
 		goto free_nodemask;
 
-	ret = wd_aead_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_aead_init2_(priv->alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret)) {
 		ret = UADK_AEAD_FAIL;
 		UADK_ERR("failed to init aead!\n");
