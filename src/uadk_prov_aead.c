@@ -537,7 +537,7 @@ static int uadk_do_aead_async_inner(struct aead_priv_ctx *priv, struct async_op 
 		if (unlikely(ret < 0)) {
 			if (unlikely(ret != -EBUSY))
 				UADK_ERR("do aead async operation failed ret = %d.\n", ret);
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
+			else if (unlikely(cnt++ > PROV_SEND_MAX_CNT))
 				UADK_ERR("do aead async operation timeout.\n");
 			else
 				continue;

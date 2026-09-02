@@ -508,9 +508,7 @@ static int ecx_keygen_set_pkey(EVP_PKEY *pkey, struct ecx_ctx *ecx_ctx,
 		ecx_key->privkey[X448_KEYLEN - 1] |= 0x80;
 	}
 
-	ret = EVP_PKEY_assign(pkey, ecx_ctx->nid, ecx_key);
-
-	return ret;
+	return EVP_PKEY_assign(pkey, ecx_ctx->nid, ecx_key);
 }
 
 static int openssl_do_derive(EVP_PKEY_CTX *ctx, unsigned char *key,

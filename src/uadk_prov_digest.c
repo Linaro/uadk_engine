@@ -628,7 +628,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 			goto free_poll_task;
 		}
 
-		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
 			UADK_ERR("do digest async operation timeout.\n");
 			goto free_poll_task;
 		}

@@ -297,7 +297,7 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 	}
 
 	if (dlen <= 0) {
-		fprintf(stderr, "dlen error, dlen = %d", dlen);
+		fprintf(stderr, "dlen error, dlen = %d\n", dlen);
 		return -1;
 	}
 
@@ -586,7 +586,7 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 	}
 
 	if (dlen <= 0) {
-		fprintf(stderr, "digest len error, dlen = %d", dlen);
+		fprintf(stderr, "digest len error, dlen = %d\n", dlen);
 		return -1;
 	}
 
