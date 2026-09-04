@@ -1668,6 +1668,8 @@ static int sm2_copy(EVP_PKEY_CTX *dst, const EVP_PKEY_CTX *src)
 	dctx->ctx.id_len = sctx->ctx.id_len;
 	dctx->ctx.id_set = sctx->ctx.id_set;
 	dctx->ctx.md = sctx->ctx.md;
+	dctx->md_nid = sctx->md_nid;
+	dctx->md_update_status = sctx->md_update_status;
 
 	return 1;
 }
