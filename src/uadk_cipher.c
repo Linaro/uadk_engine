@@ -685,7 +685,8 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 
 		priv->sess = wd_cipher_alloc_sess(&priv->setup);
 		if (!priv->sess) {
-			fprintf(stderr, "uadk failed to alloc session!\n");
+			priv->switch_flag = UADK_DO_SOFT;
+			fprintf(stderr, "uadk failed to alloc session, switch to soft\n");
 			return;
 		}
 	}
