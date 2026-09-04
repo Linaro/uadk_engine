@@ -800,7 +800,7 @@ static int sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 		return -EINVAL;
 	}
 	ret = EC_KEY_set_private_key(ec, tmp);
-	BN_free(tmp);
+	BN_clear_free(tmp);
 	if (!ret) {
 		fprintf(stderr, "failed to EC KEY set private key\n");
 		return -EINVAL;
@@ -899,7 +899,7 @@ static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 	BIGNUM *priv_key;
 	int ret;
 
-	priv_key = BN_new();
+	priv_key = BN_secure_new();
 	if (!priv_key) {
 		fprintf(stderr, "failed to BN_new priv_key\n");
 		return 0;
@@ -918,7 +918,7 @@ static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 		fprintf(stderr, "failed to set private key\n");
 
 free_priv_key:
-	BN_free(priv_key);
+	BN_clear_free(priv_key);
 	return ret;
 }
 

@@ -342,7 +342,7 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 		return UADK_P_FAIL;
 	}
 	ret = EC_KEY_set_private_key(ec, bn_key);
-	BN_free(bn_key);
+	BN_clear_free(bn_key);
 	if (ret == 0) {
 		UADK_ERR("failed to EC KEY set private key\n");
 		return UADK_P_FAIL;

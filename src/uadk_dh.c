@@ -183,7 +183,7 @@ static int dh_try_get_priv_key(struct uadk_dh_sess *dh_sess, const DH *dh, BIGNU
 	return UADK_E_SUCCESS;
 
 err:
-	BN_free(*priv_key);
+	BN_clear_free(*priv_key);
 	return UADK_E_FAIL;
 }
 
@@ -934,8 +934,6 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 	return ret;
 
 free_data:
-	if (dh_sess->key_flag == KEY_GEN_BY_ENGINE)
-		BN_free(priv_key);
 	dh_free_eng_session(dh_sess);
 soft_log:
 	fprintf(stderr, "switch to execute openssl software calculation.\n");
