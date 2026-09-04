@@ -491,7 +491,7 @@ static int uadk_asym_cipher_rsa_encrypt(void *vprsactx, unsigned char *out,
 	}
 
 	if (outsize < len) {
-		UADK_ERR("invalid: outsize %d is too small.\n", outsize);
+		UADK_ERR("invalid: outsize %zu is too small.\n", outsize);
 		return UADK_P_FAIL;
 	}
 

@@ -599,7 +599,7 @@ static int uadk_do_hmac_async(struct hmac_priv_ctx *priv, struct async_op *op)
 			goto free_poll_task;
 		}
 
-		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
 			UADK_ERR("do hmac async operation timeout.\n");
 			goto free_poll_task;
 		}
