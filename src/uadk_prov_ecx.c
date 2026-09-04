@@ -888,7 +888,7 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (gctx->sess == (handle_t)0) {
 		UADK_ERR("failed to alloc x448 sess\n");
-		ret = UADK_P_FAIL;
+		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
@@ -1273,7 +1273,7 @@ static int uadk_keyexch_x448_derive(void *vecxctx, unsigned char *secret, size_t
 	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X448);
 	if (ecxctx->sess == (handle_t)0) {
 		UADK_ERR("failed to alloc sess\n");
-		ret = UADK_P_FAIL;
+		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 
@@ -1532,8 +1532,8 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 	gctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
 	if (gctx->sess == (handle_t)0) {
 		UADK_ERR("failed to alloc x25519 sess\n");
-		ret = UADK_P_FAIL;
-		return NULL;
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
 	}
 
 	ret = uadk_prov_ecx_keygen(gctx, &ecx_key);
@@ -1675,7 +1675,7 @@ static int uadk_keyexch_x25519_derive(void *vecxctx, unsigned char *secret, size
 	ecxctx->sess = uadk_prov_ecx_alloc_sess(ECX_KEY_TYPE_X25519);
 	if (ecxctx->sess == (handle_t)0) {
 		UADK_ERR("failed to alloc sess\n");
-		ret = UADK_P_FAIL;
+		ret = UADK_DO_SOFT;
 		goto exe_soft;
 	}
 

@@ -271,16 +271,20 @@ static int uadk_prov_set_sess_setup_cv(const EC_GROUP *group,
 		goto free_cv;
 
 	cv_param->g = EC_GROUP_get0_generator(group);
-	if (cv_param->g == NULL)
+	if (cv_param->g == NULL) {
+		ret = UADK_P_FAIL;
 		goto free_cv;
+	}
 
 	ret = uadk_prov_get_affine_coordinates(group, cv_param->g, g_x, g_y, bn_ctx);
 	if (ret == 0)
 		goto free_cv;
 
 	cv_param->order = EC_GROUP_get0_order(group);
-	if (cv_param->order == NULL)
+	if (cv_param->order == NULL) {
+		ret = UADK_P_FAIL;
 		goto free_cv;
+	}
 
 	uadk_prov_fill_ecc_cv_param(ecc_param, cv_param, g_x, g_y);
 	cv->type = WD_CV_CFG_PARAM;

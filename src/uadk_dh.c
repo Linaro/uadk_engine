@@ -108,7 +108,7 @@ static int uadk_e_dh_soft_generate_key(DH *dh)
 	}
 
 	ret = dh_soft_generate_key(dh);
-	if (ret < 0) {
+	if (ret <= 0) {
 		fprintf(stderr, "failed to do dh soft generate key\n");
 		return UADK_E_FAIL;
 	}
@@ -137,7 +137,7 @@ static int uadk_e_dh_soft_compute_key(unsigned char *key,
 	}
 
 	ret = dh_soft_compute_key(key, pub_key, dh);
-	if (ret < 0) {
+	if (ret <= 0) {
 		fprintf(stderr, "failed to do dh soft compute key\n");
 		return UADK_E_FAIL;
 	}

@@ -538,7 +538,7 @@ static int sm2_sign_hw(PROV_SM2_SIGN_CTX *psm2ctx,
 	sess = sm2_alloc_sess(psm2ctx->key);
 	if (sess == (handle_t)0) {
 		UADK_ERR("failed to alloc sess in sign\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = sm2_sign_init_iot(sess, &req, (void *)tbs, tbslen);
@@ -687,7 +687,7 @@ static int sm2_verify_hw(PROV_SM2_SIGN_CTX *psm2ctx,
 	sess = sm2_alloc_sess(psm2ctx->key);
 	if (sess == (handle_t)0) {
 		UADK_ERR("failed to alloc sess in verify\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	ret = sm2_verify_init_iot(sess, &req, sig, siglen, tbs, tbslen);
