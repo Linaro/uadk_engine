@@ -151,16 +151,20 @@ static int set_sess_setup_cv(const EC_GROUP *group,
 		goto free_cv;
 
 	cv_param->g = EC_GROUP_get0_generator(group);
-	if (!cv_param->g)
+	if (!cv_param->g) {
+		ret = -1;
 		goto free_cv;
+	}
 
 	ret = uadk_get_affine_coordinates(group, cv_param->g, g_x, g_y, ctx);
 	if (ret)
 		goto free_cv;
 
 	cv_param->order = EC_GROUP_get0_order(group);
-	if (!cv_param->order)
+	if (!cv_param->order) {
+		ret = -1;
 		goto free_cv;
+	}
 
 	fill_ecc_cv_param(pparam, cv_param, g_x, g_y);
 	cv->type = WD_CV_CFG_PARAM;
@@ -297,7 +301,7 @@ static int ecdsa_do_sign_check(EC_KEY *eckey,
 	}
 
 	if (dlen <= 0) {
-		fprintf(stderr, "dlen error, dlen = %d", dlen);
+		fprintf(stderr, "dlen error, dlen = %d\n", dlen);
 		return -1;
 	}
 
@@ -586,7 +590,7 @@ static int ecdsa_do_verify_check(EC_KEY *eckey,
 	}
 
 	if (dlen <= 0) {
-		fprintf(stderr, "digest len error, dlen = %d", dlen);
+		fprintf(stderr, "digest len error, dlen = %d\n", dlen);
 		return -1;
 	}
 
@@ -791,8 +795,12 @@ static int sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	}
 
 	tmp = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
+	if (!tmp) {
+		fprintf(stderr, "failed to BN_bin2bn privkey\n");
+		return -EINVAL;
+	}
 	ret = EC_KEY_set_private_key(ec, tmp);
-	BN_free(tmp);
+	BN_clear_free(tmp);
 	if (!ret) {
 		fprintf(stderr, "failed to EC KEY set private key\n");
 		return -EINVAL;
@@ -812,6 +820,12 @@ static int sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	memcpy(buff + x_offset, pubkey->x.data, pubkey->x.dsize);
 	memcpy(buff + y_offset, pubkey->y.data, pubkey->y.dsize);
 	tmp = BN_bin2bn(buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
+	if (!tmp) {
+		fprintf(stderr, "failed to BN_bin2bn pubkey\n");
+		EC_POINT_free(point);
+		return -EINVAL;
+	}
+
 	ptr = EC_POINT_bn2point(group, tmp, point, NULL);
 	BN_free(tmp);
 	if (!ptr) {
@@ -885,7 +899,7 @@ static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 	BIGNUM *priv_key;
 	int ret;
 
-	priv_key = BN_new();
+	priv_key = BN_secure_new();
 	if (!priv_key) {
 		fprintf(stderr, "failed to BN_new priv_key\n");
 		return 0;
@@ -904,7 +918,7 @@ static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 		fprintf(stderr, "failed to set private key\n");
 
 free_priv_key:
-	BN_free(priv_key);
+	BN_clear_free(priv_key);
 	return ret;
 }
 
@@ -1034,13 +1048,14 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	struct wd_ecc_in *ecdh_in;
 	BIGNUM *pkey_x, *pkey_y;
 	const EC_GROUP *group;
+	int xlen, ylen;
 	size_t ec_size;
 	BN_CTX *ctx;
 	int ret = 0;
 
 	ctx = BN_CTX_new();
 	if (!ctx)
-		return -ENOMEM;
+		return 0;
 
 	BN_CTX_start(ctx);
 	pkey_x = BN_CTX_get(ctx);
@@ -1056,16 +1071,30 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 		goto free_ctx;
 
 	ec_size = ecdh_get_ec_size(group);
-	uadk_get_affine_coordinates(group, pubkey, pkey_x, pkey_y, ctx);
+	ret = uadk_get_affine_coordinates(group, pubkey, pkey_x, pkey_y, ctx);
+	if (ret) {
+		ret = 0;
+		goto free_ctx;
+	}
+
 	in_pkey.x.data = buf_x;
 	in_pkey.y.data = buf_y;
-	in_pkey.x.dsize = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
-	in_pkey.y.dsize = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
+	xlen = BN_bn2binpad(pkey_x, (unsigned char *)in_pkey.x.data, ec_size);
+	ylen = BN_bn2binpad(pkey_y, (unsigned char *)in_pkey.y.data, ec_size);
+	if (xlen < 0 || ylen < 0) {
+		fprintf(stderr, "failed to BN_bn2binpad, xlen = %d, ylen = %d\n",
+			xlen, ylen);
+		ret = 0;
+		goto free_ctx;
+	}
+	in_pkey.x.dsize = xlen;
+	in_pkey.y.dsize = ylen;
 
 	/* Set public key */
 	ecdh_in = wd_ecxdh_new_in(sess, &in_pkey);
 	if (!ecdh_in) {
 		fprintf(stderr, "failed to new ecxdh in\n");
+		ret = 0;
 		goto free_ctx;
 	}
 
@@ -1073,6 +1102,7 @@ static int ecdh_compkey_init_iot(handle_t sess, struct wd_ecc_req *req,
 	if (!ecdh_out) {
 		fprintf(stderr, "failed to new ecxdh out\n");
 		wd_ecc_del_in(sess, ecdh_in);
+		ret = 0;
 		goto free_ctx;
 	}
 

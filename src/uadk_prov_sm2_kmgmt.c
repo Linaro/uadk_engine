@@ -337,8 +337,12 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	}
 
 	bn_key = BN_bin2bn((unsigned char *)privkey->data, privkey->dsize, NULL);
+	if (!bn_key) {
+		UADK_ERR("failed to BN_bin2bn privkey\n");
+		return UADK_P_FAIL;
+	}
 	ret = EC_KEY_set_private_key(ec, bn_key);
-	BN_free(bn_key);
+	BN_clear_free(bn_key);
 	if (ret == 0) {
 		UADK_ERR("failed to EC KEY set private key\n");
 		return UADK_P_FAIL;
@@ -358,6 +362,11 @@ static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 	memcpy(key_buff + x_offset, pubkey->x.data, pubkey->x.dsize);
 	memcpy(key_buff + y_offset, pubkey->y.data, pubkey->y.dsize);
 	bn_key = BN_bin2bn(key_buff, ECC_POINT_SIZE(SM2_KEY_BYTES) + 1, NULL);
+	if (!bn_key) {
+		UADK_ERR("failed to BN_bin2bn pubkey\n");
+		EC_POINT_free(point);
+		return UADK_P_FAIL;
+	}
 	ptr = EC_POINT_bn2point(group, bn_key, point, NULL);
 	BN_free(bn_key);
 	if (ptr == NULL) {

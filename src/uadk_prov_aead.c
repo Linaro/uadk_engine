@@ -24,6 +24,7 @@
 #include <numa.h>
 #include <openssl/core_names.h>
 #include <openssl/proverr.h>
+#include <openssl/rand.h>
 #include <uadk/wd_aead.h>
 #include <uadk/wd_sched.h>
 #include "uadk.h"
@@ -31,7 +32,6 @@
 #include "uadk_prov.h"
 #include "uadk_utils.h"
 
-#define MAX_IV_LEN			16
 #define MAX_KEY_LEN			64
 #define MAX_AAD_LEN			0xFFFF
 #define ALG_NAME_SIZE			128
@@ -45,8 +45,6 @@
 #define UADK_AEAD_FAIL			(-1)
 
 #define UNINITIALISED_SIZET		((size_t)-1)
-#define IV_STATE_UNINITIALISED		0
-#define IV_STATE_SET			1
 #define KEY_STATE_SET			1
 
 /* Internal flags that can be queried */
@@ -57,6 +55,21 @@
 #define UADK_DO_HW			(-0xF0)
 #define UADK_AEAD_DEF_CTXS		2
 #define UADK_AEAD_OP_NUM		1
+
+#define AES_CTR_IV_LEN			16
+#define GCM_IV_MAX_SIZE			128
+#define GCM_IV_DEFAULT_SIZE		12
+#define AES_GCM_COUNTER_SIZE		4
+
+#define AES_BLOCK_OFFSET		4
+#define AES_CTR_COUNTER_SIZE		8
+#define BYTE_TO_BITS			8
+#define ALIGN_DOWN(x, align)		((x) & ~((align) - 1))
+
+#define AEAD_ADD_LAST_BYTE1		1
+#define AEAD_ADD_LAST_BYTE2		2
+#define AEAD_ADD_BYTE_OFFSET		8
+#define AEAD_ADD_LEN_MASK		0xff
 
 struct aead_prov {
 	int pid;
@@ -76,6 +89,13 @@ enum aead_tag_status {
 	SET_TAG      /* The MAC has been set to req. */
 };
 
+enum aead_iv_state {
+	IV_STATE_UNINITIALISED = 0, /* initial state is not initialized */
+	IV_STATE_BUFFERED,          /* iv has been copied to the iv buffer */
+	IV_STATE_COPIED,            /* iv has been copied from the iv buffer */
+	IV_STATE_FINISHED,          /* the iv has been used - so don't reuse it */
+};
+
 struct aead_priv_ctx {
 	int nid;
 	char alg_name[ALG_NAME_SIZE];
@@ -85,15 +105,12 @@ struct aead_priv_ctx {
 
 	unsigned int enc : 1;
 	unsigned int key_set : 1;     /* Whether key is copied to priv key buffers */
-	unsigned int iv_set : 1;      /* Whether iv is copied to priv iv buffers */
 	enum aead_tag_status tag_set; /* Whether mac is copied to priv mac buffers */
 
-	unsigned char iv[MAX_IV_LEN];
+	unsigned char iv[GCM_IV_MAX_SIZE]; /* Buffer to use for IV's */
 	unsigned char key[MAX_KEY_LEN];
 	unsigned char buf[AES_GCM_TAG_LEN];       /* mac buffers */
-	unsigned char *data;          /* store input and output when block mode */
 
-	struct wd_aead_sess_setup setup;
 	struct wd_aead_req req;
 	enum uadk_aead_mode mode;
 	handle_t sess;
@@ -101,6 +118,17 @@ struct aead_priv_ctx {
 	int stream_switch_flag;    /* soft calculation switch flag for stream mode */
 	EVP_CIPHER_CTX *sw_ctx;
 	EVP_CIPHER *sw_aead;
+	unsigned char partial_data[AES_BLOCK_SIZE];
+	OSSL_LIB_CTX *libctx;
+	unsigned char iv_copied[GCM_IV_MAX_SIZE];
+	enum aead_iv_state iv_state;
+	size_t partial_len;
+	size_t tls_aad_len;          /* saved TLS AAD length, UNINITIALISED_SIZET if not TLS */
+	size_t tls_aad_pad_sz;       /* padded length reported back via AEAD_TLS1_AAD_PAD */
+	uint64_t tls_enc_records;    /* number of TLS records encrypted (overflow check) */
+	unsigned int iv_gen;         /* OK to generate/retrieve explicit IV */
+	unsigned int iv_gen_rand;
+	unsigned char tls_aad[EVP_AEAD_TLS1_AAD_LEN]; /* saved TLS AAD bytes */
 };
 
 struct aead_info {
@@ -114,6 +142,8 @@ static struct aead_info aead_info_table[] = {
 	{ NID_aes_192_gcm, WD_CIPHER_AES, WD_CIPHER_GCM },
 	{ NID_aes_256_gcm, WD_CIPHER_AES, WD_CIPHER_GCM }
 };
+
+static int uadk_prov_get_iv_gen(struct aead_priv_ctx *priv, unsigned char *out, size_t out_size);
 
 # if OPENSSL_VERSION_NUMBER <= 0x30200000L
 static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
@@ -162,13 +192,13 @@ static int uadk_create_aead_soft_ctx(struct aead_priv_ctx *priv)
 
 	switch (priv->nid) {
 	case NID_aes_128_gcm:
-		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-128-GCM", "provider=default");
+		priv->sw_aead = EVP_CIPHER_fetch(priv->libctx, "AES-128-GCM", "provider=default");
 		break;
 	case NID_aes_192_gcm:
-		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-192-GCM", "provider=default");
+		priv->sw_aead = EVP_CIPHER_fetch(priv->libctx, "AES-192-GCM", "provider=default");
 		break;
 	case NID_aes_256_gcm:
-		priv->sw_aead = EVP_CIPHER_fetch(NULL, "AES-256-GCM", "provider=default");
+		priv->sw_aead = EVP_CIPHER_fetch(priv->libctx, "AES-256-GCM", "provider=default");
 		break;
 	default:
 		break;
@@ -194,18 +224,35 @@ free:
 	return UADK_AEAD_FAIL;
 }
 
-static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned char *key,
-				    const unsigned char *iv, const OSSL_PARAM *params)
+static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv)
 {
+	unsigned char *iv = priv->iv_copied;
+	OSSL_PARAM params_ivlen[2];
+	OSSL_PARAM *params = NULL;
 	int ret;
+
+	if (priv->stream_switch_flag == UADK_DO_SOFT)
+		return UADK_AEAD_SUCCESS;
 
 	if (!priv->sw_aead)
 		return UADK_AEAD_FAIL;
 
+	if (priv->iv_state == IV_STATE_BUFFERED)
+		iv = priv->iv;
+
+	if (priv->ivlen != GCM_IV_DEFAULT_SIZE) {
+		params_ivlen[0] = OSSL_PARAM_construct_size_t(
+				  OSSL_CIPHER_PARAM_IVLEN, &priv->ivlen);
+		params_ivlen[1] = OSSL_PARAM_construct_end();
+		params = params_ivlen;
+	}
+
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
-		ret = EVP_EncryptInit_ex2(priv->sw_ctx, priv->sw_aead, key, iv, params);
+		ret = EVP_EncryptInit_ex2(priv->sw_ctx, priv->sw_aead,
+					  priv->key, iv, params);
 	else
-		ret = EVP_DecryptInit_ex2(priv->sw_ctx, priv->sw_aead, key, iv, params);
+		ret = EVP_DecryptInit_ex2(priv->sw_ctx, priv->sw_aead,
+					  priv->key, iv, params);
 
 	if (!ret) {
 		UADK_ERR("aead soft init error!\n");
@@ -213,80 +260,78 @@ static int uadk_prov_aead_soft_init(struct aead_priv_ctx *priv, const unsigned c
 	}
 
 	priv->stream_switch_flag = UADK_DO_SOFT;
+	if (!priv->req.mac)
+		priv->req.mac = priv->buf;
 
 	return UADK_AEAD_SUCCESS;
 }
 
 static int uadk_aead_soft_update(struct aead_priv_ctx *priv, unsigned char *out,
-				 int *outl, const unsigned char *in, size_t len)
+				 size_t *outl, const unsigned char *in, size_t len)
 {
-	int ret;
+	int ret, outsize = 0;
 
 	if (!priv->sw_aead)
 		return UADK_AEAD_FAIL;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
-		ret = EVP_EncryptUpdate(priv->sw_ctx, out, outl, in, len);
+		ret = EVP_EncryptUpdate(priv->sw_ctx, out, &outsize, in, len);
 	else
-		ret = EVP_DecryptUpdate(priv->sw_ctx, out, outl, in, len);
+		ret = EVP_DecryptUpdate(priv->sw_ctx, out, &outsize, in, len);
 
 	if (!ret) {
 		UADK_ERR("aead soft update error.\n");
 		return UADK_AEAD_FAIL;
 	}
 
-	priv->stream_switch_flag = UADK_DO_SOFT;
+	*outl = outsize;
 
 	return UADK_AEAD_SUCCESS;
+}
+
+static void uadk_prov_aead_reset_ctx(struct aead_priv_ctx *priv)
+{
+	priv->stream_switch_flag = 0;
+	priv->iv_state = IV_STATE_FINISHED;
+	priv->req.assoc_bytes = 0;
+	priv->partial_len = 0;
+	priv->mode = UNINIT_MODE;
+	priv->req.mac = NULL;
+	priv->req.msg_state = AEAD_MSG_INVALID;
+	priv->tls_aad_len = UNINITIALISED_SIZET;
 }
 
 static int uadk_aead_soft_final(struct aead_priv_ctx *priv, unsigned char *digest, size_t *outl)
 {
-	int ret;
+	int ret, outsize = 0;
 
 	if (!priv->sw_aead)
-		goto error;
+		return UADK_OSSL_FAIL;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST) {
-		ret = EVP_EncryptFinal_ex(priv->sw_ctx, digest, (int *)outl);
+		ret = EVP_EncryptFinal_ex(priv->sw_ctx, digest, &outsize);
 		if (!ret)
 			goto error;
 
 		ret = EVP_CIPHER_CTX_ctrl(priv->sw_ctx, EVP_CTRL_GCM_GET_TAG,
-					  priv->taglen, priv->buf);
-		if (!ret)
-			goto error;
+					  priv->taglen, priv->req.mac);
+		if (ret == UADK_AEAD_SUCCESS)
+			priv->tag_set = SET_TAG;
 	} else {
 		ret = EVP_CIPHER_CTX_ctrl(priv->sw_ctx, EVP_CTRL_GCM_SET_TAG,
-					  priv->taglen, priv->buf);
+					  priv->taglen, priv->req.mac);
 		if (!ret)
 			goto error;
 
-		ret = EVP_DecryptFinal_ex(priv->sw_ctx, digest, (int *)outl);
-		if (!ret)
-			goto error;
+		ret = EVP_DecryptFinal_ex(priv->sw_ctx, digest, &outsize);
 	}
-
-	priv->stream_switch_flag = 0;
-
-	return UADK_AEAD_SUCCESS;
 
 error:
-	UADK_ERR("aead soft final failed.\n");
-	return UADK_AEAD_FAIL;
-}
-
-static void uadk_aead_soft_cleanup(struct aead_priv_ctx *priv)
-{
-	if (priv->sw_ctx) {
-		EVP_CIPHER_CTX_free(priv->sw_ctx);
-		priv->sw_ctx = NULL;
-	}
-
-	if (priv->sw_aead) {
-		EVP_CIPHER_free(priv->sw_aead);
-		priv->sw_aead = NULL;
-	}
+	if (!ret)
+		UADK_ERR("aead soft final failed.\n");
+	*outl = 0;
+	uadk_prov_aead_reset_ctx(priv);
+	return ret;
 }
 
 static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
@@ -316,7 +361,7 @@ static int uadk_prov_aead_dev_init(struct aead_priv_ctx *priv)
 	if (aprov.pid == getpid())
 		goto free_nodemask;
 
-	ret = wd_aead_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_aead_init2_(priv->alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret)) {
 		ret = UADK_AEAD_FAIL;
 		UADK_ERR("failed to init aead!\n");
@@ -335,59 +380,31 @@ free_nodemask:
 
 static int uadk_prov_aead_ctx_init(struct aead_priv_ctx *priv)
 {
-	struct wd_aead_sess_setup setup = {0};
-	struct sched_params params = {0};
 	int ret;
 
-	if (!priv->key_set || !priv->iv_set) {
-		UADK_ERR("key or iv is not set yet!\n");
-		return UADK_AEAD_FAIL;
+	if (priv->iv_state == IV_STATE_BUFFERED) {
+		memcpy(priv->iv_copied, priv->iv, priv->ivlen);
+		priv->iv_state = IV_STATE_COPIED;
 	}
 
 	priv->req.iv_bytes = priv->ivlen;
-	priv->req.iv = priv->iv;
+	priv->req.iv = priv->iv_copied;
+	/* Initialize the counter value for CTR (Counter) mode encryption. */
+	memset(priv->iv_copied + GCM_IV_DEFAULT_SIZE, 0, AES_GCM_COUNTER_SIZE);
+	priv->iv_copied[AES_CTR_IV_LEN - 1] = 0x2;
+
 	priv->req.out_bytes = 0;
-	priv->req.mac = priv->buf;
-	priv->req.mac_bytes = priv->taglen;
+	if (!priv->req.mac)
+		priv->req.mac = priv->buf;
+	priv->req.mac_bytes = AES_GCM_TAG_LEN;
 
-	ret = uadk_prov_aead_dev_init(priv);
-	if (unlikely(ret < 0))
+	ret = wd_aead_set_authsize(priv->sess, AES_GCM_TAG_LEN);
+	if (ret) {
+		UADK_ERR("uadk failed to set authsize!\n");
 		return UADK_AEAD_FAIL;
-
-	/* dec and enc use the same op */
-	params.type = 0;
-	/* Use the default numa parameters */
-	params.numa_id = -1;
-	setup.sched_param = &params;
-	setup.calg = priv->setup.calg;
-	setup.cmode = priv->setup.cmode;
-
-	if (!priv->sess) {
-		priv->sess = wd_aead_alloc_sess(&setup);
-		if (!priv->sess) {
-			UADK_ERR("uadk failed to alloc session!\n");
-			return UADK_AEAD_FAIL;
-		}
-
-		ret = wd_aead_set_authsize(priv->sess, priv->taglen);
-		if (ret) {
-			UADK_ERR("uadk failed to set authsize!\n");
-			goto free_sess;
-		}
-
-		ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
-		if (ret) {
-			UADK_ERR("uadk failed to set key!\n");
-			goto free_sess;
-		}
 	}
 
 	return UADK_AEAD_SUCCESS;
-
-free_sess:
-	wd_aead_free_sess(priv->sess);
-	priv->sess = 0;
-	return UADK_AEAD_FAIL;
 }
 
 static void *uadk_prov_aead_cb(struct wd_aead_req *req, void *data)
@@ -412,199 +429,25 @@ static void *uadk_prov_aead_cb(struct wd_aead_req *req, void *data)
 	return NULL;
 }
 
-static int do_aes_gcm_prepare(struct aead_priv_ctx *priv)
-{
-	if (priv->mode == UNINIT_MODE) {
-		if (ASYNC_get_current_job())
-			priv->mode = ASYNC_MODE;
-		else
-			priv->mode = SYNC_MODE;
-	}
-
-	if (!priv->enc && priv->tag_set == READ_TAG) {
-		if (likely(priv->taglen == AES_GCM_TAG_LEN)) {
-			memcpy(priv->req.mac, priv->buf, AES_GCM_TAG_LEN);
-			priv->tag_set = SET_TAG;
-		} else {
-			UADK_ERR("invalid: aead gcm mac length only support 16B.\n");
-			return UADK_AEAD_FAIL;
-		}
-	}
-
-	return UADK_AEAD_SUCCESS;
-}
-
-static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv, unsigned char *out,
-				   const unsigned char *in, size_t inlen,
-				   enum wd_aead_msg_state state)
+static int uadk_do_aead_sync_inner(struct aead_priv_ctx *priv)
 {
 	int ret;
 
-	if ((state == AEAD_MSG_BLOCK || state == AEAD_MSG_END)
-		&& !priv->enc && priv->tag_set != SET_TAG) {
-		UADK_ERR("The tag for synchronous decryption is not set.\n");
-		return UADK_AEAD_FAIL;
-	}
-
-	priv->req.msg_state = state;
-	priv->req.src = (unsigned char *)in;
-	priv->req.dst = out;
-	priv->req.in_bytes = inlen;
-	priv->req.state = 0;
 	ret = wd_do_aead_sync(priv->sess, &priv->req);
 	if (unlikely(ret < 0 || priv->req.state)) {
-		UADK_ERR("do aead task failed, msg state: %u, ret: %d, state: %u!\n",
-			state, ret, priv->req.state);
-		return UADK_AEAD_FAIL;
-	}
-
-	return UADK_AEAD_SUCCESS;
-}
-
-static int uadk_do_aead_sync(struct aead_priv_ctx *priv, unsigned char *out,
-			     const unsigned char *in, size_t inlen)
-{
-	size_t nbytes, tail, processing_len, max_mid_len;
-	const unsigned char *in_block = in;
-	unsigned char *out_block = out;
-	int ret;
-
-	tail = inlen % AES_BLOCK_SIZE;
-	nbytes = inlen - tail;
-	max_mid_len = AEAD_BLOCK_SIZE - priv->req.assoc_bytes;
-
-	/* If the data length is not 16-byte aligned, it is split according to the protocol. */
-	while (nbytes > 0) {
-		processing_len = nbytes > max_mid_len ? max_mid_len : nbytes;
-		processing_len -= (processing_len % AES_BLOCK_SIZE);
-
-		ret = uadk_do_aead_sync_inner(priv, out_block, in_block,
-						processing_len, AEAD_MSG_MIDDLE);
-		if (ret < 0)
-			return UADK_AEAD_FAIL;
-		nbytes -= processing_len;
-		in_block = in_block + processing_len;
-		out_block = out_block + processing_len;
-	}
-
-	if (tail) {
-		ret = uadk_do_aead_sync_inner(priv, out_block, in_block, tail, AEAD_MSG_END);
-		if (ret < 0)
-			return UADK_AEAD_FAIL;
-	}
-
-	return UADK_AEAD_SUCCESS;
-}
-
-static int uadk_do_aead_async_inner(struct aead_priv_ctx *priv, struct async_op *op,
-				    unsigned char *out, const unsigned char *in, size_t inlen)
-{
-	struct uadk_e_cb_info cb_param;
-	int cnt = 0;
-	int ret;
-
-	if ((priv->req.msg_state == AEAD_MSG_BLOCK || priv->req.msg_state == AEAD_MSG_END)
-	    && !priv->enc && priv->tag_set != SET_TAG) {
-		UADK_ERR("The tag for asynchronous decryption is not set.\n");
-		return UADK_AEAD_FAIL;
-	}
-
-	if (unlikely(priv->req.assoc_bytes + inlen > AEAD_BLOCK_SIZE)) {
-		UADK_ERR("aead input data length is too long!\n");
-		return UADK_AEAD_FAIL;
-	}
-
-	cb_param.op = op;
-	cb_param.priv = &priv->req;
-	priv->req.cb = uadk_prov_aead_cb;
-	priv->req.cb_param = &cb_param;
-	priv->req.state = POLL_ERROR;
-	priv->req.src = (unsigned char *)in;
-	priv->req.dst = out;
-	priv->req.in_bytes = inlen;
-
-	if (unlikely(!priv->sess)) {
-		UADK_ERR("uadk session is NULL!\n");
-		return UADK_AEAD_FAIL;
-	}
-
-	ret = async_get_free_task(&op->idx);
-	if (unlikely(!ret))
-		return UADK_AEAD_FAIL;
-
-	do {
-		ret = wd_do_aead_async(priv->sess, &priv->req);
-		if (unlikely(ret < 0)) {
-			if (unlikely(ret != -EBUSY))
-				UADK_ERR("do aead async operation failed ret = %d.\n", ret);
-			else if (unlikely(cnt++ > ENGINE_SEND_MAX_CNT))
-				UADK_ERR("do aead async operation timeout.\n");
-			else
-				continue;
-
-			async_free_poll_task(op->idx, 0);
-			return UADK_AEAD_FAIL;
-		}
-	} while (ret == -EBUSY);
-
-	ret = async_pause_job(priv, op, ASYNC_TASK_AEAD);
-	if (unlikely(!ret || priv->req.state)) {
-		UADK_ERR("do aead async job failed, ret: %d, state: %u!\n",
+		UADK_ERR("do aead sync task failed, ret: %d, state: %u!\n",
 			 ret, priv->req.state);
 		return UADK_AEAD_FAIL;
 	}
 
-	return ret;
-}
-
-static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
-				      const unsigned char *in, size_t inlen)
-{
-	struct async_op op;
-	int ret;
-
-	if (inlen > MAX_AAD_LEN || !inlen)
-		goto soft;
-
-	priv->req.assoc_bytes = inlen;
-
-	if (priv->mode == ASYNC_MODE) {
-		ret = async_setup_async_event_notification(&op);
-		if (unlikely(!ret)) {
-			UADK_ERR("failed to setup async event notification.\n");
-			goto soft;
-		}
-
-		priv->req.msg_state = AEAD_MSG_FIRST;
-		ret = uadk_do_aead_async_inner(priv, &op, out, in, inlen);
-		if (unlikely(ret < 0)) {
-			UADK_ERR("aead async first failed, switch to soft.\n");
-			goto free_notification;
-		}
-
-		return UADK_AEAD_SUCCESS;
-	}
-
-	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
-	if (unlikely(ret < 0))
-		goto soft;
-
 	return UADK_AEAD_SUCCESS;
-
-free_notification:
-	(void)async_clear_async_event_notification();
-soft:
-	UADK_ERR("aead failed to update aad, switch to soft.\n");
-	return SWITCH_TO_SOFT;
 }
 
-static int uadk_do_aead_async(struct aead_priv_ctx *priv, unsigned char *out,
-			      const unsigned char *in, size_t inlen)
+static int uadk_do_aead_async_inner(struct aead_priv_ctx *priv)
 {
-	size_t nbytes, tail, processing_len, max_mid_len;
-	const unsigned char *in_block = in;
-	unsigned char *out_block = out;
+	struct uadk_e_cb_info cb_param;
 	struct async_op op;
+	int cnt = 0;
 	int ret;
 
 	ret = async_setup_async_event_notification(&op);
@@ -613,121 +456,552 @@ static int uadk_do_aead_async(struct aead_priv_ctx *priv, unsigned char *out,
 		return UADK_AEAD_FAIL;
 	}
 
-	tail = inlen % AES_BLOCK_SIZE;
-	nbytes = inlen - tail;
-	max_mid_len = AEAD_BLOCK_SIZE - priv->req.assoc_bytes;
+	cb_param.op = &op;
+	cb_param.priv = &priv->req;
+	priv->req.cb = uadk_prov_aead_cb;
+	priv->req.cb_param = &cb_param;
 
-	/* Middle packets processing */
-	while (nbytes > 0) {
-		processing_len = nbytes > max_mid_len ? max_mid_len : nbytes;
-		processing_len -= (processing_len % AES_BLOCK_SIZE);
+	ret = async_get_free_task(&op.idx);
+	if (unlikely(!ret))
+		goto free_notification;
 
-		priv->req.msg_state = AEAD_MSG_MIDDLE;
-		ret = uadk_do_aead_async_inner(priv, &op, out_block, in_block,
-					       processing_len);
+	do {
+		ret = wd_do_aead_async(priv->sess, &priv->req);
 		if (unlikely(ret < 0)) {
-			UADK_ERR("aead async middle failed!\n");
+			if (unlikely(ret != -EBUSY))
+				UADK_ERR("do aead async operation failed ret = %d.\n", ret);
+			else if (unlikely(cnt++ > PROV_SEND_MAX_CNT))
+				UADK_ERR("do aead async operation timeout.\n");
+			else
+				continue;
+
+			async_free_poll_task(op.idx, 0);
 			goto free_notification;
 		}
-		nbytes -= processing_len;
-		in_block = in_block + processing_len;
-		out_block = out_block + processing_len;
-	}
+	} while (ret == -EBUSY);
 
-	/* Tail packet processing */
-	if (tail) {
-		priv->req.msg_state = AEAD_MSG_END;
-		ret = uadk_do_aead_async_inner(priv, &op, out_block, in_block, tail);
-		if (unlikely(ret < 0)) {
-			UADK_ERR("aead async tail failed!\n");
-			goto free_notification;
-		}
+	ret = async_pause_job(priv, &op, ASYNC_TASK_AEAD);
+	if (unlikely(!ret || priv->req.state)) {
+		UADK_ERR("do aead async job failed, ret: %d, state: %u!\n",
+			 ret, priv->req.state);
+		goto free_notification;
 	}
 
 	return UADK_AEAD_SUCCESS;
 
 free_notification:
 	(void)async_clear_async_event_notification();
-
 	return UADK_AEAD_FAIL;
 }
 
-static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
-				       const unsigned char *in, size_t inlen)
+static int uadk_do_aes_gcm_inner(struct aead_priv_ctx *priv, unsigned char *out,
+				 const unsigned char *in, size_t inlen,
+				 enum wd_aead_msg_state state)
 {
-	if (priv->stream_switch_flag == UADK_DO_SOFT)
-		return SWITCH_TO_SOFT;
+	priv->req.msg_state = state;
+	priv->req.src = (unsigned char *)in;
+	priv->req.dst = out;
+	priv->req.in_bytes = inlen;
+	priv->req.state = POLL_ERROR;
 
 	if (priv->mode == ASYNC_MODE)
-		return uadk_do_aead_async(priv, out, in, inlen);
+		return uadk_do_aead_async_inner(priv);
 
-	return uadk_do_aead_sync(priv, out, in, inlen);
+	return uadk_do_aead_sync_inner(priv);
 }
 
-static int uadk_prov_do_aes_gcm_final(struct aead_priv_ctx *priv, unsigned char *out,
-				      const unsigned char *in, size_t inlen)
-{
-	struct async_op op;
-	int ret;
-
-	if (!priv->req.assoc_bytes || priv->req.msg_state == AEAD_MSG_END)
-		goto out;
-
-	if (priv->mode == ASYNC_MODE) {
-		ret = async_setup_async_event_notification(&op);
-		if (unlikely(!ret)) {
-			UADK_ERR("failed to setup async event notification.\n");
-			return UADK_AEAD_FAIL;
-		}
-
-		priv->req.msg_state = AEAD_MSG_END;
-		ret = uadk_do_aead_async_inner(priv, &op, out, in, inlen);
-		if (unlikely(ret < 0)) {
-			UADK_ERR("aead async final failed!\n");
-			(void)async_clear_async_event_notification();
-			return UADK_AEAD_FAIL;
-		}
-
-		goto out;
-	}
-
-	ret = uadk_do_aead_sync_inner(priv, out, in, inlen, AEAD_MSG_END);
-	if (unlikely(ret < 0))
-		return UADK_AEAD_FAIL;
-
-out:
-	if (priv->enc)
-		memcpy(priv->buf, priv->req.mac, priv->taglen);
-	else
-		priv->tag_set = INIT_TAG;
-
-	priv->mode = UNINIT_MODE;
-
-	return UADK_AEAD_SUCCESS;
-}
-
-static int uadk_prov_do_aes_gcm(struct aead_priv_ctx *priv, unsigned char *out,
-				size_t *outl, size_t outsize,
-				const unsigned char *in, size_t inlen)
+static int uadk_prov_do_aes_gcm_first(struct aead_priv_ctx *priv, unsigned char *out,
+				      size_t *outl, const unsigned char *in, size_t inlen)
 {
 	int ret;
+
+	if (inlen > MAX_AAD_LEN || !inlen)
+		return SWITCH_TO_SOFT;
 
 	ret = uadk_prov_aead_ctx_init(priv);
 	if (ret != UADK_AEAD_SUCCESS)
 		return UADK_AEAD_FAIL;
 
-	ret = do_aes_gcm_prepare(priv);
-	if (unlikely(ret < 0))
+	if (ASYNC_get_current_job())
+		priv->mode = ASYNC_MODE;
+	else
+		priv->mode = SYNC_MODE;
+
+	priv->req.assoc_bytes = inlen;
+	ret = uadk_do_aes_gcm_inner(priv, out, in, inlen, AEAD_MSG_FIRST);
+	if (ret == UADK_AEAD_FAIL) {
+		priv->req.msg_state = AEAD_MSG_INVALID;
+		priv->req.assoc_bytes = 0;
+		UADK_ERR("aead failed to update aad, switch to soft.\n");
+		return SWITCH_TO_SOFT;
+	}
+
+	*outl = 0;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/*
+ * Increment counter (128-bit int) by software,
+ * in CTR mode, the last 8 bytes are the counter.
+ */
+static void ctr_iv_inc(__u8 *counter, __u32 len)
+{
+	__u32 n = AES_CTR_COUNTER_SIZE;
+	__u32 c = len;
+
+	do {
+		--n;
+		c += counter[n];
+		counter[n] = (__u8)c;
+		c >>= BYTE_TO_BITS;
+	} while (n);
+}
+
+static int uadk_prov_process_partial_data(struct aead_priv_ctx *priv, unsigned char *out,
+					  const unsigned char *in, size_t inlen,
+					  size_t *processed_len)
+{
+	size_t processing_len = AES_BLOCK_SIZE - priv->partial_len;
+	unsigned char block_out[AES_BLOCK_SIZE];
+	int ret;
+
+	if (!priv->partial_len)
+		return UADK_AEAD_SUCCESS;
+
+	/* If input can't complete the partial block, switch to soft */
+	if (inlen < processing_len)
+		return SWITCH_TO_SOFT;
+
+	memcpy(priv->partial_data + priv->partial_len, in, processing_len);
+	ret = uadk_do_aes_gcm_inner(priv, block_out, priv->partial_data,
+				    AES_BLOCK_SIZE, AEAD_MSG_MIDDLE);
+	if (unlikely(ret == UADK_AEAD_FAIL)) {
+		UADK_ERR("failed to process partial block.\n");
 		return UADK_AEAD_FAIL;
+	}
+
+	memcpy(out, block_out + priv->partial_len, processing_len);
+	priv->partial_len = 0;
+	ctr_iv_inc(priv->iv_copied + AES_CTR_COUNTER_SIZE, 1);
+	*processed_len = processing_len;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/* Process last incomplete block, encrypt/decrypt using OpenSSL software implementation */
+static int uadk_prov_process_tail_data(struct aead_priv_ctx *priv, unsigned char *out,
+				       const unsigned char *in, size_t inlen)
+{
+	unsigned char block_out[AES_BLOCK_SIZE];
+	EVP_CIPHER *cipher = NULL;
+	int ret = UADK_AEAD_FAIL;
+	EVP_CIPHER_CTX *ctx;
+	int outsize = 0;
+
+	if (!inlen)
+		return UADK_AEAD_SUCCESS;
+
+	/* Buffer the tail data */
+	memcpy(priv->partial_data + priv->partial_len, in, inlen);
+
+	ctx = EVP_CIPHER_CTX_new();
+	if (!ctx)
+		return UADK_AEAD_FAIL;
+
+	switch (priv->nid) {
+	case NID_aes_128_gcm:
+		cipher = EVP_CIPHER_fetch(priv->libctx, "AES-128-CTR", "provider=default");
+		break;
+	case NID_aes_192_gcm:
+		cipher = EVP_CIPHER_fetch(priv->libctx, "AES-192-CTR", "provider=default");
+		break;
+	case NID_aes_256_gcm:
+		cipher = EVP_CIPHER_fetch(priv->libctx, "AES-256-CTR", "provider=default");
+		break;
+	default:
+		break;
+	}
+	if (!cipher)
+		goto free_ctx;
+
+	ret = EVP_CipherInit_ex2(ctx, cipher, priv->key, priv->iv_copied, priv->enc, NULL);
+	if (!ret)
+		goto free_cipher;
+
+	ret = EVP_CipherUpdate(ctx, block_out, &outsize, priv->partial_data,
+				priv->partial_len + inlen);
+	if (!ret)
+		goto free_cipher;
+
+	ret = EVP_CipherFinal_ex(ctx, block_out + priv->partial_len + inlen, &outsize);
+	if (!ret)
+		goto free_cipher;
+
+	memcpy(out, block_out + priv->partial_len, inlen);
+	priv->partial_len += inlen;
+
+free_cipher:
+	EVP_CIPHER_free(cipher);
+free_ctx:
+	EVP_CIPHER_CTX_free(ctx);
+	return ret;
+}
+
+/* Process complete blocks in bulk */
+static int uadk_process_complete_blocks(struct aead_priv_ctx *priv, unsigned char *out,
+					const unsigned char *in, size_t len)
+{
+	size_t max_mid_len = AEAD_BLOCK_SIZE - priv->req.assoc_bytes;
+	size_t remain_len = len;
+	size_t chunk;
+	int ret;
+
+	while (remain_len > 0) {
+		chunk = (remain_len > max_mid_len) ? max_mid_len : remain_len;
+		chunk = ALIGN_DOWN(chunk, AES_BLOCK_SIZE);
+
+		ret = uadk_do_aes_gcm_inner(priv, out, in, chunk, AEAD_MSG_MIDDLE);
+		if (unlikely(ret == UADK_AEAD_FAIL)) {
+			UADK_ERR("failed to process complete block.\n");
+			return UADK_AEAD_FAIL;
+		}
+
+		remain_len -= chunk;
+		out += chunk;
+		in += chunk;
+	}
+
+	ctr_iv_inc(priv->iv_copied + AES_CTR_COUNTER_SIZE, len >> AES_BLOCK_OFFSET);
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/*
+ * The uadk does not support the scenario where the length of the intermediate
+ * packet is not 16-byte aligned. To avoid task failures, AES-CTR is used for
+ * encryption and decryption, and the data and the next task are combined to make the
+ * length 16-byte aligned. Then, the uadk calculates the hash value. However, it is
+ * recommended that the packet length be aligned to ensure that the performance is not
+ * affected by this problem.
+ */
+static int uadk_prov_do_aes_gcm_update(struct aead_priv_ctx *priv, unsigned char *out,
+				       size_t *outl, const unsigned char *in, size_t inlen)
+{
+	size_t remain_len = inlen;
+	size_t processed_len = 0;
+	int ret;
+
+	if (!priv->req.assoc_bytes)
+		return SWITCH_TO_SOFT;
+
+	*outl = inlen;
+	/* Process buffered partial data */
+	ret = uadk_prov_process_partial_data(priv, out, in, remain_len, &processed_len);
+	if (ret == SWITCH_TO_SOFT)
+		goto soft_fallback;
+	else if (ret < 0)
+		return UADK_AEAD_FAIL;
+
+	out += processed_len;
+	in += processed_len;
+	remain_len -= processed_len;
+
+	if (remain_len >= AES_BLOCK_SIZE) {
+		processed_len = ALIGN_DOWN(remain_len, AES_BLOCK_SIZE);
+		ret = uadk_process_complete_blocks(priv, out, in, processed_len);
+		if (ret != UADK_AEAD_SUCCESS)
+			return UADK_AEAD_FAIL;
+		remain_len -= processed_len;
+		out += processed_len;
+		in += processed_len;
+	}
+
+soft_fallback:
+	return uadk_prov_process_tail_data(priv, out, in, remain_len);
+}
+
+static int uadk_prov_do_aes_gcm_final(struct aead_priv_ctx *priv, unsigned char *out,
+				      size_t *outl, const unsigned char *in, size_t inlen)
+{
+	unsigned char block_out[AES_BLOCK_SIZE];
+	int ret;
+
+	if (!priv->req.assoc_bytes)
+		return SWITCH_TO_SOFT;
+
+	if (!priv->enc) {
+		if (priv->tag_set != READ_TAG) {
+			UADK_ERR("decrypt tag not set.\n");
+			ret = UADK_OSSL_FAIL;
+			goto out;
+		}
+
+		if (priv->taglen != AES_GCM_TAG_LEN) {
+			ret = wd_aead_set_authsize(priv->sess, priv->taglen);
+			if (ret) {
+				ret = UADK_OSSL_FAIL;
+				goto out;
+			}
+		}
+	}
+
+	if (priv->partial_len)
+		ret = uadk_do_aes_gcm_inner(priv, block_out, priv->partial_data,
+					    priv->partial_len, AEAD_MSG_END);
+	else
+		ret = uadk_do_aes_gcm_inner(priv, out, in, inlen, AEAD_MSG_END);
+	if (unlikely(ret == UADK_AEAD_FAIL)) {
+		UADK_ERR("uadk_prov_do_aes_gcm_final failed.\n");
+		goto out;
+	}
+
+	if (priv->enc)
+		priv->tag_set = SET_TAG;
+
+out:
+	uadk_prov_aead_reset_ctx(priv);
+	*outl = 0;
+
+	return ret;
+}
+
+static int uadk_prov_sw_aes_gcm(struct aead_priv_ctx *priv, unsigned char *out,
+				size_t *outl, const unsigned char *in, size_t inlen)
+{
+	int ret;
+
+	ret = uadk_prov_aead_soft_init(priv);
+	if (ret <= 0)
+		return UADK_OSSL_FAIL;
+
+	if (in)
+		return uadk_aead_soft_update(priv, out, outl, in, inlen);
+
+	return uadk_aead_soft_final(priv, out, outl);
+}
+
+static int uadk_prov_aead_hw_tls_cipher(struct aead_priv_ctx *priv, unsigned char *out,
+					const unsigned char *in, size_t inlen)
+{
+	size_t processed_len, remain_len;
+	size_t outsize;
+	int ret;
+
+	ret = uadk_prov_do_aes_gcm_first(priv, NULL, &outsize, priv->tls_aad, priv->tls_aad_len);
+	if (ret != UADK_AEAD_SUCCESS)
+		return ret;
+
+	if (priv->tls_aad_len + inlen <= AEAD_BLOCK_SIZE) {
+		ret = uadk_prov_do_aes_gcm_final(priv, out, &outsize, in, inlen);
+	} else {
+		processed_len = ALIGN_DOWN(inlen, AES_BLOCK_SIZE);
+		remain_len = inlen - processed_len;
+		ret = uadk_prov_do_aes_gcm_update(priv, out, &outsize, in, processed_len);
+		if (ret != UADK_AEAD_SUCCESS)
+			return ret;
+
+		if (remain_len)
+			ret = uadk_prov_do_aes_gcm_final(priv, out + processed_len, &outsize,
+							 in + processed_len, remain_len);
+		else
+			ret = uadk_prov_do_aes_gcm_final(priv, NULL, &outsize, NULL, 0);
+	}
+
+	return ret;
+}
+
+static int uadk_prov_aead_sw_tls_cipher(struct aead_priv_ctx *priv, unsigned char *out,
+					const unsigned char *in, size_t inlen)
+{
+	size_t outsize = 0;
+	int ret;
+
+	ret = uadk_prov_aead_soft_init(priv);
+	if (ret != UADK_AEAD_SUCCESS)
+		return UADK_OSSL_FAIL;
+
+	ret = uadk_aead_soft_update(priv, NULL, &outsize, priv->tls_aad, priv->tls_aad_len);
+	if (ret != UADK_AEAD_SUCCESS)
+		return UADK_OSSL_FAIL;
+
+	ret = uadk_aead_soft_update(priv, out, &outsize, in, inlen);
+	if (ret != UADK_AEAD_SUCCESS)
+		return UADK_OSSL_FAIL;
+
+	ret = uadk_aead_soft_final(priv, out + outsize, &outsize);
+	if (ret != UADK_AEAD_SUCCESS)
+		return UADK_OSSL_FAIL;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_set_tls_iv(struct aead_priv_ctx *priv, unsigned char *out,
+				     const unsigned char *in, size_t inlen)
+{
+	int ret;
+
+	if (!priv->iv_gen || !priv->key_set) {
+		UADK_ERR("invalid: aead tls iv or key not set.\n");
+		return UADK_OSSL_FAIL;
+	}
+
+	/*
+	 * priv->ivlen may have been overridden via OSSL_CIPHER_PARAM_AEAD_IVLEN;
+	 * the explicit-IV layout requires at least EVP_GCM_TLS_EXPLICIT_IV_LEN
+	 * bytes at the tail of priv->iv, otherwise the pointer arithmetic below
+	 * would underflow and produce an out-of-bounds access.
+	 */
+	if (priv->ivlen < EVP_GCM_TLS_EXPLICIT_IV_LEN) {
+		UADK_ERR("aead tls: ivlen too short %zu.\n", priv->ivlen);
+		return UADK_OSSL_FAIL;
+	}
+
+	/* TLS GCM is always in-place and always carries explicit IV + tag. */
+	if (out != in || inlen < (EVP_GCM_TLS_EXPLICIT_IV_LEN + EVP_GCM_TLS_TAG_LEN)) {
+		UADK_ERR("aead tls: invalid in-place buffer.\n");
+		return UADK_OSSL_FAIL;
+	}
+
+	if (priv->enc) {
+		ret = uadk_prov_get_iv_gen(priv, out, EVP_GCM_TLS_EXPLICIT_IV_LEN);
+		if (ret == UADK_OSSL_FAIL)
+			return UADK_OSSL_FAIL;
+	} else {
+		memcpy(priv->iv + priv->ivlen - EVP_GCM_TLS_EXPLICIT_IV_LEN, in,
+		       EVP_GCM_TLS_EXPLICIT_IV_LEN);
+		memcpy(priv->iv_copied, priv->iv, priv->ivlen);
+		priv->iv_state = IV_STATE_COPIED;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/*
+ * Process a TLS 1.x GCM record entirely in software.
+ *
+ * The on-wire buffer layout is:  explicit_iv(8) || payload || tag(16),
+ * and the operation must be performed in place (out == in). This mirrors
+ * gcm_tls_cipher() from the OpenSSL default provider, but every cryptographic
+ * step is delegated to the default provider's AES-GCM through the EVP API.
+ *
+ * Encryption: write a freshly generated explicit IV to out[0..8), feed the
+ * saved 13-byte AAD, encrypt the payload in place, then append the tag.
+ * Decryption: read the explicit IV from in[0..8), feed the AAD, decrypt the
+ * payload in place and verify the trailing tag.
+ */
+static int uadk_prov_aead_tls_cipher(struct aead_priv_ctx *priv, unsigned char *out,
+				     size_t *outl, const unsigned char *in, size_t inlen)
+{
+	size_t payload_len;
+	int ret;
+
+	ret = uadk_prov_aead_set_tls_iv(priv, out, in, inlen);
+	if (ret != UADK_AEAD_SUCCESS)
+		goto out;
+
+	/*
+	 * SP800-38D requires the encrypting side to fail after 2^64 - 1 keys.
+	 */
+	if (priv->enc && ++priv->tls_enc_records == 0) {
+		UADK_ERR("aead tls: too many records.\n");
+		ret = UADK_OSSL_FAIL;
+		goto out;
+	}
+
+	payload_len = inlen - EVP_GCM_TLS_EXPLICIT_IV_LEN - EVP_GCM_TLS_TAG_LEN;
+	in += EVP_GCM_TLS_EXPLICIT_IV_LEN;
+	out += EVP_GCM_TLS_EXPLICIT_IV_LEN;
+	priv->req.mac = out + payload_len;
+	priv->tag_set = READ_TAG;
+	if (priv->stream_switch_flag == UADK_DO_SOFT || !priv->sess ||
+	    priv->ivlen != GCM_IV_DEFAULT_SIZE)
+		goto do_soft;
+
+	ret = uadk_prov_aead_hw_tls_cipher(priv, out, in, payload_len);
+	if (ret == SWITCH_TO_SOFT)
+		goto do_soft;
+	else
+		goto out;
+do_soft:
+	ret = uadk_prov_aead_sw_tls_cipher(priv, out, in, payload_len);
+out:
+	if (ret == UADK_AEAD_SUCCESS) {
+		if (priv->enc)
+			*outl = inlen;
+		else
+			*outl = payload_len;
+	} else {
+		*outl = 0;
+	}
+	uadk_prov_aead_reset_ctx(priv);
+	priv->tag_set = INIT_TAG;
+	return ret;
+}
+
+static int uadk_prov_aead_iv_generate(struct aead_priv_ctx *priv)
+{
+	/* Must be at least 96 bits */
+	if (priv->ivlen < GCM_IV_DEFAULT_SIZE)
+		return UADK_OSSL_FAIL;
+
+	/* Use DRBG to generate random iv */
+	if (RAND_bytes_ex(priv->libctx, priv->iv, priv->ivlen, 0) <= 0)
+		return UADK_OSSL_FAIL;
+
+	priv->iv_state = IV_STATE_BUFFERED;
+	priv->iv_gen_rand = 1;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_check_params(struct aead_priv_ctx *priv)
+{
+	int ret;
+
+	if (!priv->key_set || priv->iv_state == IV_STATE_FINISHED)
+		return UADK_OSSL_FAIL;
+
+	if (priv->iv_state == IV_STATE_UNINITIALISED) {
+		if (!priv->enc)
+			return UADK_OSSL_FAIL;
+		ret = uadk_prov_aead_iv_generate(priv);
+		if (ret != UADK_AEAD_SUCCESS)
+			return UADK_OSSL_FAIL;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_do_aes_gcm(struct aead_priv_ctx *priv, unsigned char *out,
+				size_t *outl, const unsigned char *in, size_t inlen)
+{
+	int ret;
+
+	if (priv->tls_aad_len != UNINITIALISED_SIZET)
+		return uadk_prov_aead_tls_cipher(priv, out, outl, in, inlen);
+
+	ret = uadk_prov_aead_check_params(priv);
+	if (ret != UADK_AEAD_SUCCESS)
+		return UADK_OSSL_FAIL;
+
+	if (priv->stream_switch_flag == UADK_DO_SOFT ||
+	    priv->ivlen != GCM_IV_DEFAULT_SIZE ||
+	    !priv->sess)
+		return uadk_prov_sw_aes_gcm(priv, out, outl, in, inlen);
 
 	if (in) {
 		if (!out)
-			return uadk_prov_do_aes_gcm_first(priv, out, in, inlen);
-
-		return uadk_prov_do_aes_gcm_update(priv, out, in, inlen);
+			ret = uadk_prov_do_aes_gcm_first(priv, out, outl, in, inlen);
+		else
+			ret = uadk_prov_do_aes_gcm_update(priv, out, outl, in, inlen);
+	} else {
+		ret = uadk_prov_do_aes_gcm_final(priv, out, outl, NULL, 0);
 	}
+	if (ret == SWITCH_TO_SOFT)
+		return uadk_prov_sw_aes_gcm(priv, out, outl, in, inlen);
 
-	return uadk_prov_do_aes_gcm_final(priv, out, NULL, 0);
+	return ret;
 }
 
 void uadk_prov_destroy_aead(void)
@@ -756,19 +1030,20 @@ static int uadk_prov_aead_cipher(void *vctx, unsigned char *out, size_t *outl,
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 	int ret;
 
-	if (!vctx || !out || !outl)
+	if (!vctx || !outl)
 		return UADK_OSSL_FAIL;
 
-	if (outsize < inl) {
+	if (out && outsize < inl) {
 		UADK_ERR("invalid: aead cipher outsize is too small.\n");
 		return UADK_OSSL_FAIL;
 	}
 
-	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, in, inl);
-	if (ret < 0)
+	ret = uadk_prov_do_aes_gcm(priv, out, outl, in, inl);
+	if (ret <= 0) {
+		*outl = 0;
 		return UADK_OSSL_FAIL;
+	}
 
-	*outl = inl;
 	return UADK_AEAD_SUCCESS;
 }
 
@@ -777,41 +1052,27 @@ static int uadk_prov_aead_stream_update(void *vctx, unsigned char *out,
 					const unsigned char *in, size_t inl)
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
-	int ret, outlen;
+	int ret;
 
-	if (!vctx)
+	if (!vctx || !outl)
 		return UADK_OSSL_FAIL;
 
-	if (outsize < inl) {
+	if (!inl) {
+		*outl = 0;
+		return UADK_AEAD_SUCCESS;
+	}
+
+	if (out && outsize < inl) {
 		UADK_ERR("invalid: input param outsize is too small.\n");
 		return UADK_OSSL_FAIL;
 	}
 
-	if (priv->stream_switch_flag == UADK_DO_SOFT)
-		goto do_soft;
-	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, in, inl);
-	if (ret == SWITCH_TO_SOFT)
-		goto do_soft;
-	else if (ret < 0) {
-		UADK_ERR("stream data update failed.\n");
+	ret = uadk_prov_do_aes_gcm(priv, out, outl, in, inl);
+	if (ret <= 0) {
+		*outl = 0;
 		return UADK_OSSL_FAIL;
-	} else {
-		*outl = inl;
-		return UADK_AEAD_SUCCESS;
 	}
 
-do_soft:
-	if (priv->stream_switch_flag != UADK_DO_SOFT) {
-		ret = uadk_prov_aead_soft_init(priv, priv->key, priv->iv, NULL);
-		if (ret <= 0)
-			return UADK_OSSL_FAIL;
-	}
-
-	ret = uadk_aead_soft_update(priv, out, &outlen, in, inl);
-	if (ret <= 0)
-		return UADK_OSSL_FAIL;
-
-	*outl = outlen;
 	return UADK_AEAD_SUCCESS;
 }
 
@@ -821,40 +1082,27 @@ static int uadk_prov_aead_stream_final(void *vctx, unsigned char *out,
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 	int ret;
 
-	if (!vctx || !out || !outl)
+	if (!vctx || !outl)
 		return UADK_OSSL_FAIL;
 
-	if (priv->stream_switch_flag == UADK_DO_SOFT)
-		goto do_soft;
-
-	ret = uadk_prov_do_aes_gcm(priv, out, outl, outsize, NULL, 0);
-	if (ret < 0) {
-		UADK_ERR("stream data final failed, ret = %d\n", ret);
-		return UADK_OSSL_FAIL;
-	}
-
-	*outl = 0;
-	return UADK_AEAD_SUCCESS;
-
-do_soft:
-	ret = uadk_aead_soft_final(priv, out, outl);
-	if (ret) {
+	ret = uadk_prov_do_aes_gcm(priv, out, outl, NULL, 0);
+	if (ret <= 0) {
 		*outl = 0;
-		return UADK_AEAD_SUCCESS;
+		return UADK_OSSL_FAIL;
 	}
 
-	return UADK_OSSL_FAIL;
+	return UADK_AEAD_SUCCESS;
 }
 
-static int uadk_get_aead_info(struct aead_priv_ctx *priv)
+static int uadk_get_aead_info(struct wd_aead_sess_setup *setup, int nid)
 {
 	int aead_counts = ARRAY_SIZE(aead_info_table);
 	int i;
 
 	for (i = 0; i < aead_counts; i++) {
-		if (priv->nid == aead_info_table[i].nid) {
-			priv->setup.calg = aead_info_table[i].alg;
-			priv->setup.cmode = aead_info_table[i].mode;
+		if (nid == aead_info_table[i].nid) {
+			setup->calg = aead_info_table[i].alg;
+			setup->cmode = aead_info_table[i].mode;
 			break;
 		}
 	}
@@ -867,42 +1115,105 @@ static int uadk_get_aead_info(struct aead_priv_ctx *priv)
 	return UADK_AEAD_SUCCESS;
 }
 
+static int uadk_prov_aead_alloc_sess(struct aead_priv_ctx *priv)
+{
+	struct wd_aead_sess_setup setup = {0};
+	struct sched_params params = {0};
+	int ret;
+
+	if (priv->sess)
+		return UADK_AEAD_SUCCESS;
+
+	ret = uadk_prov_aead_dev_init(priv);
+	if (unlikely(ret < 0))
+		return SWITCH_TO_SOFT;
+
+	ret = uadk_get_aead_info(&setup, priv->nid);
+	if (unlikely(ret < 0))
+		return UADK_OSSL_FAIL;
+
+	/* dec and enc use the same op */
+	params.type = 0;
+	/* Use the default numa parameters */
+	params.numa_id = -1;
+	setup.sched_param = &params;
+	priv->sess = wd_aead_alloc_sess(&setup);
+	if (!priv->sess) {
+		UADK_ERR("uadk failed to alloc session, switch to soft\n");
+		return SWITCH_TO_SOFT;
+	}
+
+	if (priv->key_set == KEY_STATE_SET) {
+		ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
+		if (ret) {
+			UADK_ERR("uadk failed to set key!\n");
+			return UADK_OSSL_FAIL;
+		}
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_aead_set_key(struct aead_priv_ctx *priv,
+				  const unsigned char *key,
+				  size_t keylen)
+{
+	int ret;
+
+	if (keylen != priv->keylen) {
+		UADK_ERR("invalid keylen %zu!\n", keylen);
+		return UADK_OSSL_FAIL;
+	}
+
+	memcpy(priv->key, key, keylen);
+	priv->key_set = KEY_STATE_SET;
+	priv->tls_enc_records = 0;
+
+	/* use default provider */
+	if (!priv->sess)
+		return UADK_AEAD_SUCCESS;
+
+	ret = wd_aead_set_ckey(priv->sess, priv->key, priv->keylen);
+	if (ret) {
+		UADK_ERR("uadk failed to set key!\n");
+		return UADK_OSSL_FAIL;
+	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
 static int uadk_prov_aead_init(struct aead_priv_ctx *priv, const unsigned char *key, size_t keylen,
 			       const unsigned char *iv, size_t ivlen, const OSSL_PARAM *params)
 {
 	int ret;
 
-	if (ivlen > MAX_IV_LEN || keylen > MAX_KEY_LEN) {
-		UADK_ERR("invalid keylen or ivlen.\n");
+	/* will free in freectx */
+	ret = uadk_prov_aead_alloc_sess(priv);
+	if (ret == UADK_OSSL_FAIL)
 		return UADK_OSSL_FAIL;
-	}
 
 	if (iv) {
+		if (!ivlen || ivlen > GCM_IV_MAX_SIZE) {
+			UADK_ERR("invalid ivlen %zu.\n", ivlen);
+			return UADK_OSSL_FAIL;
+		}
 		memcpy(priv->iv, iv, ivlen);
-		priv->iv_set = IV_STATE_SET;
+		priv->ivlen = ivlen;
+		priv->iv_state = IV_STATE_BUFFERED;
 	}
 
-	ret = uadk_get_aead_info(priv);
-	if (unlikely(ret < 0))
-		return UADK_OSSL_FAIL;
-
 	if (key) {
-		memcpy(priv->key, key, keylen);
-		priv->key_set = KEY_STATE_SET;
+		ret = uadk_prov_aead_set_key(priv, key, keylen);
+		if (ret == UADK_OSSL_FAIL)
+			return UADK_OSSL_FAIL;
 	}
 
 	priv->stream_switch_flag = 0;
+	priv->tag_set = INIT_TAG;
+	priv->partial_len = 0;
+	priv->req.msg_state = AEAD_MSG_INVALID;
 
-	if (uadk_get_sw_offload_state())
-		uadk_create_aead_soft_ctx(priv);
-
-	ret = uadk_prov_aead_dev_init(priv);
-	if (unlikely(ret < 0)) {
-		UADK_ERR("aead switch to soft init.!\n");
-		return uadk_prov_aead_soft_init(priv, key, iv, params);
-	}
-
-	return UADK_AEAD_SUCCESS;
+	return uadk_prov_aead_set_ctx_params(priv, params);
 }
 
 static int uadk_prov_aead_einit(void *vctx, const unsigned char *key, size_t keylen,
@@ -936,9 +1247,11 @@ static int uadk_prov_aead_dinit(void *vctx, const unsigned char *key, size_t key
 }
 
 static const OSSL_PARAM uadk_prov_settable_ctx_params[] = {
-	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_KEYLEN, NULL),
 	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_AEAD_IVLEN, NULL),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG, NULL, 0),
+	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_AAD, NULL, 0),
+	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_IV_FIXED, NULL, 0),
+	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_SET_IV_INV, NULL, 0),
 	OSSL_PARAM_END
 };
 
@@ -948,12 +1261,119 @@ const OSSL_PARAM *uadk_prov_aead_settable_ctx_params(ossl_unused void *cctx,
 	return uadk_prov_settable_ctx_params;
 }
 
+/*
+ * Save the TLS 1.x AAD (13 bytes) and compute the padded plaintext length
+ * that the TLS record carries in its header. Mirrors gcm_tls_init() from the
+ * OpenSSL default provider: the on-wire record length is rewritten to the
+ * payload length (excluding explicit IV and, for decryption, the trailing
+ * tag), and the tag length is returned as the padding size.
+ */
+static int uadk_prov_aead_tls_aad_init(struct aead_priv_ctx *priv,
+				       const unsigned char *aad, size_t aad_len)
+{
+	size_t len;
+
+	if (aad_len != EVP_AEAD_TLS1_AAD_LEN)
+		return UADK_OSSL_FAIL;
+
+	memcpy(priv->tls_aad, aad, aad_len);
+	priv->tls_aad_len = aad_len;
+
+	len = priv->tls_aad[aad_len - AEAD_ADD_LAST_BYTE2] << AEAD_ADD_BYTE_OFFSET |
+	      priv->tls_aad[aad_len - AEAD_ADD_LAST_BYTE1];
+	if (len < EVP_GCM_TLS_EXPLICIT_IV_LEN)
+		return UADK_OSSL_FAIL;
+	len -= EVP_GCM_TLS_EXPLICIT_IV_LEN;
+
+	if (!priv->enc) {
+		if (len < EVP_GCM_TLS_TAG_LEN)
+			return UADK_OSSL_FAIL;
+		len -= EVP_GCM_TLS_TAG_LEN;
+	}
+
+	priv->tls_aad[aad_len - AEAD_ADD_LAST_BYTE2] = (unsigned char)(len >> AEAD_ADD_BYTE_OFFSET);
+	priv->tls_aad[aad_len - AEAD_ADD_LAST_BYTE1] = (unsigned char)(len & AEAD_ADD_LEN_MASK);
+	priv->tls_aad_pad_sz = EVP_GCM_TLS_TAG_LEN;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/*
+ * Set the fixed part of the TLS GCM IV. With len == (size_t)-1 the whole IV
+ * is restored (used when the caller already holds a full IV). Otherwise the
+ * first 'len' bytes are taken from 'iv' and, for encryption, the remaining
+ * (explicit) bytes are randomly generated.
+ */
+static int uadk_prov_aead_tls_iv_set_fixed(struct aead_priv_ctx *priv,
+					   const unsigned char *iv, size_t len)
+{
+	if (len == UNINITIALISED_SIZET) {
+		/*
+		 * Sentinel: restore the whole IV. The caller (set_ctx_params)
+		 * validates p->data_size before reaching here, and the EVP
+		 * layer guarantees the supplied buffer holds at least
+		 * priv->ivlen bytes when the sentinel is used.
+		 */
+		memcpy(priv->iv, iv, priv->ivlen);
+		priv->iv_gen = 1;
+		priv->iv_state = IV_STATE_BUFFERED;
+		return UADK_AEAD_SUCCESS;
+	}
+
+	/* Fixed field must be at least 4 bytes and invocation field at least 8 */
+	if (len < EVP_GCM_TLS_FIXED_IV_LEN)
+		return UADK_OSSL_FAIL;
+
+	if (priv->ivlen < len || priv->ivlen - len < EVP_GCM_TLS_EXPLICIT_IV_LEN)
+		return UADK_OSSL_FAIL;
+
+	if (len > 0)
+		memcpy(priv->iv, iv, len);
+
+	if (priv->enc) {
+		if (RAND_bytes_ex(priv->libctx, priv->iv + len, priv->ivlen - len, 0) <= 0)
+			return UADK_OSSL_FAIL;
+
+		priv->iv_gen_rand = 1;
+	}
+
+	priv->iv_gen = 1;
+	priv->iv_state = IV_STATE_BUFFERED;
+
+	return UADK_AEAD_SUCCESS;
+}
+
+/* Retrieve the explicit IV bytes from the start of a TLS record on decrypt. */
+static int uadk_prov_aead_tls_set_iv_inv(struct aead_priv_ctx *priv,
+					 const unsigned char *iv, size_t ivlen)
+{
+	if (!priv->iv_gen || priv->enc)
+		return UADK_OSSL_FAIL;
+
+	/*
+	 * The explicit IV is written to the tail of priv->iv; ivlen must not
+	 * exceed priv->ivlen, otherwise the subtraction below underflows and
+	 * the memcpy would write out of bounds.
+	 */
+	if (ivlen > priv->ivlen)
+		return UADK_OSSL_FAIL;
+
+	memcpy(priv->iv + priv->ivlen - ivlen, iv, ivlen);
+	priv->iv_state = IV_STATE_BUFFERED;
+
+	return UADK_AEAD_SUCCESS;
+}
+
 static int uadk_prov_aead_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *)vctx;
 	const OSSL_PARAM *p;
 	size_t sz = 0;
 	void *vp;
+	int ret;
+
+	if (!params)
+		return UADK_AEAD_SUCCESS;
 
 	if (!vctx)
 		return UADK_OSSL_FAIL;
@@ -974,31 +1394,56 @@ static int uadk_prov_aead_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 		priv->taglen = sz;
 	}
 
-	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_KEYLEN);
-	if (p) {
-		size_t keylen;
-
-		if (!OSSL_PARAM_get_size_t(p, &keylen)) {
-			UADK_ERR("failed to get parameter: keylen.\n");
-			return UADK_OSSL_FAIL;
-		}
-		if (priv->keylen != keylen) {
-			UADK_ERR("keylen is invalid.\n");
-			return UADK_OSSL_FAIL;
-		}
-	}
-
 	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_IVLEN);
 	if (p) {
 		if (!OSSL_PARAM_get_size_t(p, &sz)) {
 			UADK_ERR("failed to get size parameter: sz.\n");
 			return UADK_OSSL_FAIL;
 		}
-		if (sz == 0 || sz > priv->ivlen) {
-			UADK_ERR("invalid sz or ivlen.\n");
+		if (sz == 0 || sz > sizeof(priv->iv)) {
+			UADK_ERR("invalid ivlen %zu.\n", sz);
 			return UADK_OSSL_FAIL;
 		}
 		priv->ivlen = sz;
+	}
+
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_TLS1_AAD);
+	if (p) {
+		if (p->data_type != OSSL_PARAM_OCTET_STRING || !p->data) {
+			UADK_ERR("invalid tls aad parameter.\n");
+			return UADK_OSSL_FAIL;
+		}
+		ret = uadk_prov_aead_tls_aad_init(priv, p->data, p->data_size);
+		if (ret != UADK_AEAD_SUCCESS) {
+			UADK_ERR("failed to init tls aad.\n");
+			return UADK_OSSL_FAIL;
+		}
+	}
+
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_TLS1_IV_FIXED);
+	if (p) {
+		if (p->data_type != OSSL_PARAM_OCTET_STRING || !p->data) {
+			UADK_ERR("invalid tls iv fixed parameter.\n");
+			return UADK_OSSL_FAIL;
+		}
+		ret = uadk_prov_aead_tls_iv_set_fixed(priv, p->data, p->data_size);
+		if (ret != UADK_AEAD_SUCCESS) {
+			UADK_ERR("failed to set tls iv fixed.\n");
+			return UADK_OSSL_FAIL;
+		}
+	}
+
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_TLS1_SET_IV_INV);
+	if (p) {
+		if (p->data_type != OSSL_PARAM_OCTET_STRING || !p->data) {
+			UADK_ERR("invalid tls iv inv parameter.\n");
+			return UADK_OSSL_FAIL;
+		}
+		ret = uadk_prov_aead_tls_set_iv_inv(priv, p->data, p->data_size);
+		if (ret != UADK_AEAD_SUCCESS) {
+			UADK_ERR("failed to set tls iv inv.\n");
+			return UADK_OSSL_FAIL;
+		}
 	}
 
 	return UADK_AEAD_SUCCESS;
@@ -1011,6 +1456,8 @@ static const OSSL_PARAM uadk_prov_aead_ctx_params[] = {
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_IV, NULL, 0),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_UPDATED_IV, NULL, 0),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG, NULL, 0),
+	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_AEAD_TLS1_AAD_PAD, NULL),
+	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_GET_IV_GEN, NULL, 0),
 	OSSL_PARAM_END
 };
 
@@ -1022,7 +1469,7 @@ static const OSSL_PARAM *uadk_prov_aead_gettable_ctx_params(ossl_unused void *cc
 
 static int uadk_prov_aead_get_ctx_iv(OSSL_PARAM *p, struct aead_priv_ctx *priv)
 {
-	if (priv->iv_set == IV_STATE_UNINITIALISED)
+	if (priv->iv_state == IV_STATE_UNINITIALISED)
 		return UADK_OSSL_FAIL;
 
 	if (priv->ivlen > p->data_size) {
@@ -1035,6 +1482,30 @@ static int uadk_prov_aead_get_ctx_iv(OSSL_PARAM *p, struct aead_priv_ctx *priv)
 		UADK_ERR("failed to set octet ptr parameter: iv.\n");
 		return UADK_OSSL_FAIL;
 	}
+
+	return UADK_AEAD_SUCCESS;
+}
+
+static int uadk_prov_get_iv_gen(struct aead_priv_ctx *priv, unsigned char *out, size_t out_size)
+{
+	size_t len = out_size;
+
+	if (priv->iv_state == IV_STATE_UNINITIALISED || !priv->iv_gen ||
+	    priv->ivlen < EVP_GCM_TLS_EXPLICIT_IV_LEN)
+		return UADK_OSSL_FAIL;
+
+	memcpy(priv->iv_copied, priv->iv, priv->ivlen);
+	priv->iv_state = IV_STATE_COPIED;
+
+	if (!len || len > priv->ivlen)
+		len = priv->ivlen;
+	memcpy(out, priv->iv + priv->ivlen - len, len);
+
+	/*
+	 * Invocation field will be at least 8 bytes in size and so no need
+	 * to check wrap around or increment more than last 8 bytes.
+	 */
+	ctr_iv_inc(priv->iv + priv->ivlen - EVP_GCM_TLS_EXPLICIT_IV_LEN, 1);
 
 	return UADK_AEAD_SUCCESS;
 }
@@ -1083,7 +1554,7 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 		size_t sz = p->data_size;
 
 		if (sz == 0 || sz > EVP_GCM_TLS_TAG_LEN || !priv->enc
-			|| priv->taglen == UNINITIALISED_SIZET) {
+			|| priv->tag_set != SET_TAG) {
 			UADK_ERR("invalid size enc or taglen.\n");
 			return UADK_OSSL_FAIL;
 		}
@@ -1092,6 +1563,24 @@ static int uadk_prov_aead_get_ctx_params(void *vctx, OSSL_PARAM params[])
 			UADK_ERR("failed to set octet string parameter: sz.\n");
 			return UADK_OSSL_FAIL;
 		}
+	}
+
+	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_AEAD_TLS1_AAD_PAD);
+	if (p) {
+		if (!OSSL_PARAM_set_size_t(p, priv->tls_aad_pad_sz)) {
+			UADK_ERR("failed to set size parameter: tls aad pad %zu.\n",
+				  priv->tls_aad_pad_sz);
+			return UADK_OSSL_FAIL;
+		}
+	}
+
+	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_AEAD_TLS1_GET_IV_GEN);
+	if (p) {
+		if (!p->data || p->data_type != OSSL_PARAM_OCTET_STRING)
+			return UADK_OSSL_FAIL;
+
+		if (!uadk_prov_get_iv_gen(priv, p->data, p->data_size))
+			return UADK_OSSL_FAIL;
 	}
 
 	return UADK_AEAD_SUCCESS;
@@ -1152,6 +1641,30 @@ static int uadk_cipher_aead_get_params(OSSL_PARAM params[], unsigned int md,
 	return UADK_AEAD_SUCCESS;
 }
 
+static void uadk_prov_aead_free_sess(struct aead_priv_ctx *priv)
+{
+	if (priv->sess)
+		wd_aead_free_sess(priv->sess);
+}
+
+static int uadk_prov_aead_copy_sess(struct aead_priv_ctx *priv)
+{
+	if (!priv->sess)
+		return UADK_AEAD_SUCCESS;
+	priv->sess = 0;
+
+	/*
+	 * Encryption and decryption have already started, so it cannot
+	 * switch to software calculation, hence it returns a failure.
+	 */
+	if (priv->req.msg_state != AEAD_MSG_INVALID) {
+		UADK_ERR("invalid: The data has been processed by hardware, cannot be copied.\n");
+		return UADK_OSSL_FAIL;
+	}
+
+	return uadk_prov_aead_alloc_sess(priv);
+}
+
 static void *uadk_prov_aead_dupctx(void *ctx)
 {
 	struct aead_priv_ctx *dst_ctx, *src_ctx;
@@ -1165,16 +1678,15 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 	if (!dst_ctx)
 		return NULL;
 
-	dst_ctx->sess = 0;
-	dst_ctx->data = OPENSSL_memdup(src_ctx->data, AEAD_BLOCK_SIZE << 1);
-	if (!dst_ctx->data)
+	ret = uadk_prov_aead_copy_sess(dst_ctx);
+	if (ret == UADK_OSSL_FAIL)
 		goto free_ctx;
 
 	if (dst_ctx->sw_ctx) {
 		dst_ctx->sw_ctx = EVP_CIPHER_CTX_dup(src_ctx->sw_ctx);
 		if (!dst_ctx->sw_ctx) {
 			UADK_ERR("EVP_CIPHER_CTX_dup failed in ctx copy.\n");
-			goto free_data;
+			goto free_sess;
 		}
 
 		ret = EVP_CIPHER_up_ref(dst_ctx->sw_aead);
@@ -1187,11 +1699,20 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 free_dup:
 	if (dst_ctx->sw_ctx)
 		EVP_CIPHER_CTX_free(dst_ctx->sw_ctx);
-free_data:
-	OPENSSL_clear_free(dst_ctx->data, AEAD_BLOCK_SIZE << 1);
+free_sess:
+	uadk_prov_aead_free_sess(dst_ctx);
 free_ctx:
 	OPENSSL_clear_free(dst_ctx, sizeof(*dst_ctx));
 	return NULL;
+}
+
+static void uadk_aead_soft_cleanup(struct aead_priv_ctx *priv)
+{
+	if (priv->sw_ctx)
+		EVP_CIPHER_CTX_free(priv->sw_ctx);
+
+	if (priv->sw_aead)
+		EVP_CIPHER_free(priv->sw_aead);
 }
 
 static void uadk_prov_aead_freectx(void *ctx)
@@ -1201,15 +1722,8 @@ static void uadk_prov_aead_freectx(void *ctx)
 	if (!ctx)
 		return;
 
-	if (priv->sess)
-		wd_aead_free_sess(priv->sess);
-
-	if (priv->data)
-		OPENSSL_clear_free(priv->data, AEAD_BLOCK_SIZE << 1);
-
-	if (priv->sw_ctx)
-		uadk_aead_soft_cleanup(priv);
-
+	uadk_prov_aead_free_sess(priv);
+	uadk_aead_soft_cleanup(priv);
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
@@ -1218,21 +1732,22 @@ static void uadk_prov_aead_freectx(void *ctx)
 static OSSL_FUNC_cipher_newctx_fn uadk_##nm##_newctx;				\
 static void *uadk_##nm##_newctx(void *provctx)					\
 {										\
-	struct aead_priv_ctx *ctx = OPENSSL_zalloc(sizeof(*ctx));		\
+	struct aead_priv_ctx *ctx;						\
+										\
+	ctx = OPENSSL_zalloc(sizeof(*ctx));					\
 	if (!ctx)								\
 		return NULL;							\
-										\
-	ctx->data = OPENSSL_zalloc(AEAD_BLOCK_SIZE << 1);			\
-	if (!ctx->data) {							\
-		OPENSSL_free(ctx);						\
-		return NULL;							\
-	}									\
 										\
 	ctx->keylen = key_len;							\
 	ctx->ivlen = iv_len;							\
 	ctx->nid = e_nid;							\
 	ctx->taglen = tag_len;							\
+	ctx->tls_aad_len = UNINITIALISED_SIZET;					\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
+	ctx->libctx = prov_libctx_of(provctx);					\
+										\
+	if (uadk_get_sw_offload_state())					\
+		uadk_create_aead_soft_ctx(ctx);					\
 										\
 	return ctx;								\
 }										\
@@ -1270,9 +1785,9 @@ const OSSL_DISPATCH uadk_##nm##_functions[] = {					\
 	{ 0, NULL }								\
 }
 
-UADK_AEAD_DESCR(aes_128_gcm, AES_GCM_TAG_LEN, 16, 12, 8, AEAD_FLAGS, NID_aes_128_gcm, gcm(aes),
+UADK_AEAD_DESCR(aes_128_gcm, AES_GCM_TAG_LEN, 16, 12, 1, AEAD_FLAGS, NID_aes_128_gcm, gcm(aes),
 		EVP_CIPH_GCM_MODE);
-UADK_AEAD_DESCR(aes_192_gcm, AES_GCM_TAG_LEN, 24, 12, 8, AEAD_FLAGS, NID_aes_192_gcm, gcm(aes),
+UADK_AEAD_DESCR(aes_192_gcm, AES_GCM_TAG_LEN, 24, 12, 1, AEAD_FLAGS, NID_aes_192_gcm, gcm(aes),
 		EVP_CIPH_GCM_MODE);
-UADK_AEAD_DESCR(aes_256_gcm, AES_GCM_TAG_LEN, 32, 12, 8, AEAD_FLAGS, NID_aes_256_gcm, gcm(aes),
+UADK_AEAD_DESCR(aes_256_gcm, AES_GCM_TAG_LEN, 32, 12, 1, AEAD_FLAGS, NID_aes_256_gcm, gcm(aes),
 		EVP_CIPH_GCM_MODE);

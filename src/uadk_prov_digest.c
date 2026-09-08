@@ -39,6 +39,7 @@
 #define DIGEST_END		0
 #define UADK_DIGEST_SUCCESS	1
 #define UADK_DIGEST_FAIL	0
+#define UADK_DIGEST_SWITCH_SOFT	2
 
 /* The max BD data length is 16M-512B */
 #define BUF_LEN			0xFFFE00
@@ -368,7 +369,7 @@ static int uadk_prov_digest_dev_init(struct digest_priv_ctx *priv)
 	if (dprov.pid == getpid())
 		goto free_nodemask;
 
-	ret = wd_digest_init2_(priv->alg_name, TASK_MIX, SCHED_POLICY_RR, &cparams);
+	ret = wd_digest_init2_(priv->alg_name, SCHED_POLICY_RR, TASK_MIX, &cparams);
 	if (unlikely(ret && ret != -WD_EEXIST)) {
 		UADK_ERR("uadk failed to initialize digest dev, ret = %d\n", ret);
 		goto free_nodemask;
@@ -393,7 +394,7 @@ static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
 
 	ret = uadk_prov_digest_dev_init(priv);
 	if (unlikely(ret <= 0))
-		return UADK_DIGEST_FAIL;
+		return UADK_DIGEST_SWITCH_SOFT;
 
 	/* Use the default numa parameters */
 	params.numa_id = -1;
@@ -404,8 +405,8 @@ static int uadk_digest_ctx_init(struct digest_priv_ctx *priv)
 	if (!priv->sess) {
 		priv->sess = wd_digest_alloc_sess(&setup);
 		if (unlikely(!priv->sess)) {
-			UADK_ERR("uadk failed to alloc sess.\n");
-			return UADK_DIGEST_FAIL;
+			UADK_ERR("uadk failed to alloc sess, switch to soft.\n");
+			return UADK_DIGEST_SWITCH_SOFT;
 		}
 	}
 
@@ -445,15 +446,61 @@ static void uadk_digest_set_msg_state(struct digest_priv_ctx *priv, bool is_end)
 	}
 }
 
+static int uadk_digest_switch_soft(struct digest_priv_ctx *priv,
+				   unsigned char *input_data,
+				   size_t remain_len,
+				   bool has_hw_partial_data,
+				   size_t hw_processing_len)
+{
+	int ret;
+
+	if (unlikely(!priv->soft_md)) {
+		UADK_ERR("digest soft ctx not available, soft offload not enabled.\n");
+		return UADK_DIGEST_FAIL;
+	}
+
+	ret = uadk_digest_soft_init(priv);
+	if (!ret)
+		goto out;
+
+	if (has_hw_partial_data) {
+		ret = uadk_digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
+		if (!ret)
+			goto out;
+
+		remain_len -= hw_processing_len;
+		input_data += hw_processing_len;
+	} else if (priv->last_update_bufflen > 0) {
+		ret = uadk_digest_soft_update(priv, priv->data,
+					      priv->last_update_bufflen);
+		if (!ret)
+			goto out;
+	}
+
+	ret = uadk_digest_soft_update(priv, input_data, remain_len);
+	if (!ret)
+		goto out;
+
+	priv->last_update_bufflen = 0;
+	return UADK_DIGEST_SUCCESS;
+
+out:
+	digest_soft_cleanup(priv);
+	return UADK_DIGEST_FAIL;
+}
+
 static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *data, size_t data_len)
 {
 	unsigned char *input_data = (unsigned char *)data;
 	size_t remain_len = data_len;
 	size_t processing_len;
+	bool has_partial;
 	int ret;
 
 	ret = uadk_digest_ctx_init(priv);
-	if (ret != UADK_DIGEST_SUCCESS)
+	if (ret == UADK_DIGEST_SWITCH_SOFT)
+		goto do_soft_digest;
+	else if (ret != UADK_DIGEST_SUCCESS)
 		return UADK_DIGEST_FAIL;
 
 	uadk_digest_set_msg_state(priv, false);
@@ -506,36 +553,20 @@ static int uadk_digest_update_inner(struct digest_priv_ctx *priv, const void *da
 	return UADK_DIGEST_SUCCESS;
 
 do_soft_digest:
+	if (priv->state == SEC_DIGEST_INIT)
+		return uadk_digest_switch_soft(priv, input_data, remain_len,
+					       false, 0);
+
 	if (priv->state == SEC_DIGEST_FIRST_UPDATING) {
-		ret = uadk_digest_soft_init(priv);
-		if (!ret)
-			return ret;
+		has_partial = (processing_len < DIGEST_BLOCK_SIZE);
 
-		/* filling buf has been executed */
-		if (processing_len < DIGEST_BLOCK_SIZE) {
-			ret = uadk_digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
-			if (!ret)
-				goto out;
-
-			remain_len -= processing_len;
-			input_data += processing_len;
-		}
-
-		ret = uadk_digest_soft_update(priv, input_data, remain_len);
-		if (!ret)
-			goto out;
-
-		/* the soft ctx will be free in the final stage. */
-		return ret;
+		return uadk_digest_switch_soft(priv, input_data, remain_len,
+					       has_partial, processing_len);
 	}
 
 	UADK_ERR("do soft digest failed during updating!\n");
 
 	return UADK_DIGEST_FAIL;
-
-out:
-	digest_soft_cleanup(priv);
-	return ret;
 }
 
 static int uadk_digest_update(struct digest_priv_ctx *priv, const void *data, size_t data_len)
@@ -628,7 +659,7 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 			goto free_poll_task;
 		}
 
-		if (unlikely(++cnt > ENGINE_SEND_MAX_CNT)) {
+		if (unlikely(++cnt > PROV_SEND_MAX_CNT)) {
 			UADK_ERR("do digest async operation timeout.\n");
 			goto free_poll_task;
 		}
@@ -744,11 +775,15 @@ static int uadk_digest_digest(struct digest_priv_ctx *priv, const void *data,
 
 static void uadk_digest_cleanup(struct digest_priv_ctx *priv)
 {
-	if (priv->sess)
+	if (priv->sess) {
 		wd_digest_free_sess(priv->sess);
+		priv->sess = 0;
+	}
 
-	if (priv->data)
+	if (priv->data) {
 		OPENSSL_clear_free(priv->data, DIGEST_BLOCK_SIZE);
+		priv->data = NULL;
+	}
 
 	digest_soft_cleanup(priv);
 }

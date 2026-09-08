@@ -629,8 +629,13 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 
 	if (!priv->sess) {
 		priv->sess = wd_digest_alloc_sess(&priv->setup);
-		if (unlikely(!priv->sess))
-			return 0;
+		if (unlikely(!priv->sess)) {
+			priv->switch_flag = UADK_DO_SOFT;
+			priv->data = NULL;
+			priv->soft_md = NULL;
+			priv->soft_ctx = NULL;
+			return digest_soft_init(priv);
+		}
 
 		priv->data = malloc(DIGEST_BLOCK_SIZE);
 		if (unlikely(!priv->data))
@@ -901,10 +906,6 @@ static int uadk_e_digest_final(EVP_MD_CTX *ctx, unsigned char *digest)
 	priv->req.out_bytes = priv->out_bytes;
 
 	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		if (async_get_async_job())
-			goto hw_err;
-
-		/* Synchronous, only the synchronous mode supports soft computing */
 		ret = digest_soft_final(priv, digest);
 		digest_soft_cleanup(priv);
 		return ret;
@@ -950,7 +951,7 @@ hw_err:
 		ret = 0;
 		fprintf(stderr, "do sec digest stream mode failed.\n");
 	}
-	
+
 	if (op) {
 		(void)async_clear_async_event_notification();
 		free(op);
@@ -1004,8 +1005,29 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 		t->setup.sched_param = &params;
 		t->sess = wd_digest_alloc_sess(&t->setup);
 		if (!t->sess) {
-			fprintf(stderr, "failed to alloc session for digest ctx copy.\n");
-			return 0;
+			if (f->state != SEC_DIGEST_INIT && !f->soft_ctx) {
+				fprintf(stderr, "HW stream state cannot migrate to soft.\n");
+				return 0;
+			}
+			t->switch_flag = UADK_DO_SOFT;
+			t->data = NULL;
+			t->soft_md = NULL;
+			t->soft_ctx = NULL;
+			if (!digest_soft_init(t)) {
+				fprintf(stderr, "failed to init soft for digest ctx copy.\n");
+				return 0;
+			}
+			if (f->soft_ctx) {
+				memcpy(t->soft_ctx->md_data, f->soft_ctx->md_data,
+				       t->app_datasize);
+			} else if (f->last_update_bufflen) {
+				if (!digest_soft_update(t, f->data, f->last_update_bufflen)) {
+					fprintf(stderr, "failed to update for digest ctx copy.\n");
+					return 0;
+				}
+				t->last_update_bufflen = 0;
+			}
+			return 1;
 		}
 
 		t->data = malloc(DIGEST_BLOCK_SIZE);

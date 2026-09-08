@@ -348,7 +348,7 @@ static int sm2_prov_alloc_sess(PROV_SM2_ASYM_CTX *vpsm2ctx, handle_t *sess)
 	*sess = wd_ecc_alloc_sess(&setup);
 	if (*sess == (handle_t)0) {
 		UADK_ERR("failed to alloc sess\n");
-		return UADK_P_FAIL;
+		return UADK_DO_SOFT;
 	}
 
 	return UADK_P_SUCCESS;
