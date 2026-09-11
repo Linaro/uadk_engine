@@ -446,6 +446,19 @@ static void uadk_prov_ecx_free_sess(handle_t sess)
 		wd_ecc_free_sess(sess);
 }
 
+static void uadk_keymgmt_ecx_cleanup(void *genctx)
+{
+	PROV_ECX_KEYMGMT_CTX *gctx = genctx;
+
+	if (gctx) {
+		OPENSSL_free(gctx->propq);
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+		OPENSSL_clear_free(gctx->dhkem_ikm, gctx->dhkem_ikmlen);
+# endif
+		OPENSSL_free(gctx);
+	}
+}
+
 static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM params[],
 			       ECX_KEY_TYPE type)
 {
@@ -475,11 +488,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 
 static void uadk_keymgmt_x448_gen_cleanup(void *genctx)
 {
-	/* genctx will be freed in cleanup function */
-	if (get_default_x448_keymgmt().gen_cleanup == NULL)
-		return;
-
-	get_default_x448_keymgmt().gen_cleanup(genctx);
+	uadk_keymgmt_ecx_cleanup(genctx);
 }
 
 static void *uadk_keymgmt_x448_gen_init(void *provctx, int selection,
@@ -1481,11 +1490,7 @@ static int uadk_keymgmt_x25519_get_params(void *key, OSSL_PARAM params[])
 
 static void uadk_keymgmt_x25519_gen_cleanup(void *genctx)
 {
-	/* genctx will be freed in cleanup function */
-	if (get_default_x25519_keymgmt().gen_cleanup == NULL)
-		return;
-
-	get_default_x25519_keymgmt().gen_cleanup(genctx);
+	uadk_keymgmt_ecx_cleanup(genctx);
 }
 
 static void *uadk_keymgmt_x25519_gen_init(void *provctx, int selection,

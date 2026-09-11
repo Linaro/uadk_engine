@@ -202,7 +202,7 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 	if (priv_k)
 		goto set_key;
 
-	priv_k = BN_new();
+	priv_k = BN_secure_new();
 	if (!priv_k) {
 		UADK_ERR("failed to BN_new priv_k!\n");
 		return UADK_P_FAIL;
@@ -450,7 +450,7 @@ static void *uadk_keymgmt_ec_gen_init(void *provctx, int selection,
 
 	ret = uadk_keymgmt_ec_gen_set_params(gctx, params);
 	if (!ret) {
-		OPENSSL_free(gctx);
+		uadk_keymgmt_ec_gen_cleanup(gctx);
 		return NULL;
 	}
 
