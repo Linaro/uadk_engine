@@ -338,18 +338,25 @@ static int uadk_prov_cipher_soft_update(struct cipher_priv_ctx *priv, unsigned c
 	if (!priv->sw_cipher)
 		return UADK_P_FAIL;
 
-	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, priv->key, priv->iv,
-				priv->enc, NULL)) {
-		UADK_ERR("cipher soft init error!\n");
-		return UADK_P_FAIL;
-	}
-
 	/*
-	 * Sync padding setting so SW fallback respects the caller's pad config
-	 * (e.g. one-shot OSSL_FUNC_CIPHER_CIPHER temporarily sets pad=0 for
-	 * raw block cipher, matching default provider behavior).
+	 * Re-init SW ctx only on HW→SW transition or first SW call. Consecutive
+	 * SW calls preserve state (counter/IV chain); re-initing every call
+	 * resets IV to priv->iv, causing counter/IV reuse.
 	 */
-	EVP_CIPHER_CTX_set_padding(priv->sw_ctx, priv->pad);
+	if (priv->switch_flag != UADK_DO_SOFT) {
+		if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, priv->key, priv->iv,
+					priv->enc, NULL)) {
+			UADK_ERR("cipher soft init error!\n");
+			return UADK_P_FAIL;
+		}
+
+		/*
+		 * Sync padding setting so SW fallback respects the caller's pad config
+		 * (e.g. one-shot OSSL_FUNC_CIPHER_CIPHER temporarily sets pad=0 for
+		 * raw block cipher, matching default provider behavior).
+		 */
+		EVP_CIPHER_CTX_set_padding(priv->sw_ctx, priv->pad);
+	}
 
 	if (!EVP_CipherUpdate(priv->sw_ctx, out, outl, in, len)) {
 		UADK_ERR("cipher soft update error!\n");
@@ -1061,6 +1068,23 @@ static int uadk_prov_cipher_stream_update(void *vctx, unsigned char *output,
 		goto do_soft;
 	}
 
+	/*
+	 * Stream mode non-aligned fallback: HW requires 16B-aligned BDs for
+	 * multi-BD stream continuity in CTR/CFB/OFB. Non-aligned input would
+	 * corrupt the HW keystream state. Switch the whole input to SW.
+	 */
+	if ((priv->setup.mode == WD_CIPHER_CTR ||
+	     priv->setup.mode == WD_CIPHER_CFB ||
+	     priv->setup.mode == WD_CIPHER_OFB) &&
+	    priv->ivlen && (inl & (priv->ivlen - 1))) {
+		if (!priv->sw_cipher)
+			uadk_create_cipher_soft_ctx(priv);
+		if (!priv->sw_cipher)
+			goto hw_path;
+		goto do_soft;
+	}
+
+hw_path:
 	ret = uadk_prov_hw_cipher(priv, output, outl, outsize, input, inl);
 	if (ret != UADK_P_SUCCESS) {
 		if (priv->sw_cipher)
