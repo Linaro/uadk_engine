@@ -35,6 +35,7 @@
 #define CTX_ASYNC_DEC		3
 #define CTX_NUM			4
 #define IV_LEN			16
+#define STREAM_BLOCK_MASK	0xF
 #define ENV_ENABLED		1
 #define MAX_KEY_LEN		64
 #define SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT 192
@@ -699,12 +700,45 @@ static void uadk_e_ctx_init(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
 	}
 }
 
+static bool uadk_e_is_stream_mode(struct cipher_priv_ctx *priv)
+{
+	return priv->setup.mode == WD_CIPHER_CTR ||
+	       priv->setup.mode == WD_CIPHER_CFB ||
+	       priv->setup.mode == WD_CIPHER_OFB;
+}
+
+static int uadk_e_hw_cipher(EVP_CIPHER_CTX *ctx, struct cipher_priv_ctx *priv)
+{
+	struct async_op op;
+	int ret;
+
+	uadk_e_ctx_init(ctx, priv);
+	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
+		fprintf(stderr, "switch to soft cipher.\n");
+		return 0;
+	}
+
+	ret = async_setup_async_event_notification(&op);
+	if (!ret) {
+		fprintf(stderr, "failed to setup async event notification.\n");
+		return 0;
+	}
+
+	if (!op.job)
+		ret = do_cipher_sync(priv);
+	else
+		ret = do_cipher_async(priv, &op);
+
+	(void)async_clear_async_event_notification();
+
+	return ret;
+}
+
 static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 			    const unsigned char *in, size_t inlen)
 {
 	struct cipher_priv_ctx *priv =
 		(struct cipher_priv_ctx *)EVP_CIPHER_CTX_get_cipher_data(ctx);
-	struct async_op op;
 	int ret;
 
 	if (unlikely(!priv)) {
@@ -725,36 +759,34 @@ static int uadk_e_do_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	if (priv->req.in_bytes <= priv->switch_threshold)
 		goto out_soft;
 
-	uadk_e_ctx_init(ctx, priv);
-	if (unlikely(priv->switch_flag == UADK_DO_SOFT)) {
-		fprintf(stderr, "switch to soft cipher.\n");
+	/*
+	 * Stream mode non-aligned fallback: HW requires 16B-aligned BDs for
+	 * non-last BD in CTR/CFB/OFB. Non-aligned input would corrupt the
+	 * HW internal keystream state. Switch the whole input to SW.
+	 */
+	if (uadk_e_is_stream_mode(priv) && priv->sw_cipher &&
+	    (inlen & STREAM_BLOCK_MASK))
 		goto out_soft;
-	}
 
-	ret = async_setup_async_event_notification(&op);
-	if (!ret) {
-		fprintf(stderr, "failed to setup async event notification.\n");
+	ret = uadk_e_hw_cipher(ctx, priv);
+	if (!ret)
 		goto out_soft;
-	}
-
-	if (!op.job) {
-		ret = do_cipher_sync(priv);
-		if (!ret)
-			goto out_notify;
-	} else {
-		ret = do_cipher_async(priv, &op);
-		if (!ret)
-			goto out_notify;
-	}
 
 	return 1;
 
-out_notify:
-	(void)async_clear_async_event_notification();
 out_soft:
 	ret = uadk_e_cipher_soft_work(ctx, out, in, inlen);
 	if (ret != 1)
 		fprintf(stderr, "do soft ciphers failed.\n");
+
+	/*
+	 * Stream modes: SW advances keystream in sw_ctx_data, not priv->iv.
+	 * Set switch_flag=SOFT to prevent HW re-engaging with stale iv.
+	 * Non-stream modes are stateless per call, unaffected.
+	 */
+	if (ret == 1 && uadk_e_is_stream_mode(priv))
+		priv->switch_flag = UADK_DO_SOFT;
+
 	return ret;
 }
 
