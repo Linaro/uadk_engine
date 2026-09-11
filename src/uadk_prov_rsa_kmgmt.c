@@ -123,93 +123,46 @@ static void uadk_rsa_set_flags(RSA *r, int flags)
 	r->flags |= flags;
 }
 
-static int uadk_rsa_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
+static void uadk_rsa_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
 {
-	/*
-	 * If the fields n and e in r are NULL, the corresponding input
-	 * parameters MUST be non-NULL for n and e.  d may be
-	 * left NULL (in case only the public key is used).
-	 */
-	if ((!r->n && !n)
-			|| (!r->e && !e))
-		return UADK_P_FAIL;
-
-	if (n != NULL) {
-		BN_free(r->n);
-		r->n = n;
-	}
-	if (e != NULL) {
-		BN_free(r->e);
-		r->e = e;
-	}
-	if (d != NULL) {
-		BN_clear_free(r->d);
-		r->d = d;
-		BN_set_flags(r->d, BN_FLG_CONSTTIME);
-	}
+	BN_free(r->n);
+	r->n = n;
+	BN_free(r->e);
+	r->e = e;
+	BN_clear_free(r->d);
+	r->d = d;
+	BN_set_flags(r->d, BN_FLG_CONSTTIME);
 	r->dirty_cnt++;
-
-	return UADK_P_SUCCESS;
 }
 
-static int uadk_rsa_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q)
+static void uadk_rsa_set0_factors(RSA *r, BIGNUM *p, BIGNUM *q)
 {
-	/*
-	 * If the fields p and q in r are NULL, the corresponding input
-	 * parameters MUST be non-NULL.
-	 */
-	if ((!r->p && !p) || (!r->q && !q))
-		return UADK_P_FAIL;
+	BN_clear_free(r->p);
+	r->p = p;
+	BN_set_flags(r->p, BN_FLG_CONSTTIME);
 
-	if (p != NULL) {
-		BN_clear_free(r->p);
-		r->p = p;
-		BN_set_flags(r->p, BN_FLG_CONSTTIME);
-	}
-
-	if (q != NULL) {
-		BN_clear_free(r->q);
-		r->q = q;
-		BN_set_flags(r->q, BN_FLG_CONSTTIME);
-	}
+	BN_clear_free(r->q);
+	r->q = q;
+	BN_set_flags(r->q, BN_FLG_CONSTTIME);
 
 	r->dirty_cnt++;
-
-	return UADK_P_SUCCESS;
 }
 
-static int uadk_rsa_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *iqmp)
+static void uadk_rsa_set0_crt_params(RSA *r, BIGNUM *dmp1, BIGNUM *dmq1, BIGNUM *iqmp)
 {
-	/*
-	 * If the fields dmp1, dmq1 and iqmp in r are NULL, the corresponding input
-	 * parameters MUST be non-NULL.
-	 */
-	if ((!r->dmp1 && !dmp1)
-	    || (!r->dmq1 && !dmq1)
-	    || (!r->iqmp && !iqmp))
-		return UADK_P_FAIL;
+	BN_clear_free(r->dmp1);
+	r->dmp1 = dmp1;
+	BN_set_flags(r->dmp1, BN_FLG_CONSTTIME);
 
-	if (dmp1 != NULL) {
-		BN_clear_free(r->dmp1);
-		r->dmp1 = dmp1;
-		BN_set_flags(r->dmp1, BN_FLG_CONSTTIME);
-	}
+	BN_clear_free(r->dmq1);
+	r->dmq1 = dmq1;
+	BN_set_flags(r->dmq1, BN_FLG_CONSTTIME);
 
-	if (dmq1 != NULL) {
-		BN_clear_free(r->dmq1);
-		r->dmq1 = dmq1;
-		BN_set_flags(r->dmq1, BN_FLG_CONSTTIME);
-	}
-
-	if (iqmp != NULL) {
-		BN_clear_free(r->iqmp);
-		r->iqmp = iqmp;
-		BN_set_flags(r->iqmp, BN_FLG_CONSTTIME);
-	}
+	BN_clear_free(r->iqmp);
+	r->iqmp = iqmp;
+	BN_set_flags(r->iqmp, BN_FLG_CONSTTIME);
 
 	r->dirty_cnt++;
-
-	return UADK_P_SUCCESS;
 }
 
 static int rsa_prime_mul_res(int num, struct rsa_prime_param *param,
@@ -608,7 +561,7 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	if (!dmp1)
 		goto free_bn_dq;
 
-	iqmp = BN_new();
+	iqmp = BN_secure_new();
 	if (!iqmp)
 		goto free_bn_dp;
 
@@ -626,18 +579,15 @@ static int rsa_get_keygen_param(struct wd_rsa_req *req, handle_t ctx, RSA *rsa,
 	BN_bin2bn((unsigned char *)wd_dq.data, wd_dq.dsize, dmq1);
 	BN_bin2bn((unsigned char *)wd_dp.data, wd_dp.dsize, dmp1);
 
-	if (!(uadk_rsa_set0_key(rsa, n, bn_param->e, d) &&
-	    uadk_rsa_set0_factors(rsa, bn_param->p, bn_param->q) &&
-	    uadk_rsa_set0_crt_params(rsa, dmp1, dmq1, iqmp)))
-		goto free_bn_d;
+	uadk_rsa_set0_key(rsa, n, bn_param->e, d);
+	uadk_rsa_set0_factors(rsa, bn_param->p, bn_param->q);
+	uadk_rsa_set0_crt_params(rsa, dmp1, dmq1, iqmp);
 
 	return UADK_P_SUCCESS;
 
-free_bn_d:
-	BN_clear_free(d);
-free_bn_n:
-	BN_clear_free(n);
-free_bn_qinv:
+ free_bn_n:
+	BN_free(n);
+ free_bn_qinv:
 	BN_clear_free(iqmp);
 free_bn_dp:
 	BN_clear_free(dmp1);
@@ -661,16 +611,14 @@ static void rsa_keygen_param_free(struct rsa_keygen_param **keygen_param,
 				  struct rsa_keypair **key_pair, int free_bn_ctx_tag)
 {
 	/*
-	 * When an abnormal situation occurs, uadk engine needs to
-	 * switch to software keygen function, so we need to free
-	 * BN we alloced before. But in normal situation,
-	 * the BN should be freed by OpenSSL tools or users.
-	 * Therefore, we use a tag to distinguish these cases.
+	 * On success, p/q/e have been transferred to the RSA object via
+	 * uadk_rsa_set0_*, so they must not be freed here. On any failure,
+	 * they are still owned by us and must be freed.
 	 */
-	if (free_bn_ctx_tag == UADK_DO_SOFT) {
+	if (free_bn_ctx_tag != UADK_P_SUCCESS) {
 		BN_clear_free((*keygen_bn_param)->p);
 		BN_clear_free((*keygen_bn_param)->q);
-		BN_clear_free((*keygen_bn_param)->e);
+		BN_free((*keygen_bn_param)->e);
 	}
 
 	OPENSSL_free(*key_pair);
@@ -770,8 +718,6 @@ static int uadk_prov_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	}
 
 	ret = rsa_get_keygen_param(&rsa_sess->req, rsa_sess->sess, rsa, bn_param);
-	if (!ret)
-		ret = UADK_P_FAIL;
 
 free_kg_in_out:
 	rsa_free_keygen_data(rsa_sess);
