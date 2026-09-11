@@ -134,7 +134,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 		return UADK_P_INVALID;
 	}
 
-	k = BN_new();
+	k = BN_secure_new();
 	if (k == NULL)
 		return -ENOMEM;
 
@@ -158,7 +158,7 @@ int uadk_prov_ecc_get_rand(char *out, size_t out_len, void *usr)
 	if (count < 0)
 		ret = UADK_P_INVALID;
 err:
-	BN_free(k);
+	BN_clear_free(k);
 
 	return ret;
 }
