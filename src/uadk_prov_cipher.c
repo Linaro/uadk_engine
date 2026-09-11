@@ -344,6 +344,13 @@ static int uadk_prov_cipher_soft_update(struct cipher_priv_ctx *priv, unsigned c
 		return UADK_P_FAIL;
 	}
 
+	/*
+	 * Sync padding setting so SW fallback respects the caller's pad config
+	 * (e.g. one-shot OSSL_FUNC_CIPHER_CIPHER temporarily sets pad=0 for
+	 * raw block cipher, matching default provider behavior).
+	 */
+	EVP_CIPHER_CTX_set_padding(priv->sw_ctx, priv->pad);
+
 	if (!EVP_CipherUpdate(priv->sw_ctx, out, outl, in, len)) {
 		UADK_ERR("cipher soft update error!\n");
 		return UADK_P_FAIL;
@@ -369,6 +376,42 @@ static int uadk_prov_cipher_soft_final(struct cipher_priv_ctx *priv, unsigned ch
 
 	*outl = sw_final_len;
 	priv->switch_flag = 0;
+
+	return UADK_P_SUCCESS;
+}
+
+/*
+ * Block cipher pad=1 one-shot: align with default provider one-shot
+ * semantics - raw encrypt/decrypt without PKCS#7 padding, outl=inl.
+ * HW does not handle padding; delegate to SW via EVP_Cipher one-shot
+ * with padding disabled to match default ossl_cipher_generic_cipher.
+ */
+static int uadk_prov_cipher_soft_oneshot(struct cipher_priv_ctx *priv,
+					 unsigned char *out, size_t *outl,
+					 const unsigned char *in, size_t inl)
+{
+	int len;
+
+	if (!priv->sw_cipher) {
+		uadk_create_cipher_soft_ctx(priv);
+		if (!priv->sw_cipher)
+			return UADK_P_FAIL;
+	}
+
+	if (!EVP_CipherInit_ex2(priv->sw_ctx, priv->sw_cipher, priv->key,
+				priv->iv, priv->enc, NULL)) {
+		UADK_ERR("cipher soft oneshot init failed.\n");
+		return UADK_P_FAIL;
+	}
+	EVP_CIPHER_CTX_set_padding(priv->sw_ctx, 0);
+
+	len = EVP_Cipher(priv->sw_ctx, out, in, inl);
+	if (len < 0) {
+		UADK_ERR("cipher soft oneshot failed.\n");
+		return UADK_P_FAIL;
+	}
+
+	*outl = len;
 
 	return UADK_P_SUCCESS;
 }
@@ -877,35 +920,6 @@ static OSSL_FUNC_cipher_gettable_ctx_params_fn uadk_prov_cipher_gettable_ctx_par
 static OSSL_FUNC_cipher_set_ctx_params_fn uadk_prov_cipher_set_ctx_params;
 static OSSL_FUNC_cipher_settable_ctx_params_fn uadk_prov_cipher_settable_ctx_params;
 
-static int uadk_prov_cipher_cipher(void *vctx, unsigned char *output, size_t *outl,
-				   size_t outsize, const unsigned char *input,
-				   size_t inl)
-{
-	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
-	int ret;
-
-	if (!vctx || !output || !input || !outl)
-		return UADK_P_FAIL;
-
-	if (inl == 0) {
-		*outl = 0;
-		return UADK_P_SUCCESS;
-	}
-
-	if (outsize < inl) {
-		UADK_ERR("invalid: cipher outsize is too small.\n");
-		return UADK_P_FAIL;
-	}
-
-	ret = uadk_prov_do_cipher(priv, output, outl, outsize, input, inl);
-	if (ret != UADK_P_SUCCESS)
-		return ret;
-
-	*outl = inl;
-
-	return UADK_P_SUCCESS;
-}
-
 static int uadk_prov_cipher_block_encrypto(struct cipher_priv_ctx *priv, unsigned char *out,
 					   size_t *outl, size_t outsize)
 {
@@ -1084,6 +1098,67 @@ static int uadk_prov_cipher_stream_final(void *vctx, unsigned char *out,
 	*outl = 0;
 
 	return UADK_P_SUCCESS;
+}
+
+static int uadk_prov_cipher_cipher(void *vctx, unsigned char *output, size_t *outl,
+				   size_t outsize, const unsigned char *input,
+				   size_t inl)
+{
+	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)vctx;
+	int ret;
+
+	if (!vctx || !output || !outl || (!input && inl > 0))
+		return UADK_P_FAIL;
+
+	if (inl == 0) {
+		*outl = 0;
+		return UADK_P_SUCCESS;
+	}
+
+	if (outsize < inl)
+		return UADK_P_FAIL;
+
+	/*
+	 * Stream mode CTR/CFB/OFB. HW requires 16B-aligned BDs;
+	 * non-aligned input goes entirely to SW via uadk_prov_do_cipher.
+	 */
+	if (priv->blksize == 1 &&
+	    (priv->setup.mode == WD_CIPHER_CTR ||
+	     priv->setup.mode == WD_CIPHER_CFB ||
+	     priv->setup.mode == WD_CIPHER_OFB))
+		return uadk_prov_do_cipher(priv, output, outl, outsize, input, inl);
+
+	/*
+	 * Block mode pad=0. Requires block-aligned input;
+	 * direct HW one-shot, no update+final needed.
+	 */
+	if (priv->blksize > 1 && !priv->pad) {
+		if (inl & (priv->blksize - 1)) {
+			UADK_ERR("invalid: cipher pad=0 needs block-aligned input.\n");
+			return UADK_P_FAIL;
+		}
+		ret = uadk_prov_hw_cipher(priv, output, outl, outsize, input, inl);
+		if (ret == UADK_P_SUCCESS)
+			*outl = inl;
+		return ret;
+	}
+
+	/*
+	 * Block mode pad=1. Align with default provider one-shot
+	 * semantics: SW raw encrypt/decrypt without PKCS#7 padding, outl=inl.
+	 */
+	if (priv->blksize > 1 && priv->pad)
+		return uadk_prov_cipher_soft_oneshot(priv, output, outl, input, inl);
+
+	/*
+	 * XTS/CTS (blksize==1, non-CTR/CFB/OFB). HW natively
+	 * supports non-aligned; direct HW one-shot.
+	 */
+	ret = uadk_prov_hw_cipher(priv, output, outl, outsize, input, inl);
+	if (ret == UADK_P_SUCCESS)
+		*outl = inl;
+
+	return ret;
 }
 
 static int uadk_prov_cipher_einit(void *vctx, const unsigned char *key, size_t keylen,
