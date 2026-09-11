@@ -1680,7 +1680,7 @@ static void *uadk_prov_aead_dupctx(void *ctx)
 
 	ret = uadk_prov_aead_copy_sess(dst_ctx);
 	if (ret == UADK_OSSL_FAIL)
-		goto free_ctx;
+		goto free_sess;
 
 	if (dst_ctx->sw_ctx) {
 		dst_ctx->sw_ctx = EVP_CIPHER_CTX_dup(src_ctx->sw_ctx);
@@ -1701,7 +1701,6 @@ free_dup:
 		EVP_CIPHER_CTX_free(dst_ctx->sw_ctx);
 free_sess:
 	uadk_prov_aead_free_sess(dst_ctx);
-free_ctx:
 	OPENSSL_clear_free(dst_ctx, sizeof(*dst_ctx));
 	return NULL;
 }
