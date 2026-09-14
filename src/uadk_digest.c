@@ -314,7 +314,7 @@ static int uadk_e_digest_soft_work(struct digest_priv_ctx *md_ctx, int len,
 
 	ret = digest_soft_init(md_ctx);
 	if (unlikely(!ret))
-		return 0;
+		goto out;
 
 	if (len != 0) {
 		ret = digest_soft_update(md_ctx, md_ctx->data, len);
@@ -632,8 +632,6 @@ static int uadk_e_digest_init(EVP_MD_CTX *ctx)
 		if (unlikely(!priv->sess)) {
 			priv->switch_flag = UADK_DO_SOFT;
 			priv->data = NULL;
-			priv->soft_md = NULL;
-			priv->soft_ctx = NULL;
 			return digest_soft_init(priv);
 		}
 
@@ -739,7 +737,7 @@ do_soft_digest:
 		priv->switch_flag = UADK_DO_SOFT;
 		ret = digest_soft_init(priv);
 		if (!ret)
-			return ret;
+			goto out;
 		/* filling buf has been executed */
 		if (processing_len < DIGEST_BLOCK_SIZE) {
 			ret = digest_soft_update(priv, priv->data, DIGEST_BLOCK_SIZE);
@@ -1015,7 +1013,7 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 			t->soft_ctx = NULL;
 			if (!digest_soft_init(t)) {
 				fprintf(stderr, "failed to init soft for digest ctx copy.\n");
-				return 0;
+				goto free_data;
 			}
 			if (f->soft_ctx) {
 				memcpy(t->soft_ctx->md_data, f->soft_ctx->md_data,
@@ -1023,7 +1021,7 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 			} else if (f->last_update_bufflen) {
 				if (!digest_soft_update(t, f->data, f->last_update_bufflen)) {
 					fprintf(stderr, "failed to update for digest ctx copy.\n");
-					return 0;
+					goto free_data;
 				}
 				t->last_update_bufflen = 0;
 			}
@@ -1058,6 +1056,7 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 	return 1;
 
 free_data:
+	digest_soft_cleanup(t);
 	if (t->data) {
 		free(t->data);
 		t->data = NULL;

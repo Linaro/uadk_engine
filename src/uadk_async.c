@@ -390,6 +390,7 @@ destroy_empty_sem:
 	sem_destroy(&poll_queue.empty_sem);
 free_head:
 	OPENSSL_free(poll_queue.head);
+	poll_queue.head = NULL;
 destroy_mutex:
 	pthread_mutex_destroy(&poll_queue.async_task_mutex);
 
@@ -399,7 +400,6 @@ destroy_mutex:
 void async_module_uninit(void)
 {
 	int error;
-	struct async_poll_task *task;
 
 	/* Disable async poll state first */
 	uadk_e_set_async_poll_state(DISABLE_ASYNC_POLLING);
@@ -413,9 +413,8 @@ void async_module_uninit(void)
 	if (poll_queue.thread_id)
 		pthread_join(poll_queue.thread_id, NULL);
 
-	task = poll_queue.head;
-	if (task)
-		OPENSSL_free(task);
+	if (poll_queue.head)
+		OPENSSL_free(poll_queue.head);
 
 	poll_queue.head = NULL;
 

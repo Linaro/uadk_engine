@@ -1464,6 +1464,15 @@ int uadk_ec_create_pmeth(struct uadk_pkey_meth *pkey_meth)
 	if (pkey_meth->ec)
 		return 1;
 
+	/*
+	 * The meth is returned to OpenSSL via the pkey_meths callback
+	 * (get_pkey_meths in uadk_pkey.c) and registered by ENGINE_set_pkey_meths.
+	 * On ENGINE_free, engine_pkey_meths_free() (tb_pkmeth.c) iterates all
+	 * registered nids, obtains the meth via the callback, and calls
+	 * EVP_PKEY_meth_free() on it. Thus pkey_meth->ec must NOT be freed in
+	 * uadk_ec_delete_meth() - doing so would cause a double-free because
+	 * engine_pkey_meths_free() runs before the engine's destroy callback.
+	 */
 	meth = EVP_PKEY_meth_new(EVP_PKEY_EC, 0);
 	if (meth == NULL) {
 		fprintf(stderr, "failed to EVP_PKEY_meth_new\n");

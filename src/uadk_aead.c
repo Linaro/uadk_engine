@@ -320,8 +320,8 @@ static int uadk_e_ctx_init(struct aead_priv_ctx *priv, const unsigned char *ckey
 	return UADK_E_SUCCESS;
 
 free_data:
-	if (priv->data)
-		free(priv->data);
+	free(priv->data);
+	priv->data = NULL;
 out:
 	wd_aead_free_sess(priv->sess);
 	priv->sess = 0;

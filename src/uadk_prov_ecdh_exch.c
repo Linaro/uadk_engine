@@ -454,7 +454,7 @@ static int ecdh_X9_63_kdf_derive(struct ecdh_ctx *pecdhctx, unsigned char *secre
 	}
 
 	ret = ecdh_plain_derive(pecdhctx, stmp, &stmplen, stmplen);
-	if (!ret)
+	if (ret != UADK_P_SUCCESS)
 		goto free_stmp;
 
 	ret = ecdh_kdf_X9_63(secret, pecdhctx, stmp, stmplen);

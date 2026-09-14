@@ -496,7 +496,7 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 		return -1;
 	}
 
-	k = BN_new();
+	k = BN_secure_new();
 	if (!k)
 		return -ENOMEM;
 
@@ -520,7 +520,7 @@ int uadk_ecc_get_rand(char *out, size_t out_len, void *usr)
 	if (count < 0)
 		ret = -1;
 err:
-	BN_free(k);
+	BN_clear_free(k);
 
 	return ret;
 }

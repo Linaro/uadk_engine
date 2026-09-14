@@ -295,7 +295,7 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 	ret = rsa_create_pri_bn_ctx(rsa, prik, &from_buf, &num_bytes);
 	if (ret <= 0 || flen > num_bytes) {
 		ret = UADK_P_FAIL;
-		goto free_sess;
+		goto free_buf;
 	}
 
 	ret = add_rsa_prienc_padding(flen, from, from_buf, num_bytes, padding);
@@ -305,8 +305,10 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 	}
 
 	ret = is_valid_rsa_input(from_buf, num_bytes, rsa);
-	if (!ret)
-		return UADK_P_FAIL;
+	if (!ret) {
+		ret = UADK_P_FAIL;
+		goto free_buf;
+	}
 
 	ret = rsa_fill_prikey(rsa, rsa_sess, prik, from_buf, to);
 	if (!ret) {
@@ -324,7 +326,6 @@ static int uadk_prov_rsa_private_sign(int flen, const unsigned char *from,
 
 free_buf:
 	rsa_free_pri_bn_ctx(from_buf);
-free_sess:
 	rsa_free_eng_session(rsa_sess);
 free_pkey:
 	rsa_pkey_param_free(NULL, &prik);
