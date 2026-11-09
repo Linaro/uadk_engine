@@ -38,6 +38,7 @@
 #define X25519_KEYBITS		256
 #define X25519_KEYLEN		32
 #define X25519_SECURITY_BITS	128
+#define X25519_BITS		253
 
 #define ECX_POSSIBLE_SELECTIONS (OSSL_KEYMGMT_SELECT_KEYPAIR)
 
@@ -1484,7 +1485,7 @@ static const char *uadk_keymgmt_x25519_query_operation_name(int operation_id)
 
 static int uadk_keymgmt_x25519_get_params(void *key, OSSL_PARAM params[])
 {
-	return uadk_prov_ecx_get_params(key, params, X25519_KEYBITS, X25519_SECURITY_BITS,
+	return uadk_prov_ecx_get_params(key, params, X25519_BITS, X25519_SECURITY_BITS,
 					X25519_KEYLEN);
 }
 
