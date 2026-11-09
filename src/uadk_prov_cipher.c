@@ -127,6 +127,11 @@ struct cipher_priv_ctx {
 	size_t ivlen;
 	size_t bufsz;            /* Number of bytes in buf */
 	char alg_name[ALG_NAME_SIZE];
+	/*
+	 * Original IV saved at first init; used to reset iv on iv==NULL
+	 * re-init (CBC/CFB/OFB), matching OpenSSL default oiv semantics.
+	 */
+	unsigned char oiv[IV_LEN];
 };
 
 struct cipher_info {
@@ -476,12 +481,33 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 
 	if (iv) {
 		memcpy(priv->iv, iv, ivlen);
+		memcpy(priv->oiv, iv, ivlen);
 		priv->iv_set = 1;
 	}
 
 	ret = uadk_get_cipher_info(priv);
 	if (unlikely(!ret))
 		return UADK_P_FAIL;
+
+	/*
+	 * Re-init without IV: reset iv to the original (oiv) for CBC/CFB/OFB
+	 * modes, matching OpenSSL ciphercommon.c semantics.
+	 * CTR (counter increments) and XTS (tweak) are excluded.
+	 */
+	if (iv == NULL && priv->iv_set) {
+		switch (priv->setup.mode) {
+		case WD_CIPHER_CBC:
+		case WD_CIPHER_CBC_CS1:
+		case WD_CIPHER_CBC_CS2:
+		case WD_CIPHER_CBC_CS3:
+		case WD_CIPHER_CFB:
+		case WD_CIPHER_OFB:
+			memcpy(priv->iv, priv->oiv, priv->ivlen);
+			break;
+		default:
+			break;
+		}
+	}
 
 	if (key) {
 		memcpy(priv->key, key, keylen);
@@ -922,6 +948,7 @@ void uadk_prov_destroy_cipher(void)
 static OSSL_FUNC_cipher_encrypt_init_fn uadk_prov_cipher_einit;
 static OSSL_FUNC_cipher_decrypt_init_fn uadk_prov_cipher_dinit;
 static OSSL_FUNC_cipher_freectx_fn uadk_prov_cipher_freectx;
+static OSSL_FUNC_cipher_dupctx_fn uadk_prov_cipher_dupctx;
 static OSSL_FUNC_cipher_get_ctx_params_fn uadk_prov_cipher_get_ctx_params;
 static OSSL_FUNC_cipher_gettable_ctx_params_fn uadk_prov_cipher_gettable_ctx_params;
 static OSSL_FUNC_cipher_set_ctx_params_fn uadk_prov_cipher_set_ctx_params;
@@ -1326,8 +1353,8 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 		return UADK_P_FAIL;
 	}
 	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
-	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->iv, priv->ivlen) &&
-	    !OSSL_PARAM_set_octet_ptr(p, &priv->iv, priv->ivlen)) {
+	if (p != NULL && !OSSL_PARAM_set_octet_string(p, priv->oiv, priv->ivlen) &&
+	    !OSSL_PARAM_set_octet_ptr(p, &priv->oiv, priv->ivlen)) {
 		UADK_ERR("failed to set cipher octet parameter: param iv.\n");
 		return UADK_P_FAIL;
 	}
@@ -1417,6 +1444,54 @@ static int ossl_cipher_generic_get_params(OSSL_PARAM params[], unsigned int md,
 	return UADK_P_SUCCESS;
 }
 
+static void *uadk_prov_cipher_dupctx(void *ctx)
+{
+	struct cipher_priv_ctx *src = (struct cipher_priv_ctx *)ctx;
+	struct cipher_priv_ctx *dst;
+
+	if (ctx == NULL)
+		return NULL;
+
+	dst = OPENSSL_memdup(src, sizeof(*src));
+	if (dst == NULL)
+		return NULL;
+
+	/* WD session handle cannot be shared; force re-alloc on next HW call. */
+	dst->sess = 0;
+
+	/* sw_cipher is a fetched EVP_CIPHER; share via up_ref. */
+	if (src->sw_cipher) {
+		if (EVP_CIPHER_up_ref(src->sw_cipher) != 1) {
+			UADK_ERR("cipher dupctx: EVP_CIPHER_up_ref failed.\n");
+			dst->sw_cipher = NULL;
+			goto err;
+		}
+	}
+
+	/* sw_ctx carries mid-stream IV/counter state; deep-copy it. */
+	if (src->sw_ctx) {
+		dst->sw_ctx = EVP_CIPHER_CTX_new();
+		if (dst->sw_ctx == NULL) {
+			UADK_ERR("cipher dupctx: EVP_CIPHER_CTX_new failed.\n");
+			goto err;
+		}
+		if (EVP_CIPHER_CTX_copy(dst->sw_ctx, src->sw_ctx) != 1) {
+			UADK_ERR("cipher dupctx: EVP_CIPHER_CTX_copy failed.\n");
+			EVP_CIPHER_CTX_free(dst->sw_ctx);
+			dst->sw_ctx = NULL;
+			goto err;
+		}
+	}
+
+	return dst;
+
+err:
+	EVP_CIPHER_free(dst->sw_cipher);
+	OPENSSL_free(dst);
+
+	return NULL;
+}
+
 static void uadk_prov_cipher_freectx(void *ctx)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *)ctx;
@@ -1488,6 +1563,7 @@ static int uadk_##nm##_get_params(OSSL_PARAM params[])				\
 const OSSL_DISPATCH uadk_##nm##_functions[] = {					\
 	{ OSSL_FUNC_CIPHER_NEWCTX, (void (*)(void))uadk_##nm##_newctx },	\
 	{ OSSL_FUNC_CIPHER_FREECTX, (void (*)(void))uadk_prov_cipher_freectx },	\
+	{ OSSL_FUNC_CIPHER_DUPCTX, (void (*)(void))uadk_prov_cipher_dupctx },	\
 	{ OSSL_FUNC_CIPHER_ENCRYPT_INIT,					\
 		(void (*)(void))uadk_prov_cipher_einit },			\
 	{ OSSL_FUNC_CIPHER_DECRYPT_INIT,					\
