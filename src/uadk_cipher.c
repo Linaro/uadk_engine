@@ -55,6 +55,8 @@ struct sw_cipher_t {
 	const EVP_CIPHER *(*get_cipher)(void);
 };
 
+#define STATE_FAIL		0xFFFF
+
 struct cipher_priv_ctx {
 	handle_t sess;
 	struct wd_cipher_sess_setup setup;
@@ -603,6 +605,7 @@ static int do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *op)
 	cb_param->priv = priv;
 	priv->req.cb = uadk_e_cipher_cb;
 	priv->req.cb_param = cb_param;
+	priv->req.state = STATE_FAIL;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)

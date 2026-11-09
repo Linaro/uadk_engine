@@ -49,6 +49,7 @@
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MAX_DIGEST_LENGTH	64
 #define DIGEST_BLOCK_SIZE	(512 * 1024)
+#define STATE_FAIL		0xFFFF
 
 /*
  * copied form openssl/include/internal/sm3.h
@@ -856,6 +857,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	cb_param->priv = priv;
 	priv->req.cb = uadk_e_digest_cb;
 	priv->req.cb_param = cb_param;
+	priv->req.state = STATE_FAIL;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)
