@@ -76,7 +76,6 @@ struct hmac_priv_ctx {
 	size_t total_data_len;
 	size_t switch_threshold;
 	OSSL_LIB_CTX *libctx;
-	OSSL_LIB_CTX *soft_libctx;
 	EVP_MAC_CTX *soft_ctx;
 	EVP_MAC *soft_md;
 	handle_t sess;
@@ -124,12 +123,6 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 	if (priv->soft_md)
 		return UADK_P_SUCCESS;
 
-	priv->soft_libctx = OSSL_LIB_CTX_new();
-	if (!priv->soft_libctx) {
-		UADK_ERR("new soft libctx failed.\n");
-		return UADK_P_FAIL;
-	}
-
 	switch (priv->alg_id) {
 	case NID_md5:
 	case NID_sm3:
@@ -140,7 +133,24 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 	case NID_sha512:
 	case NID_sha512_224:
 	case NID_sha512_256:
-		priv->soft_md = EVP_MAC_fetch(priv->soft_libctx, "HMAC", NULL);
+		/*
+		 * Reuse the provider libctx (already bootstrapped once at
+		 * provider load and warm for the process lifetime) instead of
+		 * allocating a fresh OSSL_LIB_CTX per HMAC ctx. A fresh libctx
+		 * would force OpenSSL to repopulate the OBJ/method tables on
+		 * every fetch and tear them down on every final, which shows up
+		 * as OBJ_obj2txt / OPENSSL_LH_doall_arg / OSSL_LIB_CTX_free
+		 * hotspots in flame graphs (nginx + no-device case).
+		 *
+		 * Must use "provider=default" property to explicitly fetch from
+		 * the default provider, NOT uadk_provider itself. The provider
+		 * libctx has "?provider=uadk_provider" as default property (see
+		 * uadk_prov_init.c uadk_set_default_prov), so without this filter
+		 * the fetch would recursively dispatch back to
+		 * uadk_prov_hmac_newctx -> stack overflow -> coredump.
+		 * This mirrors uadk_prov_aead.c's soft-path pattern.
+		 */
+		priv->soft_md = EVP_MAC_fetch(priv->libctx, "HMAC", "provider=default");
 		break;
 	default:
 		break;
@@ -148,7 +158,7 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 
 	if (unlikely(!priv->soft_md)) {
 		UADK_ERR("hmac soft fetch failed.\n");
-		goto free_libctx;
+		return UADK_P_FAIL;
 	}
 
 	priv->soft_ctx = EVP_MAC_CTX_new(priv->soft_md);
@@ -162,9 +172,6 @@ static int uadk_create_hmac_soft_ctx(struct hmac_priv_ctx *priv)
 free_mac_md:
 	EVP_MAC_free(priv->soft_md);
 	priv->soft_md = NULL;
-free_libctx:
-	OSSL_LIB_CTX_free(priv->soft_libctx);
-	priv->soft_libctx = NULL;
 
 	return UADK_P_FAIL;
 }
@@ -234,11 +241,6 @@ static void hmac_soft_cleanup(struct hmac_priv_ctx *priv)
 	if (priv->soft_md) {
 		EVP_MAC_free(priv->soft_md);
 		priv->soft_md = NULL;
-	}
-
-	if (priv->soft_libctx) {
-		OSSL_LIB_CTX_free(priv->soft_libctx);
-		priv->soft_libctx = NULL;
 	}
 
 	priv->switch_flag = 0;
@@ -827,7 +829,6 @@ static void *uadk_prov_hmac_dupctx(void *hctx)
 		goto free_ctx;
 
 	if (dst_ctx->soft_ctx) {
-		dst_ctx->soft_libctx = NULL;
 		dst_ctx->soft_ctx = EVP_MAC_CTX_dup(src_ctx->soft_ctx);
 		if (!dst_ctx->soft_ctx) {
 			UADK_ERR("create soft_ctx failed in ctx copy.\n");
