@@ -49,8 +49,6 @@
 #define UADK_E_SUCCESS			1
 #define UADK_E_FAIL			0
 #define UADK_DO_SOFT			(-0xE0)
-#define UADK_E_POLL_SUCCESS		0
-#define UADK_E_POLL_FAIL		(-1)
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		(-1)
 #define ENV_ENABLED			1
@@ -1198,7 +1196,7 @@ static int rsa_do_async(struct uadk_rsa_sess *rsa_sess, struct async_op *op)
 	cb_param->priv = &rsa_sess->req;
 	rsa_sess->req.cb = uadk_e_rsa_cb;
 	rsa_sess->req.cb_param = cb_param;
-	rsa_sess->req.status = -1;
+	rsa_sess->req.status = STATUS_FAIL;
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		goto free_cb_param;

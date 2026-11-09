@@ -335,7 +335,7 @@ static int uadk_ecc_do_async(handle_t sess, struct wd_ecc_req *req,
 	cb_param->priv = req;
 	req->cb_param = cb_param;
 	req->cb = uadk_e_ecc_cb;
-	req->status = -1;
+	req->status = STATUS_FAIL;
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		goto free_cb_param;

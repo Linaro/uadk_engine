@@ -55,8 +55,6 @@ struct sw_cipher_t {
 	const EVP_CIPHER *(*get_cipher)(void);
 };
 
-#define STATE_FAIL		0xFFFF
-
 struct cipher_priv_ctx {
 	handle_t sess;
 	struct wd_cipher_sess_setup setup;
@@ -323,11 +321,11 @@ static int uadk_e_cipher_poll(void *ctx)
 	do {
 		ret = wd_cipher_poll_ctx(idx, expt, &recv);
 		if (!ret && recv == expt)
-			return 0;
+			return UADK_E_POLL_SUCCESS;
 		else if (ret == -EAGAIN)
 			rx_cnt++;
 		else
-			return -1;
+			return UADK_E_POLL_FAIL;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");

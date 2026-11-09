@@ -49,7 +49,6 @@
 #define SHA_SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT (512)
 #define MAX_DIGEST_LENGTH	64
 #define DIGEST_BLOCK_SIZE	(512 * 1024)
-#define STATE_FAIL		0xFFFF
 
 /*
  * copied form openssl/include/internal/sm3.h
@@ -403,11 +402,11 @@ static int uadk_e_digest_poll(void *ctx)
 	do {
 		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
 		if (!ret && recv == expt)
-			return 0;
+			return UADK_E_POLL_SUCCESS;
 		else if (ret == -EAGAIN)
 			rx_cnt++;
 		else
-			return -1;
+			return UADK_E_POLL_FAIL;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
