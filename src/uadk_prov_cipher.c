@@ -563,7 +563,7 @@ static int uadk_do_cipher_sync(struct cipher_priv_ctx *priv)
 	int ret;
 
 	ret = wd_do_cipher_sync(priv->sess, &priv->req);
-	if (ret)
+	if (ret || priv->req.state)
 		return UADK_P_FAIL;
 
 	return UADK_P_SUCCESS;
@@ -602,7 +602,9 @@ static int uadk_do_cipher_async(struct cipher_priv_ctx *priv, struct async_op *o
 	} while (true);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_CIPHER);
-	if (!ret || priv->req.state)
+	if (!ret)
+		goto free_poll_task;
+	if (priv->req.state)
 		return UADK_P_FAIL;
 
 	return UADK_P_SUCCESS;

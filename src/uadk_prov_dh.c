@@ -941,7 +941,7 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 
 		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
 		if (!ret)
-			goto err;
+			goto free_poll_task;
 
 		ret = dh_sess->req.status;
 		if (ret)

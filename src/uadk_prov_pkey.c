@@ -427,7 +427,7 @@ int uadk_prov_ecc_crypto(handle_t sess, struct wd_ecc_req *req, void *usr)
 
 	ret = async_pause_job(usr, &op, ASYNC_TASK_ECC);
 	if (ret == 0)
-		goto err;
+		goto free_poll_task;
 
 	if (req->status)
 		goto err;
@@ -715,6 +715,7 @@ int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *ec)
 	struct wd_dtb prikey;
 	const BIGNUM *d;
 	int buflen, ret;
+	int tmplen;
 	size_t degree;
 
 	d = EC_KEY_get0_private_key(ec);
@@ -733,7 +734,12 @@ int uadk_prov_ecc_set_private_key(handle_t sess, const EC_KEY *ec)
 	buflen = BITS_TO_BYTES(degree);
 	ecc_key = wd_ecc_get_key(sess);
 	prikey.data = (void *)prikey_bin;
-	prikey.dsize = BN_bn2binpad(d, prikey_bin, buflen);
+	tmplen = BN_bn2binpad(d, prikey_bin, buflen);
+	if (tmplen < 0) {
+		UADK_ERR("failed to convert ecc private key\n");
+		return UADK_P_FAIL;
+	}
+	prikey.dsize = tmplen;
 
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
 	if (ret) {

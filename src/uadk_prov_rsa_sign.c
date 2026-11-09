@@ -349,7 +349,7 @@ static int verify_trans_bn(struct uadk_rsa_sess *rsa_sess, unsigned char *from_b
 		goto verify_end;
 
 	*len = BN_bn2binpad(verify_bn, from_buf, num_bytes);
-	if (*len == 0)
+	if (*len <= 0)
 		ret = UADK_P_FAIL;
 
 verify_end:
