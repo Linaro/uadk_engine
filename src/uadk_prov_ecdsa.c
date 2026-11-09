@@ -237,7 +237,11 @@ static int ecdsa_digest_get_approved_nid(struct ecdsa_ctx *ctx, const EVP_MD *md
 	int mdnid = ecdsa_digest_get_nid(md);
 
 #ifndef OPENSSL_NO_FIPS_SECURITYCHECKS
-	int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN);
+	int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+			    && ctx->operation != EVP_PKEY_OP_SIGNMSG
+#endif
+			   );
 
 	if (uadk_prov_securitycheck_enabled(ctx->libctx)) {
 		if (mdnid == NID_undef || (mdnid == NID_sha1 && !sha1_allowed))
@@ -325,7 +329,13 @@ static int ecdsa_signverify_init(void *vctx, void *ec,
 
 	if (eckey) {
 		if (!uadk_prov_ecc_check_key(ctx->libctx, eckey,
-					     operation == EVP_PKEY_OP_SIGN))
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+					     (operation == EVP_PKEY_OP_SIGN ||
+					      operation == EVP_PKEY_OP_SIGNMSG)
+#else
+					     operation == EVP_PKEY_OP_SIGN
+#endif
+					     ))
 			return UADK_P_FAIL;
 
 		if (!EC_KEY_up_ref(ec))
@@ -894,7 +904,11 @@ err:
 static int uadk_signature_ecdsa_digest_sign_init(void *vctx, const char *mdname,
 						 void *ec, const OSSL_PARAM params[])
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	return ecdsa_digest_singverify_init(vctx, mdname, ec, params, EVP_PKEY_OP_SIGNMSG);
+#else
 	return ecdsa_digest_singverify_init(vctx, mdname, ec, params, EVP_PKEY_OP_SIGN);
+#endif
 }
 
 static int ecdsa_digest_signverify_update(void *vctx, const unsigned char *data,
@@ -943,7 +957,11 @@ static int uadk_signature_ecdsa_digest_sign_final(void *vctx, unsigned char *sig
 static int uadk_signature_ecdsa_digest_verify_init(void *vctx, const char *mdname,
 						   void *ec, const OSSL_PARAM params[])
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	return ecdsa_digest_singverify_init(vctx, mdname, ec, params, EVP_PKEY_OP_VERIFYMSG);
+#else
 	return ecdsa_digest_singverify_init(vctx, mdname, ec, params, EVP_PKEY_OP_VERIFY);
+#endif
 }
 
 static int uadk_signature_ecdsa_digest_verify_update(void *vctx, const unsigned char *data,

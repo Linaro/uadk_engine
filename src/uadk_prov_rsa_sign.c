@@ -520,7 +520,11 @@ static int rsa_setup_md(struct PROV_RSA_SIG_CTX *ctx, const char *mdname,
 
 	if (mdname != NULL) {
 		EVP_MD *md = EVP_MD_fetch(ctx->libctx, mdname, mdprops);
-		int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN);
+		int sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+				    && ctx->operation != EVP_PKEY_OP_SIGNMSG
+#endif
+				   );
 		int md_nid = ossl_digest_rsa_sign_get_md_nid(ctx->libctx, md, sha1_allowed);
 		size_t mdname_len = strlen(mdname);
 		bool md_ret = (!md) || (md_nid <= 0);
@@ -647,7 +651,11 @@ static int uadk_rsa_signverify_init(void *vprsactx, void *vrsa,
 	ctx->operation = operation;
 
 	/* Maximum for sign, auto for verify */
+#if OPENSSL_VERSION_NUMBER >= 0x30100000L
+	ctx->saltlen = RSA_PSS_SALTLEN_AUTO_DIGEST_MAX;
+#else
 	ctx->saltlen = RSA_PSS_SALTLEN_AUTO;
+#endif
 	ctx->min_saltlen = -1;
 	ctx->flag_allow_oneshot = 1;
 	ctx->flag_allow_final = 1;
@@ -1239,7 +1247,11 @@ static void *uadk_signature_rsa_newctx(void *provctx, const char *propq)
 	priv->flag_allow_md = 1;
 	priv->propq = propq_copy;
 	/* Maximum for sign, auto for verify */
+#if OPENSSL_VERSION_NUMBER >= 0x30100000L
+	priv->saltlen = RSA_PSS_SALTLEN_AUTO_DIGEST_MAX;
+#else
 	priv->saltlen = RSA_PSS_SALTLEN_AUTO;
+#endif
 	priv->min_saltlen = -1;
 	return priv;
 
@@ -1377,7 +1389,11 @@ static int uadk_rsa_setup_md(struct PROV_RSA_SIG_CTX *ctx, const char *mdname,
 
 	if (mdname != NULL) {
 		md = EVP_MD_fetch(ctx->libctx, mdname, mdprops);
-		sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN);
+		sha1_allowed = (ctx->operation != EVP_PKEY_OP_SIGN
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+				&& ctx->operation != EVP_PKEY_OP_SIGNMSG
+#endif
+			       );
 		md_nid = uadk_digest_rsa_sign_get_md_nid(ctx->libctx, md, sha1_allowed);
 		mdname_len = strlen(mdname);
 		if (!md || md_nid <= 0 ||
@@ -1458,8 +1474,13 @@ error:
 static int uadk_signature_rsa_digest_sign_init(void *vprsactx, const char *mdname,
 					       void *vrsa, const OSSL_PARAM params[])
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
+							 params, EVP_PKEY_OP_SIGNMSG);
+#else
 	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
 							 params, EVP_PKEY_OP_SIGN);
+#endif
 }
 
 static int uadk_signature_rsa_digest_sign_update(void *vprsactx,
@@ -1579,6 +1600,7 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int operation;
 	int ret;
 
 	if (!priv)
@@ -1602,7 +1624,18 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 
 	priv->flag_allow_md = 1;
 
-	ret = uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize, digest, (size_t)dlen);
+	/*
+	 * We are called with the final digest. Presenting SIGNMSG would make
+	 * the default provider's rsa_sign() take the message path and hash
+	 * the digest again through the already finalized mdctx. Temporarily
+	 * present a plain SIGN so a DO_SOFT fallback takes the digest path
+	 * (rsa_sign_directly).
+	 */
+	operation = priv->operation;
+	priv->operation = EVP_PKEY_OP_SIGN;
+	ret = uadk_signature_rsa_sign(vprsactx, sig, siglen, sigsize,
+				      digest, (size_t)dlen);
+	priv->operation = operation;
 	if (sig != NULL) {
 		priv->flag_allow_update = 0;
 		priv->flag_allow_oneshot = 0;
@@ -1615,8 +1648,13 @@ static int uadk_signature_rsa_digest_sign_final(void *vprsactx, unsigned char *s
 static int uadk_signature_rsa_digest_verify_init(void *vprsactx, const char *mdname,
 						 void *vrsa, const OSSL_PARAM params[])
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
+							 params, EVP_PKEY_OP_VERIFYMSG);
+#else
 	return uadk_signature_rsa_digest_signverify_init(vprsactx, mdname, vrsa,
 							 params, EVP_PKEY_OP_VERIFY);
+#endif
 }
 
 static int uadk_signature_rsa_digest_verify_update(void *vprsactx, const unsigned char *data,
@@ -1636,6 +1674,7 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 	struct PROV_RSA_SIG_CTX *priv = (struct PROV_RSA_SIG_CTX *)vprsactx;
 	unsigned char digest[EVP_MAX_MD_SIZE];
 	unsigned int dlen = 0;
+	int operation;
 	int ret;
 
 	if (!priv)
@@ -1653,7 +1692,16 @@ static int uadk_signature_rsa_digest_verify_final(void *vprsactx, const unsigned
 
 	priv->flag_allow_md = 1;
 
-	ret = uadk_signature_rsa_verify(vprsactx, sig, siglen, digest, (size_t)dlen);
+	/*
+	 * Same as in uadk_signature_rsa_digest_sign_final(): we are called
+	 * with the final digest, so present a plain VERIFY operation to keep
+	 * a DO_SOFT fallback on the default provider's digest verify path.
+	 */
+	operation = priv->operation;
+	priv->operation = EVP_PKEY_OP_VERIFY;
+	ret = uadk_signature_rsa_verify(vprsactx, sig, siglen,
+					digest, (size_t)dlen);
+	priv->operation = operation;
 
 	priv->flag_allow_update = 0;
 	priv->flag_allow_final = 0;
