@@ -19,10 +19,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
 #include <dlfcn.h>
 #include <numa.h>
 #include <openssl/core_names.h>
 #include <openssl/proverr.h>
+#include <openssl/prov_ssl.h>
+#include <openssl/rand.h>
 #include <uadk/wd_cipher.h>
 #include <uadk/wd_sched.h>
 #include "uadk.h"
@@ -50,6 +53,9 @@
 
 #define UADK_CIPHER_DEF_CTXS	2
 #define UADK_CIPHER_OP_NUM	1
+
+/* Maximum CBC padding bytes including length byte (mirrors OpenSSL MAX_PADDING) */
+#define TLS_MAX_PADDING		256
 
 /* OSSL_CIPHER_PARAM_CTS_MODE Values */
 # define OSSL_CIPHER_CTS_MODE_CS1	"CS1"
@@ -132,6 +138,12 @@ struct cipher_priv_ctx {
 	 * re-init (CBC/CFB/OFB), matching OpenSSL default oiv semantics.
 	 */
 	unsigned char oiv[IV_LEN];
+
+	/* TLS CBC record-mode state (mirrors OpenSSL default provider) */
+	unsigned int tlsversion;       /* 0 = not TLS, else SSL3/TLS1/.../TLS1_3 */
+	size_t tlsmacsize;             /* MAC size to strip/add in TLS record mode */
+	unsigned char *tlsmac;         /* pointer to MAC extracted on decrypt */
+	int alloced;                   /* whether tlsmac was OPENSSL_malloc'd */
 };
 
 struct cipher_info {
@@ -516,9 +528,6 @@ static int uadk_prov_cipher_init(struct cipher_priv_ctx *priv,
 
 	priv->switch_flag = 0;
 	priv->switch_threshold = SMALL_PACKET_OFFLOAD_THRESHOLD_DEFAULT;
-
-	if (uadk_get_sw_offload_state())
-		uadk_create_cipher_soft_ctx(priv);
 
 	ret = uadk_prov_cipher_dev_init(priv);
 	if (unlikely(ret <= 0)) {
@@ -1024,6 +1033,385 @@ static int uadk_prov_cipher_block_decrypto(struct cipher_priv_ctx *priv, unsigne
 
 	return UADK_P_SUCCESS;
 }
+/*
+ * Constant-time helpers for TLS CBC padding/MAC removal.
+ * OpenSSL's constant_time.h is not public; we reimplement the few
+ * operations needed here in a branch-free way.
+ */
+#define UADK_SIZE_T_BITS (sizeof(size_t) * CHAR_BIT)
+
+static ossl_inline size_t uadk_ct_ge_s(size_t a, size_t b)
+{
+	/* Returns (size_t)-1 if a >= b, 0 otherwise. */
+	size_t lt = ((a - b) >> (UADK_SIZE_T_BITS - 1)) & 1;
+
+	return (size_t)(0 - (1 - lt));
+}
+
+static ossl_inline unsigned char uadk_ct_ge_u8(size_t a, size_t b)
+{
+	return (unsigned char)uadk_ct_ge_s(a, b);
+}
+
+static ossl_inline size_t uadk_ct_eq_s(size_t a, size_t b)
+{
+	/* Returns (size_t)-1 if a == b, 0 otherwise. */
+	size_t neq = ((a - b) | (b - a)) >> (UADK_SIZE_T_BITS - 1);
+
+	return (size_t)(0 - (1 - neq));
+}
+
+static ossl_inline unsigned char uadk_ct_eq_u8(size_t a, size_t b)
+{
+	return (unsigned char)uadk_ct_eq_s(a, b);
+}
+
+static ossl_inline size_t uadk_ct_lt_s(size_t a, size_t b)
+{
+	/* Returns (size_t)-1 if a < b, 0 otherwise. */
+	size_t lt = ((a - b) >> (UADK_SIZE_T_BITS - 1)) & 1;
+
+	return (size_t)(0 - lt);
+}
+
+static ossl_inline unsigned char uadk_ct_select_u8(unsigned char mask,
+						   unsigned char a,
+						   unsigned char b)
+{
+	/* mask is 0x00 or 0xff. Returns a when mask set, b otherwise. */
+	return (unsigned char)((a & mask) | (b & ~mask));
+}
+
+/*
+ * Context for constant-time MAC extraction. Bundles the scan parameters,
+ * MAC window, and working buffers so helpers stay within 5 params.
+ */
+struct uadk_cbc_mac_ctx {
+	const unsigned char *recdata;
+	size_t origreclen;
+	size_t macsize;
+	size_t mac_start;
+	size_t mac_end;
+	size_t scan_start;
+	size_t rotate_offset;
+	size_t good;
+	unsigned char randmac[EVP_MAX_MD_SIZE];
+	unsigned char rotated_mac[EVP_MAX_MD_SIZE];
+};
+
+/*
+ * Scan recdata in constant time, collecting MAC bytes into rotated_mac
+ * and recording the rotation offset.
+ */
+static void uadk_cbc_mac_rotate(struct uadk_cbc_mac_ctx *ctx)
+{
+	size_t i, j, in_mac = 0;
+
+	ctx->rotate_offset = 0;
+	memset(ctx->rotated_mac, 0, ctx->macsize);
+	for (i = ctx->scan_start, j = 0; i < ctx->origreclen; i++) {
+		size_t mac_started = uadk_ct_eq_s(i, ctx->mac_start);
+		size_t mac_ended = uadk_ct_lt_s(i, ctx->mac_end);
+		unsigned char b = ctx->recdata[i];
+
+		in_mac |= mac_started;
+		in_mac &= mac_ended;
+		ctx->rotate_offset |= j & mac_started;
+		ctx->rotated_mac[j++] |= b & in_mac;
+		j &= uadk_ct_lt_s(j, ctx->macsize);
+	}
+}
+
+/*
+ * Rotate rotated_mac by rotate_offset and substitute random bytes where
+ * padding was bad (good == 0). Result written to out.
+ */
+static void uadk_cbc_mac_select(struct uadk_cbc_mac_ctx *ctx,
+				unsigned char *out)
+{
+	size_t rotate_offset = ctx->macsize - ctx->rotate_offset;
+	size_t i, j;
+
+	memset(out, 0, ctx->macsize);
+	rotate_offset &= uadk_ct_lt_s(rotate_offset, ctx->macsize);
+	for (i = 0; i < ctx->macsize; i++) {
+		for (j = 0; j < ctx->macsize; j++)
+			out[j] |= ctx->rotated_mac[i] &
+				  uadk_ct_eq_u8(j, rotate_offset);
+		rotate_offset++;
+		rotate_offset &= uadk_ct_lt_s(rotate_offset, ctx->macsize);
+		out[i] = uadk_ct_select_u8((unsigned char)(ctx->good & 0xff),
+					   out[i], ctx->randmac[i]);
+	}
+}
+
+/*
+ * Constant-time copy of the trailing MAC bytes of recdata into a freshly
+ * allocated buffer, with a random MAC substituted if good is 0.
+ * Mirrors ssl3_cbc_copy_mac() from ssl/record/tls_pad.c.
+ */
+static int uadk_cipher_cbc_copy_mac(struct cipher_priv_ctx *priv,
+				    size_t *reclen, size_t origreclen,
+				    unsigned char *recdata, size_t good)
+{
+	struct uadk_cbc_mac_ctx ctx = {0};
+	size_t macsize = priv->tlsmacsize;
+	size_t mac_end = *reclen;
+
+	if (macsize == 0) {
+		if (good == 0)
+			return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
+	}
+
+	*reclen -= macsize;
+
+	if (priv->blksize == 1) {
+		priv->tlsmac = &recdata[*reclen];
+		priv->alloced = 0;
+		return UADK_P_SUCCESS;
+	}
+
+	if (RAND_bytes(ctx.randmac, (int)macsize) <= 0)
+		return UADK_P_FAIL;
+
+	priv->tlsmac = OPENSSL_malloc(macsize);
+	if (priv->tlsmac == NULL)
+		return UADK_P_FAIL;
+	priv->alloced = 1;
+
+	ctx.recdata = recdata;
+	ctx.origreclen = origreclen;
+	ctx.macsize = macsize;
+	ctx.mac_start = mac_end - macsize;
+	ctx.mac_end = mac_end;
+	ctx.good = good;
+	if (origreclen > macsize + TLS_MAX_PADDING)
+		ctx.scan_start = origreclen - (macsize + TLS_MAX_PADDING);
+
+	uadk_cbc_mac_rotate(&ctx);
+	uadk_cbc_mac_select(&ctx, priv->tlsmac);
+
+	return UADK_P_SUCCESS;
+}
+
+/*
+ * Check TLS 1.x padding in constant time and return the good mask.
+ * Updates *reclen to remove padding.
+ */
+static size_t uadk_tls1_remove_padding(const unsigned char *buf, size_t *reclen,
+				       size_t overhead)
+{
+	size_t padding_length = buf[*reclen - 1];
+	size_t to_check = TLS_MAX_PADDING;
+	unsigned char mask;
+	unsigned char b;
+	size_t good;
+	size_t i;
+
+	good = uadk_ct_ge_s(*reclen, overhead + padding_length);
+	if (to_check > *reclen)
+		to_check = *reclen;
+	for (i = 0; i < to_check; i++) {
+		mask = uadk_ct_ge_u8(padding_length, i);
+		b = buf[*reclen - 1 - i];
+		good &= ~(mask & (padding_length ^ b));
+	}
+	good = uadk_ct_eq_s(0xff, good & 0xff);
+	*reclen -= good & (padding_length + 1);
+
+	return good;
+}
+
+/* Strip SSLv3 padding and copy MAC. */
+static int uadk_ssl3_remove_padding(struct cipher_priv_ctx *priv,
+				    unsigned char *buf, size_t *reclen,
+				    size_t origreclen)
+{
+	size_t overhead = 1 + priv->tlsmacsize;
+	size_t padding_length;
+	size_t good;
+
+	if (overhead > *reclen)
+		return UADK_P_FAIL;
+	padding_length = buf[*reclen - 1];
+	good = uadk_ct_ge_s(*reclen, padding_length + overhead);
+	good &= uadk_ct_ge_s(priv->blksize, padding_length + 1);
+	*reclen -= good & (padding_length + 1);
+
+	return uadk_cipher_cbc_copy_mac(priv, reclen, origreclen, buf, good);
+}
+
+/* Strip TLS 1.x padding (if block cipher) and copy MAC. */
+static int uadk_tls1_remove_padding_and_mac(struct cipher_priv_ctx *priv,
+					    unsigned char *buf, size_t *reclen,
+					    size_t origreclen)
+{
+	size_t blksz = priv->blksize;
+	size_t overhead = ((blksz == 1) ? 0 : 1) + priv->tlsmacsize;
+	size_t good;
+
+	if (overhead > *reclen)
+		return UADK_P_FAIL;
+
+	if (blksz != 1)
+		good = uadk_tls1_remove_padding(buf, reclen, overhead);
+	else
+		good = (size_t)-1;
+
+	return uadk_cipher_cbc_copy_mac(priv, reclen, origreclen, buf, good);
+}
+
+/*
+ * Strip TLS CBC padding in constant time and extract the MAC. Handles
+ * explicit-IV stripping for TLS >= 1.1, then SSLv3 or TLS 1.x padding
+ * and MAC extraction. On decrypt, *buflen is the plaintext length.
+ */
+static int uadk_cipher_tls1_unpad_mac(struct cipher_priv_ctx *priv,
+				      unsigned char *buf, size_t *buflen,
+				      size_t origreclen)
+{
+	unsigned int ver = priv->tlsversion;
+	size_t blksz = priv->blksize;
+	size_t reclen = *buflen;
+	int ret;
+
+	if (priv->alloced) {
+		OPENSSL_free(priv->tlsmac);
+		priv->alloced = 0;
+		priv->tlsmac = NULL;
+	}
+
+	if (ver == TLS1_2_VERSION || ver == DTLS1_2_VERSION ||
+	    ver == TLS1_1_VERSION || ver == DTLS1_VERSION ||
+	    ver == DTLS1_BAD_VER) {
+		if (reclen < blksz)
+			return UADK_P_FAIL;
+		buf += blksz;
+		reclen -= blksz;
+		origreclen -= blksz;
+	}
+
+	if (ver == SSL3_VERSION)
+		ret = uadk_ssl3_remove_padding(priv, buf, &reclen, origreclen);
+	else
+		ret = uadk_tls1_remove_padding_and_mac(priv, buf, &reclen,
+						       origreclen);
+
+	if (ret != UADK_P_SUCCESS)
+		return UADK_P_FAIL;
+
+	*buflen = reclen;
+
+	return UADK_P_SUCCESS;
+}
+
+/* Add TLS padding (RFC 5246) for encryption. Updates *inl to padded length. */
+static int uadk_tls_add_padding(struct cipher_priv_ctx *priv,
+				unsigned char *out, size_t *inl,
+				size_t outsize)
+{
+	size_t blksz = priv->blksize;
+	size_t padnum = blksz - (*inl % blksz);
+	unsigned char padval = (unsigned char)(padnum - 1);
+	size_t loop;
+
+	if (outsize < *inl + padnum) {
+		UADK_ERR("invalid: tls cipher encrypt buffer too small.\n");
+		return UADK_P_FAIL;
+	}
+	if (padnum > TLS_MAX_PADDING) {
+		UADK_ERR("invalid: tls cipher padding too large.\n");
+		return UADK_P_FAIL;
+	}
+	if (priv->tlsversion == SSL3_VERSION) {
+		if (padnum > 1)
+			memset(out + *inl, 0, padnum - 1);
+		*(out + *inl + padnum - 1) = padval;
+	} else {
+		for (loop = *inl; loop < *inl + padnum; loop++)
+			out[loop] = padval;
+	}
+	*inl += padnum;
+
+	return UADK_P_SUCCESS;
+}
+
+/*
+ * Encrypt/decrypt in-place via HW, falling back to soft cipher on
+ * failure. Uses pad=0 one-shot; TLS padding/MAC is stripped afterwards
+ * by uadk_cipher_tls1_unpad_mac.
+ */
+static int uadk_tls_cipher_hw_or_soft(struct cipher_priv_ctx *priv,
+				      unsigned char *out, size_t *outl,
+				      size_t outsize, size_t inl)
+{
+	int ret;
+
+	ret = uadk_prov_hw_cipher(priv, out, outl, outsize, out, inl);
+	if (ret == UADK_P_SUCCESS)
+		return UADK_P_SUCCESS;
+
+	if (priv->sw_cipher) {
+		ret = uadk_prov_cipher_soft_oneshot(priv, out, outl, out, inl);
+		if (ret == UADK_P_SUCCESS)
+			return UADK_P_SUCCESS;
+	}
+
+	return UADK_P_FAIL;
+}
+
+/*
+ * Process a TLS 1.x CBC record in one shot: encrypt (append padding +
+ * encrypt in place) or decrypt (decrypt in place, strip explicit
+ * IV/padding, extract MAC via OSSL_CIPHER_PARAM_TLS_MAC).
+ */
+static int uadk_prov_cipher_tls_block_update(struct cipher_priv_ctx *priv,
+					     unsigned char *out, size_t *outl,
+					     size_t outsize, size_t inl)
+{
+	size_t blksz = priv->blksize;
+	size_t origreclen = inl;
+	int ret;
+
+	if (!priv->pad || outsize < inl) {
+		UADK_ERR("invalid: tls cipher update requires in-place buffer.\n");
+		return UADK_P_FAIL;
+	}
+
+	if (priv->enc) {
+		ret = uadk_tls_add_padding(priv, out, &inl, outsize);
+		if (ret != UADK_P_SUCCESS)
+			return UADK_P_FAIL;
+	}
+
+	if ((inl % blksz) != 0) {
+		UADK_ERR("invalid: tls cipher record not block-aligned.\n");
+		return UADK_P_FAIL;
+	}
+
+	ret = uadk_tls_cipher_hw_or_soft(priv, out, outl, outsize, inl);
+	if (ret != UADK_P_SUCCESS)
+		return UADK_P_FAIL;
+
+	if (priv->alloced) {
+		OPENSSL_free(priv->tlsmac);
+		priv->alloced = 0;
+		priv->tlsmac = NULL;
+	}
+
+	*outl = inl;
+
+	if (!priv->enc) {
+		ret = uadk_cipher_tls1_unpad_mac(priv, out, outl, origreclen);
+		if (ret != UADK_P_SUCCESS) {
+			UADK_ERR("tls cipher unpad/mac extract failed.\n");
+			return UADK_P_FAIL;
+		}
+	}
+
+	return UADK_P_SUCCESS;
+}
 
 static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 					size_t *outl, size_t outsize)
@@ -1033,6 +1421,12 @@ static int uadk_prov_cipher_block_final(void *vctx, unsigned char *out,
 
 	if (!vctx || !out || !outl)
 		return UADK_P_FAIL;
+
+	/* TLS record mode is one-shot per update; final is an error there. */
+	if (priv->tlsversion > 0) {
+		UADK_ERR("cipher final is invalid in TLS record mode.\n");
+		return UADK_P_FAIL;
+	}
 
 	if (priv->switch_flag == UADK_DO_SOFT)
 		return uadk_prov_cipher_soft_final(priv, out, outl);
@@ -1062,6 +1456,15 @@ static int uadk_prov_cipher_block_update(void *vctx, unsigned char *output,
 	if (outsize < inl) {
 		UADK_ERR("invalid: cipher update outsize is too small.\n");
 		return UADK_P_FAIL;
+	}
+
+	if (priv->tlsversion > 0) {
+		if (input != output) {
+			UADK_ERR("invalid: tls cipher update requires in-place buffer.\n");
+			return UADK_P_FAIL;
+		}
+		return uadk_prov_cipher_tls_block_update(priv, output, outl,
+						outsize, inl);
 	}
 
 	return uadk_prov_do_cipher(priv, output, outl, outsize, input, inl);
@@ -1247,6 +1650,8 @@ static const OSSL_PARAM uadk_prov_settable_ctx_params[] = {
 	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_IVLEN, NULL),
 	OSSL_PARAM_uint(OSSL_CIPHER_PARAM_PADDING, NULL),
 	OSSL_PARAM_utf8_string(OSSL_CIPHER_PARAM_CTS_MODE, NULL, 0),
+	OSSL_PARAM_uint(OSSL_CIPHER_PARAM_TLS_VERSION, NULL),
+	OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_TLS_MAC_SIZE, NULL),
 	OSSL_PARAM_END
 };
 
@@ -1326,6 +1731,42 @@ static int uadk_prov_cipher_set_ctx_params(void *vctx, const OSSL_PARAM params[]
 			ALG_NAME_SIZE - 1);
 	}
 
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_TLS_VERSION);
+	if (p != NULL) {
+		unsigned int ver;
+
+		if (!OSSL_PARAM_get_uint(p, &ver)) {
+			UADK_ERR("failed to get cipher uint parameter: tls version.\n");
+			return UADK_P_FAIL;
+		}
+		switch (ver) {
+		case SSL3_VERSION:
+		case TLS1_VERSION:
+		case TLS1_1_VERSION:
+		case TLS1_2_VERSION:
+		case DTLS1_VERSION:
+		case DTLS1_2_VERSION:
+		case DTLS1_BAD_VER:
+			priv->tlsversion = ver;
+			break;
+		default:
+			UADK_ERR("invalid: unsupported tls version: 0x%x.\n", ver);
+			return UADK_P_FAIL;
+		}
+	}
+
+	p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_TLS_MAC_SIZE);
+	if (p != NULL) {
+		size_t macsize;
+
+		if (!OSSL_PARAM_get_size_t(p, &macsize) ||
+		    macsize > EVP_MAX_MD_SIZE) {
+			UADK_ERR("failed to get cipher size parameter: tls mac size.\n");
+			return UADK_P_FAIL;
+		}
+		priv->tlsmacsize = macsize;
+	}
+
 	return UADK_P_SUCCESS;
 }
 
@@ -1373,6 +1814,12 @@ static int uadk_prov_cipher_get_ctx_params(void *vctx, OSSL_PARAM params[])
 			return UADK_P_FAIL;
 		}
 	}
+	p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_TLS_MAC);
+	if (p != NULL
+	    && !OSSL_PARAM_set_octet_ptr(p, priv->tlsmac, priv->tlsmacsize)) {
+		UADK_ERR("failed to set cipher octet parameter: tls mac.\n");
+		return UADK_P_FAIL;
+	}
 	return UADK_P_SUCCESS;
 }
 
@@ -1383,6 +1830,7 @@ static const OSSL_PARAM uadk_prov_default_ctx_params[] = {
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_IV, NULL, 0),
 	OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_UPDATED_IV, NULL, 0),
 	OSSL_PARAM_utf8_string(OSSL_CIPHER_PARAM_CTS_MODE, NULL, 0),
+	{ OSSL_CIPHER_PARAM_TLS_MAC, OSSL_PARAM_OCTET_PTR, NULL, 0, OSSL_PARAM_UNMODIFIED },
 	OSSL_PARAM_END
 };
 
@@ -1456,6 +1904,14 @@ static void *uadk_prov_cipher_dupctx(void *ctx)
 	if (dst == NULL)
 		return NULL;
 
+	/*
+	 * tlsmac is a heap buffer owned solely by the source context.
+	 * Sharing it would double-free; force the duplicate to start
+	 * with no MAC buffer.
+	 */
+	dst->tlsmac = NULL;
+	dst->alloced = 0;
+
 	/* WD session handle cannot be shared; force re-alloc on next HW call. */
 	dst->sess = 0;
 
@@ -1508,6 +1964,12 @@ static void uadk_prov_cipher_freectx(void *ctx)
 	if (priv->sess)
 		wd_cipher_free_sess(priv->sess);
 
+	if (priv->alloced) {
+		OPENSSL_free(priv->tlsmac);
+		priv->tlsmac = NULL;
+		priv->alloced = 0;
+	}
+
 	OPENSSL_clear_free(priv, sizeof(*priv));
 }
 
@@ -1552,6 +2014,10 @@ static void *uadk_##nm##_newctx(void *provctx)					\
 	strncpy(ctx->alg_name, #algnm, ALG_NAME_SIZE - 1);			\
 	if (strcmp(#typ, "block") == 0)						\
 		ctx->pad = 1;							\
+										\
+	if (uadk_get_sw_offload_state())					\
+		uadk_create_cipher_soft_ctx(ctx);				\
+										\
 	return ctx;								\
 }										\
 static OSSL_FUNC_cipher_get_params_fn uadk_##nm##_get_params;			\
