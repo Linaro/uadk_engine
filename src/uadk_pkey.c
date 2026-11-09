@@ -657,7 +657,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	switch (nid) {
 	case EVP_PKEY_SM2:
 		ret = uadk_sm2_create_pmeth(&pkey_meth);
-		if (!ret) {
+		if (ret != UADK_E_SUCCESS) {
 			fprintf(stderr, "failed to register sm2 pmeth.\n");
 			return 0;
 		}

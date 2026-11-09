@@ -1518,7 +1518,7 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 	}
 
 	ret = rsa_primes_gen(bits, e, bn_param->p, bn_param->q, cb);
-	if (!ret) {
+	if (ret != UADK_E_SUCCESS) {
 		ret = UADK_DO_SOFT;
 		goto free_sess;
 	}
@@ -1717,7 +1717,7 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 	}
 
 	len = BN_bn2binpad(dec_bn, from_buf, num_bytes);
-	if (!len) {
+	if (len <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_dec_bn;
 	}
@@ -1916,7 +1916,7 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 	}
 
 	len = BN_bn2binpad(verify_bn, from_buf, num_bytes);
-	if (!len) {
+	if (len <= 0) {
 		ret = UADK_DO_SOFT;
 		goto free_verify_bn;
 	}

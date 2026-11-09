@@ -813,12 +813,23 @@ static int dh_soft_set_pkey(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 	const BIGNUM *old_pub = DH_get0_pub_key(dh);
 	const BIGNUM *old_priv = DH_get0_priv_key(dh);
 
-	if (old_pub != pub_key && old_priv != priv_key)
-		DH_set0_key(dh, pub_key, priv_key);
-	else if (old_pub != pub_key)
-		DH_set0_key(dh, pub_key, NULL);
-	else if (old_priv != priv_key)
-		DH_set0_key(dh, NULL, priv_key);
+	if (old_pub != pub_key && old_priv != priv_key) {
+		if (!DH_set0_key(dh, pub_key, priv_key)) {
+			BN_free(pub_key);
+			BN_free(priv_key);
+			return UADK_E_FAIL;
+		}
+	} else if (old_pub != pub_key) {
+		if (!DH_set0_key(dh, pub_key, NULL)) {
+			BN_free(pub_key);
+			return UADK_E_FAIL;
+		}
+	} else if (old_priv != priv_key) {
+		if (!DH_set0_key(dh, NULL, priv_key)) {
+			BN_free(priv_key);
+			return UADK_E_FAIL;
+		}
+	}
 
 	return UADK_E_SUCCESS;
 }
