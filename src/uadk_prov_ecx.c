@@ -676,29 +676,12 @@ static int uadk_prov_reverse_bytes(unsigned char *to_buf, __u32 size)
 	return UADK_P_SUCCESS;
 }
 
-static int uadk_prov_reverse_bytes_ex(unsigned char *src_buf, unsigned char *dst_buf, __u32 size)
+static void uadk_prov_reverse_bytes_ex(unsigned char *src_buf, unsigned char *dst_buf, __u32 size)
 {
 	__u32 i;
 
-	if (size == 0) {
-		UADK_ERR("invalid size, size = %u\n", size);
-		return UADK_P_FAIL;
-	}
-
-	if (src_buf == NULL) {
-		UADK_ERR("src_buf is NULL\n");
-		return UADK_P_FAIL;
-	}
-
-	if (dst_buf == NULL) {
-		UADK_ERR("dst_buf is NULL\n");
-		return UADK_P_FAIL;
-	}
-
 	for (i = 0; i < size; i++)
 		dst_buf[i] = src_buf[size - i - 1];
-
-	return UADK_P_SUCCESS;
 }
 
 static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req *req,
@@ -719,12 +702,8 @@ static int uadk_prov_ecx_set_pkey(PROV_ECX_KEYMGMT_CTX *gctx, struct wd_ecc_req 
 	}
 
 	/* Trans public key from big-endian to little-endian */
-	ret = uadk_prov_reverse_bytes_ex((unsigned char *)pubkey->x.data,
-					 ecx_key->pubkey, pubkey->x.dsize);
-	if (ret == UADK_P_FAIL) {
-		UADK_ERR("failed to transform pubkey\n");
-		return ret;
-	}
+	uadk_prov_reverse_bytes_ex((unsigned char *)pubkey->x.data,
+				      ecx_key->pubkey, pubkey->x.dsize);
 	/* Trans private key from big-endian to little-endian */
 	ret = uadk_prov_reverse_bytes(ecx_key->privkey, gctx->keylen);
 	if (ret == UADK_P_FAIL) {
@@ -1060,21 +1039,17 @@ static int uadk_keyexch_x448_set_peer(void *vecxctx, void *vkey)
 
 static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct wd_ecc_req *req)
 {
+	unsigned char pubkey_be[ECX_MAX_KEYLEN];
 	char buffer_y[ECX_MAX_KEYLEN] = {0};
 	handle_t sess = ecxctx->sess;
 	struct wd_ecc_point in_pubkey;
 	struct wd_ecc_out *ecx_out;
 	struct wd_ecc_in *ecx_in;
-	int ret;
 
-	/* Trans public key from little-endian to big-endian */
-	ret = uadk_prov_reverse_bytes(ecxctx->peerkey->pubkey, ecxctx->keylen);
-	if (ret == UADK_P_FAIL) {
-		UADK_ERR("failed to trans public key\n");
-		return UADK_P_FAIL;
-	}
+	/* Trans public key from little-endian to big-endian into a temp buffer */
+	uadk_prov_reverse_bytes_ex(ecxctx->peerkey->pubkey, pubkey_be, ecxctx->keylen);
 
-	in_pubkey.x.data = (char *)ecxctx->peerkey->pubkey;
+	in_pubkey.x.data = (char *)pubkey_be;
 	in_pubkey.x.dsize = ecxctx->keylen;
 	in_pubkey.y.data = buffer_y;
 	in_pubkey.y.dsize = 1;
@@ -1088,27 +1063,14 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	ecx_out = wd_ecxdh_new_out(sess);
 	if (ecx_out == NULL) {
 		UADK_ERR("failed to new ecxdh out\n");
-		ret = UADK_P_FAIL;
-		goto del_ecx_in;
+		wd_ecc_del_in(sess, ecx_in);
+		return UADK_P_FAIL;
 	}
 
 	uadk_prov_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
 
-	/* Trans public key from big-endian to little-endian */
-	ret = uadk_prov_reverse_bytes(ecxctx->peerkey->pubkey, ecxctx->keylen);
-	if (ret == UADK_P_FAIL) {
-		UADK_ERR("failed to trans peer public key\n");
-		goto del_ecx_out;
-	}
+	return UADK_P_SUCCESS;
 
-	return ret;
-
-del_ecx_out:
-	wd_ecc_del_out(sess, ecx_out);
-del_ecx_in:
-	wd_ecc_del_in(sess, ecx_in);
-
-	return ret;
 }
 
 static void uadk_prov_ecx_compkey_uninit_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct wd_ecc_req *req)
@@ -1119,31 +1081,22 @@ static void uadk_prov_ecx_compkey_uninit_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struc
 
 static int uadk_prov_ecx_derive_set_prikey(PROV_ECX_KEYEXCH_CTX *ecxctx)
 {
+	unsigned char prikey_be[ECX_MAX_KEYLEN];
 	handle_t sess = ecxctx->sess;
 	struct wd_ecc_key *ecc_key;
 	struct wd_dtb prikey;
 	int ret;
 
-	/* Trans private key from little-endian to big-endian */
-	ret = uadk_prov_reverse_bytes(ecxctx->key->privkey, ecxctx->keylen);
-	if (!ret) {
-		UADK_ERR("failed to trans private key\n");
-		return UADK_P_FAIL;
-	}
+	/* Trans private key from little-endian to big-endian into a temp buffer */
+	uadk_prov_reverse_bytes_ex(ecxctx->key->privkey, prikey_be, ecxctx->keylen);
 
-	prikey.data = (char *)ecxctx->key->privkey;
+	prikey.data = (char *)prikey_be;
 	prikey.dsize = ecxctx->keylen;
 	ecc_key = wd_ecc_get_key(sess);
 	ret = wd_ecc_set_prikey(ecc_key, &prikey);
+	OPENSSL_cleanse(prikey_be, sizeof(prikey_be));
 	if (ret) {
 		UADK_ERR("failed to set ecc prikey, ret = %d\n", ret);
-		return UADK_P_FAIL;
-	}
-
-	/* Trans private key from big-endian to little-endian */
-	ret = uadk_prov_reverse_bytes(ecxctx->key->privkey, ecxctx->keylen);
-	if (ret == UADK_P_FAIL) {
-		UADK_ERR("failed to trans private key\n");
 		return UADK_P_FAIL;
 	}
 
