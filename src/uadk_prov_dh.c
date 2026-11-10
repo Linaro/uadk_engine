@@ -941,7 +941,7 @@ static int uadk_prov_dh_do_crypto(struct uadk_dh_sess *dh_sess)
 
 		ret = async_pause_job(dh_sess, &op, ASYNC_TASK_DH);
 		if (!ret)
-			goto err;
+			goto free_poll_task;
 
 		ret = dh_sess->req.status;
 		if (ret)
@@ -2069,6 +2069,33 @@ static int uadk_prov_dh_locate_kdf_pad(PROV_DH_KEYEXCH_CTX *pdhctx, const OSSL_P
 	return UADK_P_SUCCESS;
 }
 
+static int uadk_prov_dh_locate_kdf_cekalg(PROV_DH_KEYEXCH_CTX *pdhctx,
+					  const OSSL_PARAM params[])
+{
+	char name[DH_MAX_PARAM_LEN + 1] = {'\0'};
+	const OSSL_PARAM *p;
+	char *str;
+
+	p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_CEK_ALG);
+	if (p != NULL) {
+		str = name;
+
+		OPENSSL_free(pdhctx->kdf_cekalg);
+		pdhctx->kdf_cekalg = NULL;
+
+		if (p->data != NULL && p->data_size != 0) {
+			if (!OSSL_PARAM_get_utf8_string(p, &str, sizeof(name)))
+				return UADK_P_FAIL;
+
+			pdhctx->kdf_cekalg = OPENSSL_strdup(name);
+			if (pdhctx->kdf_cekalg == NULL)
+				return UADK_P_FAIL;
+		}
+	}
+
+	return UADK_P_SUCCESS;
+}
+
 static int uadk_keyexch_dh_set_ctx_params(void *dhctx, const OSSL_PARAM params[])
 {
 	PROV_DH_KEYEXCH_CTX *pdhctx = (PROV_DH_KEYEXCH_CTX *)dhctx;
@@ -2109,8 +2136,14 @@ static int uadk_keyexch_dh_set_ctx_params(void *dhctx, const OSSL_PARAM params[]
 	}
 
 	ret = uadk_prov_dh_locate_kdf_pad(pdhctx, params);
-	if (ret == UADK_P_FAIL)
+	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to locate kdf pad\n");
+		goto end;
+	}
+
+	ret = uadk_prov_dh_locate_kdf_cekalg(pdhctx, params);
+	if (ret == UADK_P_FAIL)
+		UADK_ERR("failed to locate kdf cekalg\n");
 
 end:
 	pthread_mutex_unlock(&dh_mutex);

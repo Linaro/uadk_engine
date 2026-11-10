@@ -48,8 +48,6 @@
 #define UADK_DO_SOFT		(-0xE0)
 #define UADK_E_SUCCESS		1
 #define UADK_E_FAIL		0
-#define UADK_E_POLL_SUCCESS	0
-#define UADK_E_POLL_FAIL	(-1)
 #define UADK_E_INIT_SUCCESS	0
 #define ENV_ENABLED		1
 #define KEY_GEN_BY_ENGINE	1
@@ -746,7 +744,7 @@ static int dh_do_async(struct uadk_dh_sess *dh_sess, struct async_op *op)
 	cb_param->priv = &dh_sess->req;
 	dh_sess->req.cb = uadk_e_dh_cb;
 	dh_sess->req.cb_param = cb_param;
-	dh_sess->req.status = -1;
+	dh_sess->req.status = STATUS_FAIL;
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		goto free_cb_param;
@@ -813,12 +811,23 @@ static int dh_soft_set_pkey(DH *dh, BIGNUM *pub_key, BIGNUM *priv_key)
 	const BIGNUM *old_pub = DH_get0_pub_key(dh);
 	const BIGNUM *old_priv = DH_get0_priv_key(dh);
 
-	if (old_pub != pub_key && old_priv != priv_key)
-		DH_set0_key(dh, pub_key, priv_key);
-	else if (old_pub != pub_key)
-		DH_set0_key(dh, pub_key, NULL);
-	else if (old_priv != priv_key)
-		DH_set0_key(dh, NULL, priv_key);
+	if (old_pub != pub_key && old_priv != priv_key) {
+		if (!DH_set0_key(dh, pub_key, priv_key)) {
+			BN_free(pub_key);
+			BN_free(priv_key);
+			return UADK_E_FAIL;
+		}
+	} else if (old_pub != pub_key) {
+		if (!DH_set0_key(dh, pub_key, NULL)) {
+			BN_free(pub_key);
+			return UADK_E_FAIL;
+		}
+	} else if (old_priv != priv_key) {
+		if (!DH_set0_key(dh, NULL, priv_key)) {
+			BN_free(priv_key);
+			return UADK_E_FAIL;
+		}
+	}
 
 	return UADK_E_SUCCESS;
 }

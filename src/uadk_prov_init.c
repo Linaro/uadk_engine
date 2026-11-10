@@ -731,6 +731,9 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 			break;
 		return uadk_generate_digests_array();
 	case OSSL_OP_MAC:
+		ver = uadk_prov_digest_version();
+		if (!ver && uadk_get_sw_offload_state())
+			break;
 		return uadk_generate_hmac_array();
 	case OSSL_OP_CIPHER:
 		ver = uadk_prov_cipher_version();
@@ -740,35 +743,35 @@ static const OSSL_ALGORITHM *uadk_query(void *provctx, int operation_id,
 			return uadk_generate_cipher_array_v2();
 		return uadk_generate_cipher_array_v3();
 	case OSSL_OP_SIGNATURE:
-		uadk_prov_signature_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_ASYM_ENC_V2)
+		uadk_prov_signature_alg();
+		if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_signature_array_v2();
 		return uadk_generate_signature_array_v3();
 	case OSSL_OP_KEYMGMT:
-		uadk_prov_keymgmt_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_ASYM_ENC_V2)
+		uadk_prov_keymgmt_alg();
+		if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_keymgmt_array_v2();
 		return uadk_generate_keymgmt_array_v3();
 	case OSSL_OP_ASYM_CIPHER:
-		uadk_prov_asym_cipher_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_ASYM_ENC_V2)
+		uadk_prov_asym_cipher_alg();
+		if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_asym_cipher_array_v2();
 		return uadk_generate_asym_cipher_array_v3();
 	case OSSL_OP_KEYEXCH:
-		uadk_prov_keyexch_alg();
 		ver = uadk_prov_pkey_version();
 		if (!ver && uadk_get_sw_offload_state())
 			break;
-		else if (ver == HW_ASYM_ENC_V2)
+		uadk_prov_keyexch_alg();
+		if (ver == HW_ASYM_ENC_V2)
 			return uadk_generate_keyexch_array_v2();
 		return uadk_generate_keyexch_array_v3();
 	default:
@@ -829,9 +832,9 @@ static void uadk_unquery(void *provctx, int operation_id,
 		needs_version_check = 1;
 		break;
 	case OSSL_OP_MAC:
-		if (algs)
-			OPENSSL_free((void *)algs);
-		return;
+		ver = uadk_prov_digest_version();
+		needs_version_check = 1;
+		break;
 	default:
 		break;
 	}

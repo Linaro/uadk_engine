@@ -29,6 +29,21 @@
 #define UADK_INIT_FAIL		2
 #define UADK_DEVICE_ERROR	3
 
+/*
+ * Async send error sentinel: pre-set before wd_*_async() so that
+ * callback-not-invoked cases (poll thread gives up) are caught by
+ * the existing req.state/status != 0 soft-fallback check.
+ *
+ * STATE_FAIL (0xFFFF) is for __u16 state fields (cipher/digest/aead).
+ * STATUS_FAIL (-1) is for int status fields (RSA/DH/ECC).
+ */
+#define STATE_FAIL		0xFFFF
+#define STATUS_FAIL		(-1)
+
+/* Async poll return values */
+#define UADK_E_POLL_SUCCESS	0
+#define UADK_E_POLL_FAIL	(-1)
+
 enum {
 	HW_V2,
 	HW_V3,

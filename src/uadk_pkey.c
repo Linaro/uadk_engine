@@ -335,7 +335,7 @@ static int uadk_ecc_do_async(handle_t sess, struct wd_ecc_req *req,
 	cb_param->priv = req;
 	req->cb_param = cb_param;
 	req->cb = uadk_e_ecc_cb;
-	req->status = -1;
+	req->status = STATUS_FAIL;
 	ret = async_get_free_task(&idx);
 	if (!ret)
 		goto free_cb_param;
@@ -657,7 +657,7 @@ static int get_pkey_meths(ENGINE *e, EVP_PKEY_METHOD **pmeth,
 	switch (nid) {
 	case EVP_PKEY_SM2:
 		ret = uadk_sm2_create_pmeth(&pkey_meth);
-		if (!ret) {
+		if (ret != UADK_E_SUCCESS) {
 			fprintf(stderr, "failed to register sm2 pmeth.\n");
 			return 0;
 		}

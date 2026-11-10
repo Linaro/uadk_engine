@@ -30,7 +30,6 @@
 #define UADK_E_SUCCESS		1
 #define UADK_E_FAIL		0
 #define RET_FAIL		(-1)
-#define STATE_FAIL		0xFFFF
 #define CTX_SYNC_ENC		0
 #define CTX_SYNC_DEC		1
 #define CTX_ASYNC_ENC		2
@@ -114,7 +113,7 @@ static int uadk_e_aead_poll(void *ctx)
 	do {
 		ret = wd_aead_poll_ctx(idx, expt, &recv);
 		if (!ret && recv == expt)
-			return 0;
+			return UADK_E_POLL_SUCCESS;
 		else if (ret == -EAGAIN)
 			rx_cnt++;
 		else

@@ -623,7 +623,7 @@ static int uadk_do_digest_sync(struct digest_priv_ctx *priv)
 		return UADK_DIGEST_FAIL;
 
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
-	if (ret) {
+	if (ret || priv->req.state) {
 		UADK_ERR("do sec digest sync failed, switch to soft digest.\n");
 		return UADK_DIGEST_FAIL;
 	}
@@ -666,7 +666,9 @@ static int uadk_do_digest_async(struct digest_priv_ctx *priv, struct async_op *o
 	} while (true);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
-	if (!ret || priv->req.state)
+	if (!ret)
+		goto free_poll_task;
+	if (priv->req.state)
 		return UADK_DIGEST_FAIL;
 
 	return UADK_DIGEST_SUCCESS;
@@ -693,7 +695,9 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 	}
 
 	ret = uadk_digest_ctx_init(priv);
-	if (ret != UADK_DIGEST_SUCCESS)
+	if (ret == UADK_DIGEST_SWITCH_SOFT)
+		goto sync_err;
+	else if (ret != UADK_DIGEST_SUCCESS)
 		return UADK_DIGEST_FAIL;
 
 	priv->req.in = priv->data;
@@ -722,7 +726,7 @@ static int uadk_digest_final(struct digest_priv_ctx *priv, unsigned char *digest
 
 sync_err:
 	if (priv->state == SEC_DIGEST_INIT) {
-		ret = uadk_digest_soft_work(priv, priv->req.in_bytes, digest);
+		ret = uadk_digest_soft_work(priv, priv->last_update_bufflen, digest);
 	} else {
 		ret = UADK_DIGEST_FAIL;
 		UADK_ERR("do sec digest final failed.\n");

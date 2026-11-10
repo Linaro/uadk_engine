@@ -50,7 +50,8 @@
 #define MAX_DIGEST_LENGTH	64
 #define DIGEST_BLOCK_SIZE	(512 * 1024)
 
-/* copied form openssl/include/internal/sm3.h
+/*
+ * copied form openssl/include/internal/sm3.h
  * OpenSSL 3.0 has no <openssl/sm3.h>
  */
 # define SM3_DIGEST_LENGTH	32
@@ -189,7 +190,8 @@ static EVP_MD *uadk_sha256;
 static EVP_MD *uadk_sha384;
 static EVP_MD *uadk_sha512;
 
-/* OpenSSL 3.0 has no app_datasize, need set manually,
+/*
+ * OpenSSL 3.0 has no app_datasize, need set manually,
  * check crypto/evp/legacy_md5.c: md5_md as example.
  */
 #define SET_APP_DATASIZE(ctx_type) \
@@ -400,11 +402,11 @@ static int uadk_e_digest_poll(void *ctx)
 	do {
 		ret = wd_digest_poll_ctx(CTX_ASYNC, expt, &recv);
 		if (!ret && recv == expt)
-			return 0;
+			return UADK_E_POLL_SUCCESS;
 		else if (ret == -EAGAIN)
 			rx_cnt++;
 		else
-			return -1;
+			return UADK_E_POLL_FAIL;
 	} while (rx_cnt < ENGINE_RECV_MAX_CNT);
 
 	fprintf(stderr, "failed to recv msg: timeout!\n");
@@ -800,6 +802,7 @@ static void *uadk_e_digest_cb(void *data)
 {
 	struct wd_digest_req *req = (struct wd_digest_req *)data;
 	struct uadk_e_cb_info *cb_param;
+	struct digest_priv_ctx *priv;
 	struct async_op *op;
 
 	if (!req)
@@ -808,6 +811,10 @@ static void *uadk_e_digest_cb(void *data)
 	cb_param = req->cb_param;
 	if (!cb_param)
 		return NULL;
+
+	priv = cb_param->priv;
+	if (priv)
+		priv->req.state = req->state;
 
 	op = cb_param->op;
 	if (op && op->job && !op->done) {
@@ -824,7 +831,7 @@ static int do_digest_sync(struct digest_priv_ctx *priv)
 	int ret;
 
 	ret = wd_do_digest_sync(priv->sess, &priv->req);
-	if (ret) {
+	if (ret || priv->req.state) {
 		fprintf(stderr, "do sec digest sync failed, switch to soft digest.\n");
 		return 0;
 	}
@@ -849,6 +856,7 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	cb_param->priv = priv;
 	priv->req.cb = uadk_e_digest_cb;
 	priv->req.cb_param = cb_param;
+	priv->req.state = STATE_FAIL;
 
 	ret = async_get_free_task(&idx);
 	if (!ret)
@@ -873,6 +881,12 @@ static int do_digest_async(struct digest_priv_ctx *priv, struct async_op *op)
 	} while (ret == -EBUSY);
 
 	ret = async_pause_job(priv, op, ASYNC_TASK_DIGEST);
+	if (!ret || priv->req.state) {
+		if (!ret)
+			async_free_poll_task(op->idx, 0);
+		ret = 0;
+		goto free_cb_param;
+	}
 
 free_cb_param:
 	free(cb_param);
@@ -1034,7 +1048,8 @@ static int uadk_e_digest_copy(EVP_MD_CTX *to, const EVP_MD_CTX *from)
 
 		if (t->state != SEC_DIGEST_INIT) {
 			t->is_stream_copy = true;
-			/* Length that the hardware has processed should be equal to
+			/*
+			 * Length that the hardware has processed should be equal to
 			 * total input data length minus software cache data length.
 			 */
 			t->req.long_data_len = t->total_data_len - t->last_update_bufflen;
