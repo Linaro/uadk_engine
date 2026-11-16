@@ -1346,6 +1346,70 @@ static int ecc_compkey_check(unsigned char **out,
 	return 1;
 }
 
+static int uadk_ecc_set_private_key_bn(handle_t sess, const BIGNUM *prikey,
+				      size_t key_bytes)
+{
+	unsigned char bin[UADK_ECC_MAX_KEY_BYTES];
+	struct wd_ecc_key *ecc_key;
+	struct wd_dtb prikey_dtb;
+	int ret;
+
+	ecc_key = wd_ecc_get_key(sess);
+	prikey_dtb.data = (void *)bin;
+	ret = BN_bn2binpad(prikey, bin, (int)key_bytes);
+	if (ret < 0) {
+		fprintf(stderr, "cofactor priv too large for hardware, fallback to software\n");
+		return UADK_DO_SOFT;
+	}
+	prikey_dtb.dsize = ret;
+
+	ret = wd_ecc_set_prikey(ecc_key, &prikey_dtb);
+	if (ret) {
+		fprintf(stderr, "failed to set ecc prikey, ret = %d\n", ret);
+		ret = UADK_DO_SOFT;
+	}
+
+	return ret;
+}
+
+static int ecdh_set_cofactor_privkey(handle_t sess, const EC_KEY *ecdh)
+{
+	const BIGNUM *cofactor;
+	const BIGNUM *priv_key;
+	const EC_GROUP *group;
+	BIGNUM *cofactor_priv;
+	size_t key_bytes;
+	BN_CTX *ctx;
+	int ret;
+
+	group = EC_KEY_get0_group(ecdh);
+	priv_key = EC_KEY_get0_private_key(ecdh);
+	cofactor = EC_GROUP_get0_cofactor(group);
+	if (!cofactor || !priv_key) {
+		fprintf(stderr, "cofactor ecdh: missing cofactor or priv_key\n");
+		return -EINVAL;
+	}
+
+	ctx = BN_CTX_new();
+	if (!ctx)
+		return -ENOMEM;
+
+	cofactor_priv = BN_secure_new();
+	if (!cofactor_priv || !BN_mul(cofactor_priv, cofactor, priv_key, ctx)) {
+		fprintf(stderr, "cofactor ecdh: BN_mul failed\n");
+		ret = -EINVAL;
+		goto end;
+	}
+
+	key_bytes = (EC_GROUP_get_degree(group) + 7) / 8;
+	ret = uadk_ecc_set_private_key_bn(sess, cofactor_priv, key_bytes);
+
+end:
+	BN_clear_free(cofactor_priv);
+	BN_CTX_free(ctx);
+	return ret;
+}
+
 static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 			    const EC_POINT *pub_key, const EC_KEY *ecdh)
 {
@@ -1374,7 +1438,15 @@ static int ecdh_compute_key(unsigned char **out, size_t *outlen,
 	if (!ret)
 		goto free_sess;
 
-	ret = uadk_ecc_set_private_key(sess, ecdh);
+	/*
+	 * Cofactor ECDH: when EC_FLAG_COFACTOR_ECDH is set, the effective
+	 * scalar is h * priv_key (RFC 2789 / SEC 4). Compute h*priv in
+	 * a temporary BIGNUM to avoid modifying the shared EC_KEY object.
+	 */
+	if (EC_KEY_get_flags(ecdh) & EC_FLAG_COFACTOR_ECDH)
+		ret = ecdh_set_cofactor_privkey(sess, ecdh);
+	else
+		ret = uadk_ecc_set_private_key(sess, ecdh);
 	if (ret)
 		goto uninit_iot;
 
