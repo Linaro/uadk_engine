@@ -1058,7 +1058,6 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	uadk_prov_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
 
 	return UADK_P_SUCCESS;
-
 }
 
 static void uadk_prov_ecx_compkey_uninit_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct wd_ecc_req *req)

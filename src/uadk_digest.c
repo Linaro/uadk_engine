@@ -679,7 +679,8 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
-	int ret, processing_len;
+	size_t processing_len;
+	int ret;
 
 	if (unlikely(!priv)) {
 		fprintf(stderr, "priv get from digest ctx is NULL.\n");

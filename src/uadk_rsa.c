@@ -1288,7 +1288,7 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 	if (!keygen_param->wd_e)
 		return UADK_E_FAIL;
 
-	keygen_param->wd_e->dsize = BN_bn2bin(bn_param->e,
+	keygen_param->wd_e->dsize = (__u32)BN_bn2bin(bn_param->e,
 				    (unsigned char *)keygen_param->wd_e->data);
 
 	wd_rsa_get_prikey(rsa_sess->sess, &key_pair->prikey);
@@ -1300,9 +1300,9 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 	if (!keygen_param->wd_q || !keygen_param->wd_p)
 		return UADK_E_FAIL;
 
-	keygen_param->wd_q->dsize = BN_bn2bin(bn_param->q,
+	keygen_param->wd_q->dsize = (__u32)BN_bn2bin(bn_param->q,
 				    (unsigned char *)keygen_param->wd_q->data);
-	keygen_param->wd_p->dsize = BN_bn2bin(bn_param->p,
+	keygen_param->wd_p->dsize = (__u32)BN_bn2bin(bn_param->p,
 				    (unsigned char *)keygen_param->wd_p->data);
 
 	rsa_sess->req.src_bytes = rsa_sess->key_size;

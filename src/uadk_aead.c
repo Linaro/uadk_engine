@@ -796,7 +796,7 @@ EVP_CIPHER *uadk_create_gcm_cipher_meth(int nid)
 	return aead;
 }
 
-static void destroy_aead(struct engine_cipher_info *info, int num)
+static void destroy_aead(struct engine_cipher_info *info, __u32 num)
 {
 	__u32 i;
 
@@ -808,7 +808,7 @@ static void destroy_aead(struct engine_cipher_info *info, int num)
 	}
 }
 
-void uadk_e_destroy_aead(struct engine_cipher_info *info, int num)
+void uadk_e_destroy_aead(struct engine_cipher_info *info, __u32 num)
 {
 	__u32 i;
 	int ret;
