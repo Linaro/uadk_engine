@@ -906,7 +906,7 @@ static int ecdh_set_private_key(EC_KEY *eckey, BIGNUM *order)
 	}
 
 	do {
-		if (!BN_rand_range(priv_key, order)) {
+		if (!BN_priv_rand_range(priv_key, order)) {
 			fprintf(stderr, "failed to generate random value\n");
 			ret = 0;
 			goto free_priv_key;
