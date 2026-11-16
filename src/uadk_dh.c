@@ -208,9 +208,9 @@ static void uadk_e_dh_set_status(void)
 
 static int uadk_e_dh_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expt = 1;
 	int idx = 1;
 	int ret;
 
@@ -282,10 +282,10 @@ static struct dh_res_config dh_res_config = {
 
 static int uadk_e_dh_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {

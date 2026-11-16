@@ -161,10 +161,9 @@ static EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
 
 static int uadk_aead_poll(void *ctx)
 {
+	__u32 expt = PROV_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {

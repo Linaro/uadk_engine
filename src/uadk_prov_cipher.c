@@ -444,10 +444,9 @@ static int uadk_prov_cipher_dev_init(struct cipher_priv_ctx *priv);
 
 static int uadk_cipher_poll(void *ctx)
 {
+	__u32 expt = PROV_SYNC_POLL_NUM;
 	__u64 recv_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {

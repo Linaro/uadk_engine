@@ -443,9 +443,9 @@ err:
 
 int uadk_prov_ecc_poll(void *ctx)
 {
+	__u32 expt = PROV_SYNC_POLL_NUM;
 	unsigned int recv = 0;
 	__u64 rx_cnt = 0;
-	int expt = 1;
 	int ret;
 
 	do {

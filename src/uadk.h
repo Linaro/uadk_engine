@@ -24,6 +24,8 @@
 #define ENGINE_SEND_MAX_CNT	90000000
 #define ENGINE_RECV_MAX_CNT	60000000
 #define ENGINE_ENV_RECV_MAX_CNT	60000000
+/* Number of packets polled in one synchronous completion check */
+#define ENGINE_SYNC_POLL_NUM	1U
 #define UADK_UNINIT		0
 #define UADK_INIT_SUCCESS	1
 #define UADK_INIT_FAIL		2

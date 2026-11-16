@@ -728,9 +728,9 @@ static void uadk_e_rsa_set_status(void)
 
 static int uadk_e_rsa_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expt = 1;
 	int ret;
 
 	do {
@@ -766,10 +766,10 @@ static struct rsa_res_config rsa_res_config = {
 
 static int uadk_e_rsa_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {

@@ -307,10 +307,10 @@ static int sched_single_poll_policy(handle_t h_sched_ctx,
 static int uadk_e_cipher_poll(void *ctx)
 {
 	struct cipher_priv_ctx *priv = (struct cipher_priv_ctx *) ctx;
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret, idx;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION)
@@ -335,10 +335,10 @@ static int uadk_e_cipher_poll(void *ctx)
 
 static int uadk_e_cipher_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
