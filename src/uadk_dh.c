@@ -862,7 +862,7 @@ static int uadk_e_dh_generate_key(DH *dh)
 		goto exe_soft;
 
 	DH_get0_pqg(dh, &p, &q, &g);
-	if (!p || !g || q)
+	if (!p || !g)
 		return UADK_E_FAIL;
 
 	/* Get session and prepare private key */
