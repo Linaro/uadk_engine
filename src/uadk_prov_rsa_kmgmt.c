@@ -858,6 +858,10 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 	if (!gctx)
 		return NULL;
 
+	/* UADK hardware only supports 2-prime RSA, fallback to software for multi-prime */
+	if (gctx->primes > RSA_MAX_PRIME_NUM)
+		return uadk_rsa_sw_gen(genctx, osslcb, cbarg);
+
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
 	if (!rsa)
 		return NULL;
