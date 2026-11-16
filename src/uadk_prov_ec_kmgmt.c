@@ -346,7 +346,7 @@ static void *uadk_ec_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 	if (!enable_sw_offload || !get_default_ec_keymgmt().gen)
 		return NULL;
 
-	UADK_INFO("switch to openssl software calculation in ecx generation.\n");
+	UADK_INFO("switch to openssl software calculation in ec generation.\n");
 
 	return get_default_ec_keymgmt().gen(genctx, osslcb, cbarg);
 }
