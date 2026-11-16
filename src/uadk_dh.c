@@ -905,6 +905,35 @@ exe_soft:
 	return uadk_e_dh_soft_generate_key(dh);
 }
 
+static bool dh_check_small_subgroup(const BIGNUM *pub_key, const BIGNUM *q,
+				    const BIGNUM *p)
+{
+	int valid = 0;
+	BIGNUM *tmp;
+	BN_CTX *ctx;
+
+	ctx = BN_CTX_new();
+	if (!ctx) {
+		fprintf(stderr, "failed to alloc BN_CTX for pub check\n");
+		return false;
+	}
+
+	BN_CTX_start(ctx);
+	tmp = BN_CTX_get(ctx);
+	if (tmp && BN_mod_exp(tmp, pub_key, q, p, ctx) && BN_is_one(tmp))
+		valid = 1;
+
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
+
+	if (!valid) {
+		fprintf(stderr, "invalid peer pubkey: small subgroup check failed\n");
+		return false;
+	}
+
+	return true;
+}
+
 static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 				 DH *dh)
 {
@@ -925,6 +954,16 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 
 	DH_get0_pqg(dh, &p, &q, &g);
 	if (!p || !g)
+		return UADK_E_FAIL;
+
+	/*
+	 * Hardware validates 1 < pub_key < p-1 (N>M + odd check on prime p),
+	 * but does NOT verify pub_key^q == 1 mod p. For DHX / FFDHE groups
+	 * carrying q, perform small subgroup check in software to defend
+	 * against small subgroup attacks. Traditional safe prime DH (q==NULL)
+	 * relies on hardware validation only.
+	 */
+	if (q && !dh_check_small_subgroup(pub_key, q, p))
 		return UADK_E_FAIL;
 
 	ret = dh_prepare_data(g, dh, &dh_sess, &priv_key);

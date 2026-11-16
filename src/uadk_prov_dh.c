@@ -1656,6 +1656,33 @@ static void uadk_prov_dh_free_compkey_req(struct uadk_dh_sess *dh_sess)
 	}
 }
 
+static int dh_validate_derived_secret(const unsigned char *data, __u16 dlen,
+				       const BIGNUM *p)
+{
+	int ret = UADK_P_FAIL;
+	BIGNUM *pminus1;
+	BIGNUM *z;
+
+	z = BN_bin2bn(data, dlen, NULL);
+	pminus1 = BN_new();
+	if (!z || !pminus1 || !BN_copy(pminus1, p) || !BN_sub_word(pminus1, 1)) {
+		UADK_ERR("failed to validate derived secret\n");
+		goto end;
+	}
+
+	if (BN_cmp(z, BN_value_one()) <= 0 || BN_cmp(z, pminus1) == 0) {
+		UADK_ERR("derived secret out of valid range\n");
+		goto end;
+	}
+
+	ret = UADK_P_SUCCESS;
+
+end:
+	BN_free(z);
+	BN_free(pminus1);
+	return ret;
+}
+
 static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
@@ -1701,6 +1728,11 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 	}
 
 	memcpy(key, dh_sess->req.pri, dh_sess->req.pri_bytes);
+
+	/* Validate derived secret: 1 < z < p-1 (FIPS 186-4 section 6.2.2) */
+	ret = dh_validate_derived_secret(key, dh_sess->req.pri_bytes, p);
+	if (ret != UADK_P_SUCCESS)
+		goto free_req;
 	ret = dh_sess->req.pri_bytes;
 	uadk_prov_dh_free_compkey_req(dh_sess);
 	/* key will be used by user, do not free it here */
