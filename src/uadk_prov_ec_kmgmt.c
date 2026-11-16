@@ -374,6 +374,14 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 		goto free_ec_key;
 	}
 
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	/* DHKEM IKM-based key derivation is not supported by hardware */
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto free_ec_key;
+	}
+# endif
+
 	/* Whether you want it or not, you get a keypair, not just one half */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
 		ret = ec_hw_keygen(ec, gctx->priv_key);

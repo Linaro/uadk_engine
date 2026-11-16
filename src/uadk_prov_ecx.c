@@ -841,6 +841,13 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 		return NULL;
 	}
 
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
+# endif
+
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X448);
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to get hardware x448 keygen support\n");
@@ -1473,6 +1480,13 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 		UADK_ERR("invalid: unsupported ecx type\n");
 		return NULL;
 	}
+
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
+# endif
 
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X25519);
 	if (ret == UADK_P_FAIL) {
