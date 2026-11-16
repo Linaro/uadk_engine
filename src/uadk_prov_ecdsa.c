@@ -1217,12 +1217,12 @@ static const OSSL_PARAM *uadk_signature_ecdsa_settable_ctx_md_params(void *vctx)
 static int uadk_signature_ecdsa_verify_recover_init(void *vctx, void *vecdsa,
 						    const OSSL_PARAM params[])
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }
 
 static int uadk_signature_ecdsa_verify_recover(void *vctx, unsigned char *rout,
 					       size_t *routlen, size_t routsize,
 					       const unsigned char *sig, size_t siglen)
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }
