@@ -37,6 +37,7 @@
 #define DH4096BITS			4096
 #define UADK_DH_MAX_MODULE_BIT		4096
 #define DH_GENERATOR_2			2
+#define DH_QNR_BIT_INDEX		2
 #define CHAR_BIT_SIZE			3
 #define DH_PARAMS_CNT			3
 #define CTX_MODE_NUM			2
@@ -505,14 +506,26 @@ static void uadk_DH_set_flags(DH *dh, int flags)
 
 static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
 {
+	const BIGNUM *g = NULL;
+	const BIGNUM *p = NULL;
 	int bits;
 
+	uadk_DH_get0_pqg(dh, &p, NULL, &g);
 	bits = uadk_DH_get_length(dh) ?
-	       uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
+	       uadk_DH_get_length(dh) : BN_num_bits(p) - 1;
 	if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY)) {
 		UADK_ERR("failed to BN_priv_rand\n");
 		return UADK_P_FAIL;
 	}
+
+	/*
+	 * When g=2 and p%8==3, g is a quadratic non-residue.
+	 * If prikey is odd, pubkey = g^prikey mod p falls outside
+	 * the (p-1)/2 subgroup. Clear bit 0 to keep prikey even,
+	 * matching OpenSSL soft implementation.
+	 */
+	if (BN_is_word(g, DH_GENERATOR_2) && !BN_is_bit_set(p, DH_QNR_BIT_INDEX))
+		BN_clear_bit(new_prikey, 0);
 
 	return UADK_P_SUCCESS;
 }
