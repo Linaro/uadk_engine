@@ -259,11 +259,6 @@ static int eckey_check(const EC_KEY *eckey)
 	const EC_POINT *g;
 	int bits;
 
-	if (!eckey) {
-		fprintf(stderr, "eckey is NULL\n");
-		return -1;
-	}
-
 	group = EC_KEY_get0_group(eckey);
 	if (!group) {
 		fprintf(stderr, "group is NULL\n");
@@ -483,8 +478,8 @@ static ECDSA_SIG *ecdsa_do_sign(const unsigned char *dgst, int dlen,
 				EC_KEY *eckey)
 {
 	struct wd_ecc_req req;
-	ECDSA_SIG *sig = NULL;
 	struct wd_dtb tdgst;
+	ECDSA_SIG *sig;
 	handle_t sess;
 	int ret;
 
@@ -1401,7 +1396,7 @@ static int ecdh_set_cofactor_privkey(handle_t sess, const EC_KEY *ecdh)
 		goto end;
 	}
 
-	key_bytes = (EC_GROUP_get_degree(group) + 7) / 8;
+	key_bytes = (EC_GROUP_get_degree(group) + UADK_ECC_PADDING) >> TRANS_BITS_BYTES_SHIFT;
 	ret = uadk_ecc_set_private_key_bn(sess, cofactor_priv, key_bytes);
 
 end:

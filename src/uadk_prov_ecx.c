@@ -744,9 +744,6 @@ static int uadk_prov_ecx_keygen(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY **ecx_key)
 	struct wd_ecc_req req = {0};
 	int ret;
 
-	if (ecx_key == NULL)
-		return UADK_P_FAIL;
-
 	*ecx_key = uadk_prov_ecx_create_prikey(gctx);
 	if (*ecx_key == NULL || !(gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR))
 		return UADK_P_FAIL;
@@ -1125,11 +1122,6 @@ static int uadk_prov_ecx_derive(PROV_ECX_KEYEXCH_CTX *ecxctx, unsigned char *key
 	ECX_KEY *peer_ecx_key;
 	ECX_KEY *ecx_key;
 	int ret;
-
-	if (ecxctx == NULL) {
-		UADK_ERR("invalid: ctx is NULL\n");
-		return UADK_P_FAIL;
-	}
 
 	peer_ecx_key = ecxctx->peerkey;
 	ecx_key = ecxctx->key;
@@ -1528,7 +1520,7 @@ exe_soft:
 
 static void *uadk_keyexch_x25519_newctx(void *provctx)
 {
-	PROV_ECX_KEYEXCH_CTX *ecxctx = NULL;
+	PROV_ECX_KEYEXCH_CTX *ecxctx;
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
