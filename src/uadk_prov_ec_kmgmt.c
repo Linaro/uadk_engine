@@ -199,8 +199,15 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 	const BIGNUM *order;
 	int cnt = 0;
 
-	if (priv_k)
+	if (priv_k) {
+		group = EC_KEY_get0_group(ec);
+		order = EC_GROUP_get0_order(group);
+		if (BN_cmp(priv_k, order) >= 0) {
+			UADK_ERR("invalid: preset private key out of range\n");
+			return UADK_P_FAIL;
+		}
 		goto set_key;
+	}
 
 	priv_k = BN_secure_new();
 	if (!priv_k) {
