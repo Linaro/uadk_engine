@@ -1721,8 +1721,6 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 	}
 
 	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, len, padding);
-	if (!ret)
-		ret = UADK_DO_SOFT;
 
 free_dec_bn:
 	BN_free(dec_bn);
