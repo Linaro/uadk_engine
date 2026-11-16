@@ -918,7 +918,7 @@ static void uadk_keyexch_x448_freectx(void *vecxctx)
 static int uadk_keyexch_x448_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
 {
 	if (get_default_x448_keyexch().set_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x448_keyexch().set_ctx_params(ecxctx, params);
 }
@@ -944,7 +944,7 @@ static const OSSL_PARAM *uadk_keyexch_x448_gettable_ctx_params(ossl_unused void 
 static int uadk_keyexch_x448_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 {
 	if (get_default_x448_keyexch().get_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x448_keyexch().get_ctx_params(ecxctx, params);
 }
@@ -1557,7 +1557,7 @@ static void uadk_keyexch_x25519_freectx(void *vecxctx)
 static int uadk_keyexch_x25519_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
 {
 	if (get_default_x25519_keyexch().set_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x25519_keyexch().set_ctx_params(ecxctx, params);
 }
@@ -1583,7 +1583,7 @@ static const OSSL_PARAM *uadk_keyexch_x25519_gettable_ctx_params(ossl_unused voi
 static int uadk_keyexch_x25519_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 {
 	if (get_default_x25519_keyexch().get_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x25519_keyexch().get_ctx_params(ecxctx, params);
 }
