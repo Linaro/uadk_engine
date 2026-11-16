@@ -315,6 +315,25 @@ static const OSSL_PARAM *uadk_keymgmt_sm2_gen_settable_params(ossl_unused void *
 	return get_default_sm2_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_sm2_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (!get_default_sm2_keymgmt().gen_get_params)
+		return UADK_P_FAIL;
+
+	return get_default_sm2_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_sm2_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (!get_default_sm2_keymgmt().gen_gettable_params)
+		return NULL;
+
+	return get_default_sm2_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_prov_sm2_set_key_to_ec_key(EC_KEY *ec, struct wd_ecc_req *req)
 {
 	unsigned char key_buff[ECC_POINT_SIZE(SM2_KEY_BYTES) + 1] = {0};

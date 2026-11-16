@@ -302,6 +302,25 @@ static const OSSL_PARAM *uadk_keymgmt_x448_gen_settable_params(ossl_unused void 
 	return get_default_x448_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_x448_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_x448_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x448_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x448_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_x448_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_x448_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_keymgmt_x448_gen_set_template(void *genctx, void *templ)
 {
 	return UADK_P_SUCCESS;
@@ -378,50 +397,6 @@ static int uadk_keymgmt_x448_get_params(void *key, OSSL_PARAM params[])
 					X448_KEYLEN);
 }
 
-static int ossl_ecx_gen_set_params(void *genctx, const OSSL_PARAM params[])
-{
-	PROV_ECX_KEYMGMT_CTX *gctx = (PROV_ECX_KEYMGMT_CTX *)genctx;
-	const char *groupname = NULL;
-	const OSSL_PARAM *p;
-
-	p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_GROUP_NAME);
-	if (p != NULL) {
-		/*
-		 * We optionally allow setting a group name - but each algorithm only
-		 * support one such name, so all we do is verify that it is the one we
-		 * expected.
-		 */
-		switch (gctx->type) {
-		case ECX_KEY_TYPE_X25519:
-			groupname = "x25519";
-			break;
-		case ECX_KEY_TYPE_X448:
-			groupname = "x448";
-			break;
-		default:
-			/* We only support this for key exchange at the moment */
-			break;
-		}
-		if (p->data_type != OSSL_PARAM_UTF8_STRING || groupname == NULL ||
-		    OPENSSL_strcasecmp(p->data, groupname) != 0) {
-			UADK_ERR("invalid ecx params\n");
-			return UADK_P_FAIL;
-		}
-	}
-	p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_PROPERTIES);
-	if (p != NULL) {
-		if (p->data_type != OSSL_PARAM_UTF8_STRING)
-			return UADK_P_FAIL;
-
-		OPENSSL_free(gctx->propq);
-		gctx->propq = OPENSSL_strdup(p->data);
-		if (gctx->propq == NULL)
-			return UADK_P_FAIL;
-	}
-
-	return UADK_P_SUCCESS;
-}
-
 static handle_t uadk_prov_ecx_alloc_sess(int type)
 {
 	struct wd_ecc_sess_setup setup = {0};
@@ -465,7 +440,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 {
 	OSSL_LIB_CTX *libctx = prov_libctx_of(provctx);
 	PROV_ECX_KEYMGMT_CTX *gctx;
-	int ret;
+	int ret = UADK_P_SUCCESS;
 
 	gctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYMGMT_CTX));
 	if (gctx == NULL) {
@@ -477,7 +452,13 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 	gctx->type = type;
 	gctx->selection = selection;
 
-	ret = ossl_ecx_gen_set_params(gctx, params);
+	if (type == ECX_KEY_TYPE_X448) {
+		if (get_default_x448_keymgmt().gen_set_params != NULL)
+			ret = get_default_x448_keymgmt().gen_set_params(gctx, params);
+	} else {
+		if (get_default_x25519_keymgmt().gen_set_params != NULL)
+			ret = get_default_x25519_keymgmt().gen_set_params(gctx, params);
+	}
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to set ecx params\n");
 		OPENSSL_free(gctx);
@@ -1425,6 +1406,25 @@ static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused voi
 
 	return get_default_x25519_keymgmt().gen_settable_params(genctx, provctx);
 }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_x25519_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_x25519_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_x25519_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
 
 static int uadk_keymgmt_x25519_gen_set_template(void *genctx, void *templ)
 {

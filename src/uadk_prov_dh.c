@@ -367,6 +367,25 @@ static const OSSL_PARAM *uadk_keymgmt_dh_gen_settable_params(ossl_unused void *g
 	return get_default_dh_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_dh_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_dh_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_dh_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_dh_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_dh_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_dh_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_keymgmt_dh_gen_set_params(void *genctx,
 					  const OSSL_PARAM params[])
 {

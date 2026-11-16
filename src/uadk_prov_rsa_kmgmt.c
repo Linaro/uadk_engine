@@ -820,6 +820,25 @@ static const OSSL_PARAM *uadk_keymgmt_rsa_gen_settable_params(ossl_unused void *
 	return get_default_rsa_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_rsa_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (!get_default_rsa_keymgmt().gen_get_params)
+		return UADK_P_FAIL;
+
+	return get_default_rsa_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_rsa_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (!get_default_rsa_keymgmt().gen_gettable_params)
+		return NULL;
+
+	return get_default_rsa_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
 	if (!enable_sw_offload || !get_default_rsa_keymgmt().gen)
@@ -1006,6 +1025,12 @@ const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[] = {
 		(void (*)(void))uadk_keymgmt_rsa_gen_set_params },
 	{ OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,
 		(void (*)(void))uadk_keymgmt_rsapss_gen_settable_params },
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	{ OSSL_FUNC_KEYMGMT_GEN_GET_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsa_gen_get_params },
+	{ OSSL_FUNC_KEYMGMT_GEN_GETTABLE_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsa_gen_gettable_params },
+#endif
 	{ OSSL_FUNC_KEYMGMT_GEN, (void (*)(void))uadk_keymgmt_rsa_gen },
 	{ OSSL_FUNC_KEYMGMT_GEN_CLEANUP, (void (*)(void))uadk_keymgmt_rsa_gen_cleanup },
 	{ OSSL_FUNC_KEYMGMT_LOAD, (void (*)(void))uadk_keymgmt_rsapss_load },
