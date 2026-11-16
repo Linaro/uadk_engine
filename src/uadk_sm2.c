@@ -583,34 +583,53 @@ free_x1:
 	return ret;
 }
 
-static int cipher_ber_to_bin(const EVP_MD *md, struct sm2_ciphertext *ctext_struct,
-			     struct wd_ecc_point *c1, struct wd_dtb *c2, struct wd_dtb *c3)
+static int sm2_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
+				struct sm2_ciphertext *ctext_struct)
 {
-	int len, len1, md_size;
+	char buf_x[SM2_KEY_BYTES] = {0};
+	char buf_y[SM2_KEY_BYTES] = {0};
+	struct wd_ecc_out *ecc_out;
+	struct wd_ecc_in *ecc_in;
+	struct wd_ecc_point c1;
+	struct wd_dtb c2, c3;
+	int c1x_len, c1y_len;
 
-	len = BN_num_bytes(ctext_struct->C1x);
-	len1 = BN_num_bytes(ctext_struct->C1y);
-	c1->x.data = malloc(len + len1 + ctext_struct->C2->length +
-			    ctext_struct->C3->length);
-	if (!c1->x.data)
-		return -ENOMEM;
-
-	c1->y.data = c1->x.data + len;
-	c3->data = c1->y.data + len1;
-	c2->data = c3->data + ctext_struct->C3->length;
-	memcpy(c2->data, ctext_struct->C2->data, ctext_struct->C2->length);
-	memcpy(c3->data, ctext_struct->C3->data, ctext_struct->C3->length);
-	c2->dsize = ctext_struct->C2->length;
-	c3->dsize = ctext_struct->C3->length;
-	md_size = EVP_MD_size(md);
-	if (c3->dsize != md_size) {
-		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
-		free(c1->x.data);
+	c1x_len = BN_num_bytes(ctext_struct->C1x);
+	c1y_len = BN_num_bytes(ctext_struct->C1y);
+	if (c1x_len > SM2_KEY_BYTES || c1y_len > SM2_KEY_BYTES) {
+		fprintf(stderr, "invalid: C1 size too large\n");
 		return -EINVAL;
 	}
 
-	c1->x.dsize = BN_bn2bin(ctext_struct->C1x, (void *)c1->x.data);
-	c1->y.dsize = BN_bn2bin(ctext_struct->C1y, (void *)c1->y.data);
+	c1.x.dsize = BN_bn2bin(ctext_struct->C1x, (void *)buf_x);
+	c1.y.dsize = BN_bn2bin(ctext_struct->C1y, (void *)buf_y);
+	c1.x.bsize = SM2_KEY_BYTES;
+	c1.y.bsize = SM2_KEY_BYTES;
+	c1.x.data = buf_x;
+	c1.y.data = buf_y;
+
+	c2.data = (char *)ctext_struct->C2->data;
+	c2.dsize = ctext_struct->C2->length;
+	c2.bsize = ctext_struct->C2->length;
+
+	c3.data = (char *)ctext_struct->C3->data;
+	c3.dsize = ctext_struct->C3->length;
+	c3.bsize = ctext_struct->C3->length;
+
+	ecc_out = wd_sm2_new_dec_out(sess, c2.dsize);
+	if (!ecc_out) {
+		fprintf(stderr, "failed to new dec out\n");
+		return UADK_DO_SOFT;
+	}
+
+	ecc_in = wd_sm2_new_dec_in(sess, &c1, &c2, &c3);
+	if (!ecc_in) {
+		fprintf(stderr, "failed to new dec in\n");
+		wd_ecc_del_out(sess, ecc_out);
+		return UADK_DO_SOFT;
+	}
+
+	uadk_ecc_fill_req(req, WD_SM2_DECRYPT, ecc_in, ecc_out);
 
 	return 0;
 }
@@ -982,8 +1001,7 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	struct wd_ecc_req req = {0};
 	struct wd_dtb *c2 = NULL;
 	struct wd_dtb *c3 = NULL;
-	const EVP_MD *md;
-	int md_size, ret;
+	int ret;
 
 	ret = sm2_encrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
@@ -1015,13 +1033,6 @@ static int sm2_encrypt(EVP_PKEY_CTX *ctx,
 	ret = cipher_bin_to_ber(c1, c2, c3, out, outlen);
 	if (ret)
 		goto uninit_iot;
-
-	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
-	md_size = EVP_MD_size(md);
-	if (c3->dsize != md_size) {
-		fprintf(stderr, "invalid: c3 dsize(%u) != hash_size(%d)\n", c3->dsize, md_size);
-		goto uninit_iot;
-	}
 
 	ret = 1;
 
@@ -1070,33 +1081,6 @@ static int sm2_decrypt_check(EVP_PKEY_CTX *ctx,
 	return 0;
 }
 
-static int sm2_decrypt_init_iot(handle_t sess,
-				struct wd_ecc_req *req,
-				struct wd_ecc_point *c1,
-				struct wd_dtb *c2,
-				struct wd_dtb *c3)
-{
-	struct wd_ecc_out *ecc_out;
-	struct wd_ecc_in *ecc_in;
-
-	ecc_out = wd_sm2_new_dec_out(sess, c2->dsize);
-	if (!ecc_out) {
-		fprintf(stderr, "failed to new dec out\n");
-		return UADK_DO_SOFT;
-	}
-
-	ecc_in = wd_sm2_new_dec_in(sess, c1, c2, c3);
-	if (!ecc_in) {
-		fprintf(stderr, "failed to new dec in\n");
-		wd_ecc_del_out(sess, ecc_out);
-		return UADK_DO_SOFT;
-	}
-
-	uadk_ecc_fill_req(req, WD_SM2_DECRYPT, ecc_in, ecc_out);
-
-	return 0;
-}
-
 static void sm2_decrypt_uninit_iot(handle_t sess, struct wd_ecc_req *req)
 {
 	wd_ecc_del_in(sess, req->src);
@@ -1133,30 +1117,21 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 	struct sm2_ciphertext *ctext_struct;
 	const unsigned char *in_soft = in;
 	struct wd_ecc_req req = {0};
-	struct wd_ecc_point c1;
-	struct wd_dtb c2, c3;
-	const EVP_MD *md;
 	int ret;
 
 	ret = sm2_decrypt_check(ctx, out, outlen, in, inlen);
 	if (ret)
 		goto do_soft;
 
-	md = (smctx->ctx.md == NULL) ? EVP_sm3() : smctx->ctx.md;
-
 	ctext_struct = d2i_SM2_Ciphertext(NULL, &in, inlen);
 	if (!ctext_struct)
 		return 0;
 
-	ret = cipher_ber_to_bin(md, ctext_struct, &c1, &c2, &c3);
+	ret = sm2_decrypt_init_iot(smctx->sess, &req, ctext_struct);
 	if (ret) {
 		ret = UADK_DO_SOFT;
 		goto free_ctext;
 	}
-
-	ret = sm2_decrypt_init_iot(smctx->sess, &req, &c1, &c2, &c3);
-	if (ret)
-		goto free_c1;
 
 	ret = update_private_key(ctx);
 	if (ret) {
@@ -1179,8 +1154,6 @@ static int sm2_decrypt(EVP_PKEY_CTX *ctx,
 
 uninit_iot:
 	sm2_decrypt_uninit_iot(smctx->sess, &req);
-free_c1:
-	free(c1.x.data);
 free_ctext:
 	SM2_Ciphertext_free(ctext_struct);
 do_soft:
