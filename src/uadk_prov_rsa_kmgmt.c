@@ -17,6 +17,7 @@
  *
  */
 #include "uadk_prov_rsa.h"
+#include "uadk_prov_rsa_utils.h"
 
 #define PRIME_CHECK_BIT_NUM		4
 #define RSA_MAX_PRIME_NUM		2
@@ -850,6 +851,7 @@ static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 
 static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
+	struct rsa_pss_params_30_st *pss_params;
 	struct rsa_gen_ctx *gctx = genctx;
 	BN_GENCB *gencb;
 	RSA *rsa;
@@ -881,6 +883,11 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 
 	uadk_rsa_clear_flags(rsa, RSA_FLAG_TYPE_MASK);
 	uadk_rsa_set_flags(rsa, gctx->rsa_type);
+
+	/* Copy PSS restriction parameters to the generated key */
+	pss_params = ossl_rsa_get0_pss_params_30(rsa);
+	*pss_params = gctx->pss_params;
+
 	BN_GENCB_free(gencb);
 
 	return rsa;
