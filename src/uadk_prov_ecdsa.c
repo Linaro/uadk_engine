@@ -737,6 +737,11 @@ static int ecdsa_verify_init_iot(handle_t sess, struct wd_ecc_req *req,
 	r.bsize = UADK_ECC_MAX_KEY_BYTES;
 	s.bsize = UADK_ECC_MAX_KEY_BYTES;
 	ECDSA_SIG_get0(opdata->sig, &sig_r, &sig_s);
+	if (BN_num_bytes(sig_r) > UADK_ECC_MAX_KEY_BYTES ||
+	    BN_num_bytes(sig_s) > UADK_ECC_MAX_KEY_BYTES) {
+		UADK_ERR("invalid: sig_r/s too large\n");
+		return UADK_P_FAIL;
+	}
 	r.dsize = BN_bn2bin(sig_r, (void *)r.data);
 	s.dsize = BN_bn2bin(sig_s, (void *)s.data);
 	ecc_in = wd_ecdsa_new_verf_in(sess, &e, &r, &s);
@@ -1212,12 +1217,12 @@ static const OSSL_PARAM *uadk_signature_ecdsa_settable_ctx_md_params(void *vctx)
 static int uadk_signature_ecdsa_verify_recover_init(void *vctx, void *vecdsa,
 						    const OSSL_PARAM params[])
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }
 
 static int uadk_signature_ecdsa_verify_recover(void *vctx, unsigned char *rout,
 					       size_t *routlen, size_t routsize,
 					       const unsigned char *sig, size_t siglen)
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }

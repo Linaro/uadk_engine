@@ -37,6 +37,7 @@
 #define DH4096BITS			4096
 #define UADK_DH_MAX_MODULE_BIT		4096
 #define DH_GENERATOR_2			2
+#define DH_QNR_BIT_INDEX		2
 #define CHAR_BIT_SIZE			3
 #define DH_PARAMS_CNT			3
 #define CTX_MODE_NUM			2
@@ -367,6 +368,25 @@ static const OSSL_PARAM *uadk_keymgmt_dh_gen_settable_params(ossl_unused void *g
 	return get_default_dh_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_dh_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_dh_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_dh_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_dh_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_dh_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_dh_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_keymgmt_dh_gen_set_params(void *genctx,
 					  const OSSL_PARAM params[])
 {
@@ -486,14 +506,26 @@ static void uadk_DH_set_flags(DH *dh, int flags)
 
 static int uadk_dh_gen_prikey_undef(const DH *dh, BIGNUM *new_prikey)
 {
+	const BIGNUM *g = NULL;
+	const BIGNUM *p = NULL;
 	int bits;
 
+	uadk_DH_get0_pqg(dh, &p, NULL, &g);
 	bits = uadk_DH_get_length(dh) ?
-	       uadk_DH_get_length(dh) : BN_num_bits(uadk_DH_get0_p(dh)) - 1;
+	       uadk_DH_get_length(dh) : BN_num_bits(p) - 1;
 	if (!BN_priv_rand(new_prikey, bits, BN_RAND_TOP_ONE, BN_RAND_BOTTOM_ANY)) {
 		UADK_ERR("failed to BN_priv_rand\n");
 		return UADK_P_FAIL;
 	}
+
+	/*
+	 * When g=2 and p%8==3, g is a quadratic non-residue.
+	 * If prikey is odd, pubkey = g^prikey mod p falls outside
+	 * the (p-1)/2 subgroup. Clear bit 0 to keep prikey even,
+	 * matching OpenSSL soft implementation.
+	 */
+	if (BN_is_word(g, DH_GENERATOR_2) && !BN_is_bit_set(p, DH_QNR_BIT_INDEX))
+		BN_clear_bit(new_prikey, 0);
 
 	return UADK_P_SUCCESS;
 }
@@ -629,10 +661,9 @@ static void uadk_prov_dh_cb(void *req_t)
 
 static int uadk_prov_dh_poll(void *ctx)
 {
+	__u32 expt = PROV_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
@@ -1625,6 +1656,33 @@ static void uadk_prov_dh_free_compkey_req(struct uadk_dh_sess *dh_sess)
 	}
 }
 
+static int dh_validate_derived_secret(const unsigned char *data, __u16 dlen,
+				       const BIGNUM *p)
+{
+	int ret = UADK_P_FAIL;
+	BIGNUM *pminus1;
+	BIGNUM *z;
+
+	z = BN_bin2bn(data, dlen, NULL);
+	pminus1 = BN_new();
+	if (!z || !pminus1 || !BN_copy(pminus1, p) || !BN_sub_word(pminus1, 1)) {
+		UADK_ERR("failed to validate derived secret\n");
+		goto end;
+	}
+
+	if (BN_cmp(z, BN_value_one()) <= 0 || BN_cmp(z, pminus1) == 0) {
+		UADK_ERR("derived secret out of valid range\n");
+		goto end;
+	}
+
+	ret = UADK_P_SUCCESS;
+
+end:
+	BN_free(z);
+	BN_free(pminus1);
+	return ret;
+}
+
 static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 {
 	struct uadk_dh_sess *dh_sess = NULL;
@@ -1670,6 +1728,11 @@ static int uadk_dh_compute_key(unsigned char *key, const BIGNUM *pubkey, DH *dh)
 	}
 
 	memcpy(key, dh_sess->req.pri, dh_sess->req.pri_bytes);
+
+	/* Validate derived secret: 1 < z < p-1 (FIPS 186-4 section 6.2.2) */
+	ret = dh_validate_derived_secret(key, dh_sess->req.pri_bytes, p);
+	if (ret != UADK_P_SUCCESS)
+		goto free_req;
 	ret = dh_sess->req.pri_bytes;
 	uadk_prov_dh_free_compkey_req(dh_sess);
 	/* key will be used by user, do not free it here */

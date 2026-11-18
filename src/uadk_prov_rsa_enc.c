@@ -304,7 +304,7 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_sess;
 	}
 
-	if (flen != num_bytes) {
+	if (flen > num_bytes) {
 		ret = UADK_P_FAIL;
 		goto free_buf;
 	}
@@ -315,7 +315,8 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 		goto free_buf;
 	}
 
-	memcpy(rsa_sess->req.src, from, rsa_sess->req.src_bytes);
+	memset(rsa_sess->req.src, 0, rsa_sess->req.src_bytes);
+	memcpy(rsa_sess->req.src + rsa_sess->req.src_bytes - flen, from, flen);
 
 	ret = rsa_do_crypto(rsa_sess);
 	if (!ret || rsa_sess->req.status) {
@@ -327,7 +328,7 @@ static int uadk_prov_rsa_private_decrypt(int flen, const unsigned char *from,
 	if (!ret)
 		goto free_buf;
 
-	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, flen, padding);
+	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, num_bytes, padding);
 
 free_buf:
 	rsa_free_pri_bn_ctx(from_buf);

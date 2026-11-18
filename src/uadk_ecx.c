@@ -652,7 +652,6 @@ static int ecx_compkey_init_iot(struct ecx_ctx *ecx_ctx, struct wd_ecc_req *req,
 	uadk_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
 
 	return UADK_E_SUCCESS;
-
 }
 
 static void ecx_compkey_uninit_iot(handle_t sess, struct wd_ecc_req *req)

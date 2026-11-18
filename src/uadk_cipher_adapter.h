@@ -28,7 +28,7 @@ struct engine_cipher_info {
 
 EVP_CIPHER *uadk_create_gcm_cipher_meth(int nid);
 EVP_CIPHER *uadk_create_cipher_meth(int nid);
-void uadk_e_destroy_aead(struct engine_cipher_info *info, int num);
+void uadk_e_destroy_aead(struct engine_cipher_info *info, __u32 num);
 void uadk_e_destroy_cipher(struct engine_cipher_info *info, int num);
 
 int uadk_e_bind_ciphers(ENGINE *e);

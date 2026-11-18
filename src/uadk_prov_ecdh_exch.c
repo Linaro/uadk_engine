@@ -70,6 +70,7 @@ struct ecdh_sess_ctx {
 	const EC_POINT *pub_key;
 	const BIGNUM *cofactor;
 	const EC_GROUP *group;
+	BIGNUM *cofactor_priv;
 };
 
 UADK_PKEY_KEYEXCH_DESCR(ecdh, ECDH);
@@ -100,6 +101,32 @@ static size_t ecdh_get_ec_size(const EC_GROUP *group)
 	degree = EC_GROUP_get_degree(group);
 
 	return BITS_TO_BYTES(degree);
+}
+
+static int ecdh_set_private_key_bn(handle_t sess, const BIGNUM *prikey,
+			  size_t key_bytes)
+{
+	unsigned char bin[UADK_ECC_MAX_KEY_BYTES];
+	struct wd_ecc_key *ecc_key;
+	struct wd_dtb prikey_dtb;
+	int dsize;
+
+	dsize = BN_bn2binpad(prikey, bin, (int)key_bytes);
+	if (dsize < 0) {
+		UADK_ERR("cofactor priv too large for hardware, fallback to software\n");
+		return UADK_DO_SOFT;
+	}
+
+	ecc_key = wd_ecc_get_key(sess);
+	prikey_dtb.data = (void *)bin;
+	prikey_dtb.dsize = dsize;
+
+	if (wd_ecc_set_prikey(ecc_key, &prikey_dtb)) {
+		UADK_ERR("failed to set cofactor prikey\n");
+		return UADK_P_FAIL;
+	}
+
+	return UADK_P_SUCCESS;
 }
 
 static int ecdh_param_check(struct ecdh_ctx *pecdhctx, struct ecdh_sess_ctx *sess_ctx)
@@ -141,43 +168,6 @@ static int ecdh_param_check(struct ecdh_ctx *pecdhctx, struct ecdh_sess_ctx *ses
 
 	if (uadk_prov_ecc_bit_check(group) != UADK_P_SUCCESS)
 		return UADK_DO_SOFT;
-
-	return UADK_P_SUCCESS;
-}
-
-static int ecdh_set_privk(struct ecdh_ctx *pecdhctx,
-			  struct ecdh_sess_ctx *sess_ctx)
-{
-	int key_cofactor_mode;
-
-	/*
-	 * The ctx->cofactor_mode flag has precedence over the
-	 * cofactor_mode flag set on ctx->k.
-	 *
-	 * - if ctx->cofactor_mode == -1, use ctx->k directly
-	 * - if ctx->cofactor_mode == key_cofactor_mode, use ctx->k directly
-	 * - if ctx->cofactor_mode != key_cofactor_mode:
-	 *     - if ctx->k->cofactor == 1, the cofactor_mode flag is irrelevant, use
-	 *          ctx->k directly
-	 *     - if ctx->k->cofactor != 1, use a duplicate of ctx->k with the flag
-	 *          set to ctx->cofactor_mode
-	 */
-	key_cofactor_mode = (EC_KEY_get_flags(pecdhctx->k) & EC_FLAG_COFACTOR_ECDH) ?
-			    COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
-	if (pecdhctx->cofactor_mode != COFACTOR_MODE_USE_KEY &&
-	    pecdhctx->cofactor_mode != key_cofactor_mode &&
-	    !BN_is_one(sess_ctx->cofactor)) {
-		sess_ctx->privk = EC_KEY_dup(pecdhctx->k);
-		if (!sess_ctx->privk)
-			return UADK_P_FAIL;
-
-		if (pecdhctx->cofactor_mode == COFACTOR_MODE_ENABLED)
-			EC_KEY_set_flags(sess_ctx->privk, EC_FLAG_COFACTOR_ECDH);
-		else
-			EC_KEY_clear_flags(sess_ctx->privk, EC_FLAG_COFACTOR_ECDH);
-	} else {
-		sess_ctx->privk = pecdhctx->k;
-	}
 
 	return UADK_P_SUCCESS;
 }
@@ -308,6 +298,45 @@ static int ecdh_get_shared_key(unsigned char *secret,
 	return UADK_P_SUCCESS;
 }
 
+static int ecdh_compute_cofactor_priv(const struct ecdh_ctx *pecdhctx,
+				       struct ecdh_sess_ctx *sess_ctx)
+{
+	const BIGNUM *priv_key;
+	int key_cofactor_mode;
+	BN_CTX *bn_ctx;
+
+	sess_ctx->cofactor_priv = NULL;
+
+	key_cofactor_mode = (EC_KEY_get_flags(pecdhctx->k) & EC_FLAG_COFACTOR_ECDH) ?
+			    COFACTOR_MODE_ENABLED : COFACTOR_MODE_DISABLED;
+	if (!(pecdhctx->cofactor_mode == COFACTOR_MODE_ENABLED ||
+	      (pecdhctx->cofactor_mode == COFACTOR_MODE_USE_KEY &&
+	       key_cofactor_mode == COFACTOR_MODE_ENABLED)) ||
+	    BN_is_one(sess_ctx->cofactor))
+		return UADK_P_SUCCESS;
+
+	priv_key = EC_KEY_get0_private_key(pecdhctx->k);
+	bn_ctx = BN_CTX_new();
+	if (!priv_key || !bn_ctx) {
+		UADK_ERR("cofactor ecdh: missing priv_key or BN_CTX\n");
+		BN_CTX_free(bn_ctx);
+		return UADK_P_FAIL;
+	}
+
+	sess_ctx->cofactor_priv = BN_secure_new();
+	if (!sess_ctx->cofactor_priv ||
+	    !BN_mul(sess_ctx->cofactor_priv, sess_ctx->cofactor, priv_key, bn_ctx)) {
+		UADK_ERR("cofactor ecdh: BN_mul failed\n");
+		BN_clear_free(sess_ctx->cofactor_priv);
+		sess_ctx->cofactor_priv = NULL;
+		BN_CTX_free(bn_ctx);
+		return UADK_P_FAIL;
+	}
+
+	BN_CTX_free(bn_ctx);
+	return UADK_P_SUCCESS;
+}
+
 static int ecdh_compute_key(struct ecdh_sess_ctx *sess_ctx,
 			    unsigned char *secret,
 			    size_t *psecretlen, size_t size)
@@ -322,8 +351,13 @@ static int ecdh_compute_key(struct ecdh_sess_ctx *sess_ctx,
 		return UADK_DO_SOFT;
 	}
 
-	ret = uadk_prov_ecc_set_private_key(sess, sess_ctx->privk);
-	if (!ret) {
+	if (sess_ctx->cofactor_priv)
+		ret = ecdh_set_private_key_bn(sess,
+					     sess_ctx->cofactor_priv,
+					     ecdh_get_ec_size(sess_ctx->group));
+	else
+		ret = uadk_prov_ecc_set_private_key(sess, sess_ctx->privk);
+	if (ret != UADK_P_SUCCESS) {
 		UADK_ERR("failed to set private key!\n");
 		goto free_sess;
 	}
@@ -368,17 +402,16 @@ static int ecdh_plain_derive(struct ecdh_ctx *pecdhctx,
 		return UADK_P_SUCCESS;
 	}
 
-	ret = ecdh_set_privk(pecdhctx, &sess_ctx);
-	if (!ret) {
-		UADK_ERR("failed to set private key!\n");
+	ret = ecdh_compute_cofactor_priv(pecdhctx, &sess_ctx);
+	if (ret != UADK_P_SUCCESS)
 		return ret;
-	}
+
+	sess_ctx.privk = pecdhctx->k;
 
 	size = outlen < ec_size ? outlen : ec_size;
 	ret = ecdh_compute_key(&sess_ctx, secret, psecretlen, size);
-	if (sess_ctx.privk != pecdhctx->k)
-		EC_KEY_free(sess_ctx.privk);
 
+	BN_clear_free(sess_ctx.cofactor_priv);
 	return ret;
 }
 

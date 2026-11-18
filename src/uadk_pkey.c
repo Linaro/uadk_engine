@@ -119,9 +119,9 @@ static void uadk_e_ecc_set_status(void)
 
 static int uadk_ecc_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	unsigned int recv = 0;
 	__u64 rx_cnt = 0;
-	int expt = 1;
 	int ret;
 
 	do {
@@ -173,10 +173,10 @@ static void uadk_e_ecc_set_support_state(int alg_tag, int value)
 
 static int uadk_e_ecc_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {

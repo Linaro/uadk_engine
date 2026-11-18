@@ -17,6 +17,7 @@
  *
  */
 #include "uadk_prov_rsa.h"
+#include "uadk_prov_rsa_utils.h"
 
 #define PRIME_CHECK_BIT_NUM		4
 #define RSA_MAX_PRIME_NUM		2
@@ -820,6 +821,25 @@ static const OSSL_PARAM *uadk_keymgmt_rsa_gen_settable_params(ossl_unused void *
 	return get_default_rsa_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_rsa_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (!get_default_rsa_keymgmt().gen_get_params)
+		return UADK_P_FAIL;
+
+	return get_default_rsa_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_rsa_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (!get_default_rsa_keymgmt().gen_gettable_params)
+		return NULL;
+
+	return get_default_rsa_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
 	if (!enable_sw_offload || !get_default_rsa_keymgmt().gen)
@@ -831,6 +851,7 @@ static void *uadk_rsa_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 
 static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
+	struct rsa_pss_params_30_st *pss_params;
 	struct rsa_gen_ctx *gctx = genctx;
 	BN_GENCB *gencb;
 	RSA *rsa;
@@ -838,6 +859,10 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 
 	if (!gctx)
 		return NULL;
+
+	/* UADK hardware only supports 2-prime RSA, fallback to software for multi-prime */
+	if (gctx->primes > RSA_MAX_PRIME_NUM)
+		return uadk_rsa_sw_gen(genctx, osslcb, cbarg);
 
 	rsa = ossl_rsa_new_with_ctx(gctx->libctx);
 	if (!rsa)
@@ -858,6 +883,11 @@ static void *uadk_keymgmt_rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cba
 
 	uadk_rsa_clear_flags(rsa, RSA_FLAG_TYPE_MASK);
 	uadk_rsa_set_flags(rsa, gctx->rsa_type);
+
+	/* Copy PSS restriction parameters to the generated key */
+	pss_params = ossl_rsa_get0_pss_params_30(rsa);
+	*pss_params = gctx->pss_params;
+
 	BN_GENCB_free(gencb);
 
 	return rsa;
@@ -1006,6 +1036,12 @@ const OSSL_DISPATCH uadk_rsapss_keymgmt_functions[] = {
 		(void (*)(void))uadk_keymgmt_rsa_gen_set_params },
 	{ OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,
 		(void (*)(void))uadk_keymgmt_rsapss_gen_settable_params },
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+	{ OSSL_FUNC_KEYMGMT_GEN_GET_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsa_gen_get_params },
+	{ OSSL_FUNC_KEYMGMT_GEN_GETTABLE_PARAMS,
+		(void (*)(void))uadk_keymgmt_rsa_gen_gettable_params },
+#endif
 	{ OSSL_FUNC_KEYMGMT_GEN, (void (*)(void))uadk_keymgmt_rsa_gen },
 	{ OSSL_FUNC_KEYMGMT_GEN_CLEANUP, (void (*)(void))uadk_keymgmt_rsa_gen_cleanup },
 	{ OSSL_FUNC_KEYMGMT_LOAD, (void (*)(void))uadk_keymgmt_rsapss_load },

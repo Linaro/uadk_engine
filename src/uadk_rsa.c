@@ -51,6 +51,7 @@
 #define UADK_DO_SOFT			(-0xE0)
 #define UADK_E_INIT_SUCCESS		0
 #define CHECK_PADDING_FAIL		(-1)
+#define RSA_FAIL			(-1)
 #define ENV_ENABLED			1
 #define PRIME_RETRY_COUNT		4
 #define GENCB_NEXT			2
@@ -728,9 +729,9 @@ static void uadk_e_rsa_set_status(void)
 
 static int uadk_e_rsa_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expt = 1;
 	int ret;
 
 	do {
@@ -766,10 +767,10 @@ static struct rsa_res_config rsa_res_config = {
 
 static int uadk_e_rsa_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
@@ -1288,7 +1289,7 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 	if (!keygen_param->wd_e)
 		return UADK_E_FAIL;
 
-	keygen_param->wd_e->dsize = BN_bn2bin(bn_param->e,
+	keygen_param->wd_e->dsize = (__u32)BN_bn2bin(bn_param->e,
 				    (unsigned char *)keygen_param->wd_e->data);
 
 	wd_rsa_get_prikey(rsa_sess->sess, &key_pair->prikey);
@@ -1300,9 +1301,9 @@ static int rsa_fill_keygen_data(struct uadk_rsa_sess *rsa_sess,
 	if (!keygen_param->wd_q || !keygen_param->wd_p)
 		return UADK_E_FAIL;
 
-	keygen_param->wd_q->dsize = BN_bn2bin(bn_param->q,
+	keygen_param->wd_q->dsize = (__u32)BN_bn2bin(bn_param->q,
 				    (unsigned char *)keygen_param->wd_q->data);
-	keygen_param->wd_p->dsize = BN_bn2bin(bn_param->p,
+	keygen_param->wd_p->dsize = (__u32)BN_bn2bin(bn_param->p,
 				    (unsigned char *)keygen_param->wd_p->data);
 
 	rsa_sess->req.src_bytes = rsa_sess->key_size;
@@ -1507,7 +1508,7 @@ static int uadk_e_rsa_keygen(RSA *rsa, int bits, BIGNUM *e, BN_GENCB *cb)
 
 	ret = rsa_keygen_param_alloc(&keygen_param, &bn_param, &key_pair);
 	if (ret == -ENOMEM)
-		return ret;
+		return RSA_FAIL;
 
 	rsa_sess = rsa_get_eng_session(rsa, bits, is_crt);
 	if (!rsa_sess) {
@@ -1581,7 +1582,7 @@ static int uadk_e_rsa_public_encrypt(int flen, const unsigned char *from,
 
 	ret = rsa_pkey_param_alloc(&pub_enc, NULL);
 	if (ret == -ENOMEM)
-		return ret;
+		return RSA_FAIL;
 
 	is_crt = check_rsa_is_crt(rsa);
 
@@ -1677,7 +1678,7 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		return ret;
+		return RSA_FAIL;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1721,8 +1722,6 @@ static int uadk_e_rsa_private_decrypt(int flen, const unsigned char *from,
 	}
 
 	ret = check_rsa_pridec_padding(to, num_bytes, from_buf, len, padding);
-	if (!ret)
-		ret = UADK_DO_SOFT;
 
 free_dec_bn:
 	BN_free(dec_bn);
@@ -1764,7 +1763,7 @@ static int uadk_e_rsa_private_sign(int flen, const unsigned char *from,
 
 	ret = rsa_pkey_param_alloc(NULL, &pri);
 	if (ret == -ENOMEM)
-		return ret;
+		return RSA_FAIL;
 
 	pri->is_crt = check_rsa_is_crt(rsa);
 
@@ -1871,7 +1870,7 @@ static int uadk_e_rsa_public_verify(int flen, const unsigned char *from,
 
 	ret = rsa_pkey_param_alloc(&pub, NULL);
 	if (ret == -ENOMEM)
-		return ret;
+		return RSA_FAIL;
 
 	is_crt = check_rsa_is_crt(rsa);
 

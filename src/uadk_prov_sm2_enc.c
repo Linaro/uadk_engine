@@ -600,7 +600,7 @@ static int sm2_prov_get_plaintext(struct wd_ecc_req *req,
 }
 
 static int sm2_prov_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
-				     int md_size, const unsigned char *in, size_t inlen)
+				    const unsigned char *in, size_t inlen)
 {
 	char buf_x[SM2_KEY_BYTES] = {0};
 	char buf_y[SM2_KEY_BYTES] = {0};
@@ -616,11 +616,6 @@ static int sm2_prov_decrypt_init_iot(handle_t sess, struct wd_ecc_req *req,
 	ctext = d2i_SM2_Ciphertext(a, &in, inlen);
 	if (!ctext)
 		return UADK_P_FAIL;
-
-	if (ctext->C3->length != md_size) {
-		UADK_ERR("invalid: c3 dsize(%d) != md_size(%d)\n", ctext->C3->length, md_size);
-		goto free_ctext;
-	}
 
 	c1x_len = BN_num_bytes(ctext->C1x);
 	c1y_len = BN_num_bytes(ctext->C1y);
@@ -680,8 +675,6 @@ static int sm2_prov_decrypt_sw(PROV_SM2_ASYM_CTX *ctx,
 static int sm2_prov_decrypt(PROV_SM2_ASYM_CTX *psm2ctx, unsigned char *out,
 			    size_t *outlen, const unsigned char *in, size_t inlen)
 {
-	const EVP_MD *md = sm2_prov_digest_md(&psm2ctx->md);
-	int md_size = EVP_MD_get_size(md);
 	struct wd_ecc_req req = {0};
 	handle_t sess;
 	int ret;
@@ -704,7 +697,7 @@ static int sm2_prov_decrypt(PROV_SM2_ASYM_CTX *psm2ctx, unsigned char *out,
 		goto do_soft;
 	}
 
-	ret = sm2_prov_decrypt_init_iot(sess, &req, md_size, in, inlen);
+	ret = sm2_prov_decrypt_init_iot(sess, &req, in, inlen);
 	if (ret == UADK_P_FAIL)
 		goto free_sess;
 

@@ -1339,12 +1339,12 @@ free_ctx:
 static int uadk_signature_sm2_verify_recover_init(void *vpsm2ctx, void *vsm2,
 						  const OSSL_PARAM params[])
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }
 
 static int uadk_signature_sm2_verify_recover(void *vpsm2ctx, unsigned char *rout,
 					     size_t *routlen, size_t routsize,
 					     const unsigned char *sig, size_t siglen)
 {
-	return UADK_P_SUCCESS;
+	return UADK_P_FAIL;
 }

@@ -394,9 +394,9 @@ static int sched_single_poll_policy(handle_t h_sched_ctx,
 
 static int uadk_e_digest_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expt = 1;
 	int ret = 0;
 
 	do {
@@ -416,10 +416,10 @@ static int uadk_e_digest_poll(void *ctx)
 
 static int uadk_e_digest_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
@@ -679,7 +679,8 @@ static int digest_update_inner(EVP_MD_CTX *ctx, const void *data, size_t data_le
 		(struct digest_priv_ctx *)EVP_MD_CTX_md_data(ctx);
 	const unsigned char *tmpdata = (const unsigned char *)data;
 	size_t left_len = data_len;
-	int ret, processing_len;
+	size_t processing_len;
+	int ret;
 
 	if (unlikely(!priv)) {
 		fprintf(stderr, "priv get from digest ctx is NULL.\n");

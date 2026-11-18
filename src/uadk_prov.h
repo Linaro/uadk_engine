@@ -31,6 +31,8 @@
 #define PROV_SEND_MAX_CNT		90000000
 #define PROV_RECV_MAX_CNT		60000000
 #define PROV_SCH_RECV_MAX_CNT		60000000
+/* Number of packets polled in one synchronous completion check */
+#define PROV_SYNC_POLL_NUM		1U
 #define UADK_P_SUCCESS			1
 #define UADK_P_FAIL			0
 #define UADK_DO_SOFT			(-0xE0)

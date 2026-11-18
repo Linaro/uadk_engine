@@ -302,6 +302,25 @@ static const OSSL_PARAM *uadk_keymgmt_x448_gen_settable_params(ossl_unused void 
 	return get_default_x448_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_x448_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_x448_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x448_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x448_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_x448_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_x448_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_keymgmt_x448_gen_set_template(void *genctx, void *templ)
 {
 	return UADK_P_SUCCESS;
@@ -378,50 +397,6 @@ static int uadk_keymgmt_x448_get_params(void *key, OSSL_PARAM params[])
 					X448_KEYLEN);
 }
 
-static int ossl_ecx_gen_set_params(void *genctx, const OSSL_PARAM params[])
-{
-	PROV_ECX_KEYMGMT_CTX *gctx = (PROV_ECX_KEYMGMT_CTX *)genctx;
-	const char *groupname = NULL;
-	const OSSL_PARAM *p;
-
-	p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_GROUP_NAME);
-	if (p != NULL) {
-		/*
-		 * We optionally allow setting a group name - but each algorithm only
-		 * support one such name, so all we do is verify that it is the one we
-		 * expected.
-		 */
-		switch (gctx->type) {
-		case ECX_KEY_TYPE_X25519:
-			groupname = "x25519";
-			break;
-		case ECX_KEY_TYPE_X448:
-			groupname = "x448";
-			break;
-		default:
-			/* We only support this for key exchange at the moment */
-			break;
-		}
-		if (p->data_type != OSSL_PARAM_UTF8_STRING || groupname == NULL ||
-		    OPENSSL_strcasecmp(p->data, groupname) != 0) {
-			UADK_ERR("invalid ecx params\n");
-			return UADK_P_FAIL;
-		}
-	}
-	p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_PROPERTIES);
-	if (p != NULL) {
-		if (p->data_type != OSSL_PARAM_UTF8_STRING)
-			return UADK_P_FAIL;
-
-		OPENSSL_free(gctx->propq);
-		gctx->propq = OPENSSL_strdup(p->data);
-		if (gctx->propq == NULL)
-			return UADK_P_FAIL;
-	}
-
-	return UADK_P_SUCCESS;
-}
-
 static handle_t uadk_prov_ecx_alloc_sess(int type)
 {
 	struct wd_ecc_sess_setup setup = {0};
@@ -465,7 +440,7 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 {
 	OSSL_LIB_CTX *libctx = prov_libctx_of(provctx);
 	PROV_ECX_KEYMGMT_CTX *gctx;
-	int ret;
+	int ret = UADK_P_SUCCESS;
 
 	gctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYMGMT_CTX));
 	if (gctx == NULL) {
@@ -477,7 +452,13 @@ static void *ossl_ecx_gen_init(void *provctx, int selection, const OSSL_PARAM pa
 	gctx->type = type;
 	gctx->selection = selection;
 
-	ret = ossl_ecx_gen_set_params(gctx, params);
+	if (type == ECX_KEY_TYPE_X448) {
+		if (get_default_x448_keymgmt().gen_set_params != NULL)
+			ret = get_default_x448_keymgmt().gen_set_params(gctx, params);
+	} else {
+		if (get_default_x25519_keymgmt().gen_set_params != NULL)
+			ret = get_default_x25519_keymgmt().gen_set_params(gctx, params);
+	}
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to set ecx params\n");
 		OPENSSL_free(gctx);
@@ -763,9 +744,6 @@ static int uadk_prov_ecx_keygen(PROV_ECX_KEYMGMT_CTX *gctx, ECX_KEY **ecx_key)
 	struct wd_ecc_req req = {0};
 	int ret;
 
-	if (ecx_key == NULL)
-		return UADK_P_FAIL;
-
 	*ecx_key = uadk_prov_ecx_create_prikey(gctx);
 	if (*ecx_key == NULL || !(gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR))
 		return UADK_P_FAIL;
@@ -860,6 +838,13 @@ static void *uadk_keymgmt_x448_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_par
 		return NULL;
 	}
 
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
+# endif
+
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X448);
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to get hardware x448 keygen support\n");
@@ -930,7 +915,7 @@ static void uadk_keyexch_x448_freectx(void *vecxctx)
 static int uadk_keyexch_x448_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
 {
 	if (get_default_x448_keyexch().set_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x448_keyexch().set_ctx_params(ecxctx, params);
 }
@@ -956,7 +941,7 @@ static const OSSL_PARAM *uadk_keyexch_x448_gettable_ctx_params(ossl_unused void 
 static int uadk_keyexch_x448_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 {
 	if (get_default_x448_keyexch().get_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x448_keyexch().get_ctx_params(ecxctx, params);
 }
@@ -1070,7 +1055,6 @@ static int uadk_prov_ecx_compkey_init_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct w
 	uadk_prov_ecc_fill_req(req, WD_ECXDH_COMPUTE_KEY, ecx_in, ecx_out);
 
 	return UADK_P_SUCCESS;
-
 }
 
 static void uadk_prov_ecx_compkey_uninit_iot(PROV_ECX_KEYEXCH_CTX *ecxctx, struct wd_ecc_req *req)
@@ -1138,11 +1122,6 @@ static int uadk_prov_ecx_derive(PROV_ECX_KEYEXCH_CTX *ecxctx, unsigned char *key
 	ECX_KEY *peer_ecx_key;
 	ECX_KEY *ecx_key;
 	int ret;
-
-	if (ecxctx == NULL) {
-		UADK_ERR("invalid: ctx is NULL\n");
-		return UADK_P_FAIL;
-	}
 
 	peer_ecx_key = ecxctx->peerkey;
 	ecx_key = ecxctx->key;
@@ -1426,6 +1405,25 @@ static const OSSL_PARAM *uadk_keymgmt_x25519_gen_settable_params(ossl_unused voi
 	return get_default_x25519_keymgmt().gen_settable_params(genctx, provctx);
 }
 
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_x25519_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (get_default_x25519_keymgmt().gen_get_params == NULL)
+		return UADK_P_FAIL;
+
+	return get_default_x25519_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_x25519_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (get_default_x25519_keymgmt().gen_gettable_params == NULL)
+		return NULL;
+
+	return get_default_x25519_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
+
 static int uadk_keymgmt_x25519_gen_set_template(void *genctx, void *templ)
 {
 	return UADK_P_SUCCESS;
@@ -1474,6 +1472,13 @@ static void *uadk_keymgmt_x25519_gen(void *genctx, OSSL_CALLBACK *cb, void *cb_p
 		return NULL;
 	}
 
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto exe_soft;
+	}
+# endif
+
 	ret = uadk_prov_keymgmt_get_support_state(KEYMGMT_X25519);
 	if (ret == UADK_P_FAIL) {
 		UADK_ERR("failed to get hardware x25519 keygen support\n");
@@ -1515,7 +1520,7 @@ exe_soft:
 
 static void *uadk_keyexch_x25519_newctx(void *provctx)
 {
-	PROV_ECX_KEYEXCH_CTX *ecxctx = NULL;
+	PROV_ECX_KEYEXCH_CTX *ecxctx;
 
 	ecxctx = OPENSSL_zalloc(sizeof(PROV_ECX_KEYEXCH_CTX));
 	if (ecxctx == NULL) {
@@ -1544,7 +1549,7 @@ static void uadk_keyexch_x25519_freectx(void *vecxctx)
 static int uadk_keyexch_x25519_set_ctx_params(void *ecxctx, const OSSL_PARAM params[])
 {
 	if (get_default_x25519_keyexch().set_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x25519_keyexch().set_ctx_params(ecxctx, params);
 }
@@ -1570,7 +1575,7 @@ static const OSSL_PARAM *uadk_keyexch_x25519_gettable_ctx_params(ossl_unused voi
 static int uadk_keyexch_x25519_get_ctx_params(void *ecxctx, OSSL_PARAM params[])
 {
 	if (get_default_x25519_keyexch().get_ctx_params == NULL)
-		return UADK_P_FAIL;
+		return UADK_P_SUCCESS;
 
 	return get_default_x25519_keyexch().get_ctx_params(ecxctx, params);
 }

@@ -134,14 +134,14 @@ typedef struct {
 #if OPENSSL_VERSION_NUMBER >= 0x30300000L
 	/* NID for the legacy alg if there is one */
 	int legacy_alg;
-# endif
+#endif
 	char *type_name;
 	const char *description;
 	OSSL_PROVIDER *prov;
 	int refcnt;
 #if OPENSSL_VERSION_NUMBER < 0x30200000L
 	void *lock;
-# endif
+#endif
 	/* Constructor(s), destructor, information */
 	OSSL_FUNC_keymgmt_new_fn *new_fun;
 	OSSL_FUNC_keymgmt_free_fn *free;
@@ -156,7 +156,7 @@ typedef struct {
 #if OPENSSL_VERSION_NUMBER >= 0x30400000L
 	OSSL_FUNC_keymgmt_gen_get_params_fn *gen_get_params;
 	OSSL_FUNC_keymgmt_gen_gettable_params_fn *gen_gettable_params;
-# endif
+#endif
 	OSSL_FUNC_keymgmt_gen_set_params_fn *gen_set_params;
 	OSSL_FUNC_keymgmt_gen_settable_params_fn *gen_settable_params;
 	OSSL_FUNC_keymgmt_gen_fn *gen;
@@ -174,14 +174,33 @@ typedef struct {
 	OSSL_FUNC_keymgmt_import_types_fn *import_types;
 #if OPENSSL_VERSION_NUMBER >= 0x30200000L
 	OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
-# endif
+#endif
 	OSSL_FUNC_keymgmt_export_fn *export_fun;
 	OSSL_FUNC_keymgmt_export_types_fn *export_types;
 #if OPENSSL_VERSION_NUMBER >= 0x30200000L
 	OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
-# endif
+#endif
 	OSSL_FUNC_keymgmt_dup_fn *dup;
 } UADK_PKEY_KEYMGMT;
+
+#if OPENSSL_VERSION_NUMBER < 0x30400000L
+OSSL_CORE_MAKE_FUNC(int, keymgmt_gen_get_params,
+		      (void *genctx, OSSL_PARAM params[]))
+OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, keymgmt_gen_gettable_params,
+		      (void *genctx, void *provctx))
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+#define UADK_KEYMGMT_GEN_GET_PARAMS_ENTRY(nm)	\
+	{ OSSL_FUNC_KEYMGMT_GEN_GET_PARAMS,	\
+		(void (*)(void))uadk_keymgmt_##nm##_gen_get_params },
+#define UADK_KEYMGMT_GEN_GETTABLE_PARAMS_ENTRY(nm)	\
+	{ OSSL_FUNC_KEYMGMT_GEN_GETTABLE_PARAMS,	\
+		(void (*)(void))uadk_keymgmt_##nm##_gen_gettable_params },
+#else
+#define UADK_KEYMGMT_GEN_GET_PARAMS_ENTRY(nm)
+#define UADK_KEYMGMT_GEN_GETTABLE_PARAMS_ENTRY(nm)
+#endif
 
 #define UADK_PKEY_KEYMGMT_DESCR(nm, alg)	\
 static OSSL_FUNC_keymgmt_new_fn uadk_keymgmt_##nm##_new;	\
@@ -194,6 +213,8 @@ static OSSL_FUNC_keymgmt_gen_init_fn uadk_keymgmt_##nm##_gen_init;	\
 static OSSL_FUNC_keymgmt_gen_set_template_fn uadk_keymgmt_##nm##_gen_set_template;	\
 static OSSL_FUNC_keymgmt_gen_set_params_fn uadk_keymgmt_##nm##_gen_set_params;	\
 static OSSL_FUNC_keymgmt_gen_settable_params_fn uadk_keymgmt_##nm##_gen_settable_params;	\
+static OSSL_FUNC_keymgmt_gen_get_params_fn uadk_keymgmt_##nm##_gen_get_params;	\
+static OSSL_FUNC_keymgmt_gen_gettable_params_fn uadk_keymgmt_##nm##_gen_gettable_params;	\
 static OSSL_FUNC_keymgmt_gen_fn uadk_keymgmt_##nm##_gen;	\
 static OSSL_FUNC_keymgmt_gen_cleanup_fn uadk_keymgmt_##nm##_gen_cleanup;	\
 static OSSL_FUNC_keymgmt_load_fn uadk_keymgmt_##nm##_load;	\
@@ -218,6 +239,8 @@ const OSSL_DISPATCH uadk_##nm##_keymgmt_functions[] = {	\
 	{ OSSL_FUNC_KEYMGMT_GEN_INIT, (void (*)(void))uadk_keymgmt_##nm##_gen_init },	\
 	{ OSSL_FUNC_KEYMGMT_GEN_SET_TEMPLATE, \
 		(void (*)(void))uadk_keymgmt_##nm##_gen_set_template },	\
+	UADK_KEYMGMT_GEN_GET_PARAMS_ENTRY(nm)	\
+	UADK_KEYMGMT_GEN_GETTABLE_PARAMS_ENTRY(nm)	\
 	{ OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS,	\
 		(void (*)(void))uadk_keymgmt_##nm##_gen_set_params },	\
 	{ OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,	\

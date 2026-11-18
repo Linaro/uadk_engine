@@ -199,8 +199,15 @@ static int ec_set_private_key(EC_KEY *ec, BIGNUM *priv_key)
 	const BIGNUM *order;
 	int cnt = 0;
 
-	if (priv_k)
+	if (priv_k) {
+		group = EC_KEY_get0_group(ec);
+		order = EC_GROUP_get0_order(group);
+		if (BN_cmp(priv_k, order) >= 0) {
+			UADK_ERR("invalid: preset private key out of range\n");
+			return UADK_P_FAIL;
+		}
 		goto set_key;
+	}
 
 	priv_k = BN_secure_new();
 	if (!priv_k) {
@@ -346,7 +353,7 @@ static void *uadk_ec_sw_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 	if (!enable_sw_offload || !get_default_ec_keymgmt().gen)
 		return NULL;
 
-	UADK_INFO("switch to openssl software calculation in ecx generation.\n");
+	UADK_INFO("switch to openssl software calculation in ec generation.\n");
 
 	return get_default_ec_keymgmt().gen(genctx, osslcb, cbarg);
 }
@@ -373,6 +380,14 @@ static void *uadk_keymgmt_ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbar
 		UADK_ERR("failed to check genctx!\n");
 		goto free_ec_key;
 	}
+
+# if OPENSSL_VERSION_NUMBER >= 0x30200000L
+	/* DHKEM IKM-based key derivation is not supported by hardware */
+	if (gctx->dhkem_ikm) {
+		ret = UADK_DO_SOFT;
+		goto free_ec_key;
+	}
+# endif
 
 	/* Whether you want it or not, you get a keypair, not just one half */
 	if ((gctx->selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
@@ -641,6 +656,7 @@ static const OSSL_PARAM *uadk_keymgmt_ec_gen_settable_params(ossl_unused void *g
 		OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_ENCODING, NULL, 0),
 		OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT,
 				       NULL, 0),
+		OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_GROUP_CHECK_TYPE, NULL, 0),
 		OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_FIELD_TYPE, NULL, 0),
 		OSSL_PARAM_BN(OSSL_PKEY_PARAM_EC_P, NULL, 0),
 		OSSL_PARAM_BN(OSSL_PKEY_PARAM_EC_A, NULL, 0),
@@ -658,6 +674,25 @@ static const OSSL_PARAM *uadk_keymgmt_ec_gen_settable_params(ossl_unused void *g
 
 	return settable;
 }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+static int uadk_keymgmt_ec_gen_get_params(void *genctx, OSSL_PARAM params[])
+{
+	if (!get_default_ec_keymgmt().gen_get_params)
+		return UADK_P_FAIL;
+
+	return get_default_ec_keymgmt().gen_get_params(genctx, params);
+}
+
+static const OSSL_PARAM *uadk_keymgmt_ec_gen_gettable_params(ossl_unused void *genctx,
+							       ossl_unused void *provctx)
+{
+	if (!get_default_ec_keymgmt().gen_gettable_params)
+		return NULL;
+
+	return get_default_ec_keymgmt().gen_gettable_params(genctx, provctx);
+}
+#endif
 
 static void *uadk_keymgmt_ec_new(void *provctx)
 {

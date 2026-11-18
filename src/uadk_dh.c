@@ -37,6 +37,7 @@
 #define UADK_DH_MAX_MODULE_BIT	4096
 #define DH_GENERATOR_2		2
 #define DH_GENERATOR_5		5
+#define DH_QNR_BIT_INDEX	2
 #define CHAR_BIT_SIZE		3
 #define DH_PARAMS_CNT		3
 #define CTX_MODE_NUM		2
@@ -146,6 +147,8 @@ static int uadk_e_dh_soft_compute_key(unsigned char *key,
 static int dh_generate_new_priv_key(const DH *dh, BIGNUM *new_priv_key)
 {
 	const BIGNUM *q = DH_get0_q(dh);
+	const BIGNUM *g = DH_get0_g(dh);
+	const BIGNUM *p = DH_get0_p(dh);
 	int bits;
 
 	if (q) {
@@ -155,10 +158,19 @@ static int dh_generate_new_priv_key(const DH *dh, BIGNUM *new_priv_key)
 		} while (BN_is_zero(new_priv_key) || BN_is_one(new_priv_key));
 	} else {
 		bits = DH_get_length(dh) ?
-		       DH_get_length(dh) : BN_num_bits(DH_get0_p(dh)) - 1;
+		       DH_get_length(dh) : BN_num_bits(p) - 1;
 		if (!BN_priv_rand(new_priv_key, bits, BN_RAND_TOP_ONE,
 				  BN_RAND_BOTTOM_ANY))
 			return UADK_E_FAIL;
+
+		/*
+		 * When g=2 and p%8==3, g is a quadratic non-residue.
+		 * If priv_key is odd, pub_key = g^priv mod p falls outside
+		 * the (p-1)/2 subgroup. Clear bit 0 to keep priv_key even,
+		 * matching OpenSSL soft implementation.
+		 */
+		if (BN_is_word(g, DH_GENERATOR_2) && !BN_is_bit_set(p, DH_QNR_BIT_INDEX))
+			BN_clear_bit(new_priv_key, 0);
 	}
 
 	return UADK_E_SUCCESS;
@@ -208,9 +220,9 @@ static void uadk_e_dh_set_status(void)
 
 static int uadk_e_dh_poll(void *ctx)
 {
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	int expt = 1;
 	int idx = 1;
 	int ret;
 
@@ -282,10 +294,10 @@ static struct dh_res_config dh_res_config = {
 
 static int uadk_e_dh_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
@@ -850,7 +862,7 @@ static int uadk_e_dh_generate_key(DH *dh)
 		goto exe_soft;
 
 	DH_get0_pqg(dh, &p, &q, &g);
-	if (!p || !g || q)
+	if (!p || !g)
 		return UADK_E_FAIL;
 
 	/* Get session and prepare private key */
@@ -893,6 +905,35 @@ exe_soft:
 	return uadk_e_dh_soft_generate_key(dh);
 }
 
+static bool dh_check_small_subgroup(const BIGNUM *pub_key, const BIGNUM *q,
+				    const BIGNUM *p)
+{
+	int valid = 0;
+	BIGNUM *tmp;
+	BN_CTX *ctx;
+
+	ctx = BN_CTX_new();
+	if (!ctx) {
+		fprintf(stderr, "failed to alloc BN_CTX for pub check\n");
+		return false;
+	}
+
+	BN_CTX_start(ctx);
+	tmp = BN_CTX_get(ctx);
+	if (tmp && BN_mod_exp(tmp, pub_key, q, p, ctx) && BN_is_one(tmp))
+		valid = 1;
+
+	BN_CTX_end(ctx);
+	BN_CTX_free(ctx);
+
+	if (!valid) {
+		fprintf(stderr, "invalid peer pubkey: small subgroup check failed\n");
+		return false;
+	}
+
+	return true;
+}
+
 static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 				 DH *dh)
 {
@@ -913,6 +954,16 @@ static int uadk_e_dh_compute_key(unsigned char *key, const BIGNUM *pub_key,
 
 	DH_get0_pqg(dh, &p, &q, &g);
 	if (!p || !g)
+		return UADK_E_FAIL;
+
+	/*
+	 * Hardware validates 1 < pub_key < p-1 (N>M + odd check on prime p),
+	 * but does NOT verify pub_key^q == 1 mod p. For DHX / FFDHE groups
+	 * carrying q, perform small subgroup check in software to defend
+	 * against small subgroup attacks. Traditional safe prime DH (q==NULL)
+	 * relies on hardware validation only.
+	 */
+	if (q && !dh_check_small_subgroup(pub_key, q, p))
 		return UADK_E_FAIL;
 
 	ret = dh_prepare_data(g, dh, &dh_sess, &priv_key);

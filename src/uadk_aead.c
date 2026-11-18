@@ -78,10 +78,10 @@ static EVP_CIPHER *uadk_aes_256_gcm;
 
 static int uadk_e_aead_env_poll(void *ctx)
 {
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret;
 
 	do {
@@ -99,10 +99,10 @@ static int uadk_e_aead_env_poll(void *ctx)
 static int uadk_e_aead_poll(void *ctx)
 {
 	struct aead_priv_ctx *priv = (struct aead_priv_ctx *) ctx;
+	/* Poll one packet currently */
+	__u32 expt = ENGINE_SYNC_POLL_NUM;
 	__u64 rx_cnt = 0;
 	__u32 recv = 0;
-	/* Poll one packet currently */
-	int expt = 1;
 	int ret, idx;
 
 	if (priv->req.op_type == WD_CIPHER_ENCRYPTION_DIGEST)
@@ -796,7 +796,7 @@ EVP_CIPHER *uadk_create_gcm_cipher_meth(int nid)
 	return aead;
 }
 
-static void destroy_aead(struct engine_cipher_info *info, int num)
+static void destroy_aead(struct engine_cipher_info *info, __u32 num)
 {
 	__u32 i;
 
@@ -808,7 +808,7 @@ static void destroy_aead(struct engine_cipher_info *info, int num)
 	}
 }
 
-void uadk_e_destroy_aead(struct engine_cipher_info *info, int num)
+void uadk_e_destroy_aead(struct engine_cipher_info *info, __u32 num)
 {
 	__u32 i;
 	int ret;
